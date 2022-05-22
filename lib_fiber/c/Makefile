@@ -170,9 +170,9 @@ OBJ = $(patsubst %.c, $(OBJ_PATH_DST)/%.o, $(notdir $(SRC))) $(ASM_OBJ)
 
 ###########################################################
 
-STATIC_LIBNAME = libfiber.a
+STATIC_LIBNAME = libfiber.so
 SHARED_LIBNAME = libfiber.so
-STATIC_OLD_LIBNAME = lib_fiber.a
+STATIC_OLD_LIBNAME = lib_fiber.so
 SHARED_OLD_LIBNAME = lib_fiber.so
 
 ###########################################################
