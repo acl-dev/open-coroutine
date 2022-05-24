@@ -24,7 +24,7 @@ fn main() {
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings")
         // Write the bindings to the src/bindings.rs file.
-        .write_to_file("src/fiber.rs")
+        .write_to_file("src/libfiber.rs")
         .expect("Couldn't write bindings!");
 
     //if libfiber.a not exists, we need to build it before execute
