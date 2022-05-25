@@ -17,4 +17,4 @@ Cargo.lock
 
 /lib_fiber/c/debug/
 *.a
-*.iml
+*.so
