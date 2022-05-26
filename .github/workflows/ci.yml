@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        rust: [ 1.40.0, 1.50.0, 1.60.0 ]
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Support longpaths
+        if: ${{ matrix.os == 'windows-latest'}}
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: Set Skip Env Var
+        uses: ./.github/actions/skip-ci
+      - uses: actions/setup-rust@v1
+        if: env.SKIP_CI != 'true'
+        with:
+          rust-version: ${{ matrix.rust }}
+      - name: Build with Cargo
+        if: env.SKIP_CI != 'true'
+        run: ./cargo build
+      - uses: codecov/codecov-action@v1
+        if: env.SKIP_CI != 'true'
