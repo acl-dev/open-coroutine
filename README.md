@@ -5,13 +5,15 @@
 
 ### How to use this library ?
 
-#### step1 add dependency to your Cargo.toml
+#### step1
+add dependency to your `Cargo.toml`
 ```toml
 [dependencies]
 libfiber = "0.1.0"
 ```
 
-#### step2 enable hooks
+#### step2 
+enable hooks
 ```rust
 use libfiber::hooks::Hooks;
 
@@ -20,4 +22,12 @@ fn main() {
     Hooks::enable(true);
     //......
 }
+```
+
+#### step3 
+enjoy the performance improvement brought by `libfiber`
+
+### How to run examples ?
+```shell
+cargo run --example 01basic
 ```
