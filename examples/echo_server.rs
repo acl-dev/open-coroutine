@@ -28,13 +28,16 @@ fn handle_client(mut stream: TcpStream) {
 
 fn main() {
     let lis = TcpListener::bind("127.0.0.1:9898");
+    println!("server started !");
     match lis {
         Ok(listener) => {
             for sr in listener.incoming() {
                 match sr {
                     Ok(stream) => {
-                        //直接处理就好了，底层libfiber会用协程处理
-                        handle_client(stream);
+                        // 起新线程处理，move表示移交所有权
+                        thread::spawn(move || {
+                            handle_client(stream);
+                        });
                     }
                     Err(_) => {}
                 }
