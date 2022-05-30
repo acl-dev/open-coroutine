@@ -15,11 +15,9 @@ libfiber = "0.1.0"
 #### step2 
 enable hooks
 ```rust
-use libfiber::hooks::Hooks;
-
 fn main() {
     //step2 enable hooks
-    Hooks::enable(true);
+    todo!();
     //......
 }
 ```
