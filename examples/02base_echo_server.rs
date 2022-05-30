@@ -8,6 +8,9 @@ fn handle_client(mut stream: TcpStream) {
     loop {
         let r = stream.read(&mut buf);
         if let Ok(size) = r {
+            if size <= 0 {
+                return;
+            }
             let recv = &buf[0..size];
             let recv_str = String::from_utf8_lossy(recv);
             println!("{}", recv_str);
@@ -27,9 +30,9 @@ fn handle_client(mut stream: TcpStream) {
 }
 
 fn main() {
-    let lis = TcpListener::bind("127.0.0.1:9898");
+    let listener = TcpListener::bind("127.0.0.1:9898");
     println!("server started !");
-    match lis {
+    match listener {
         Ok(listener) => {
             for sr in listener.incoming() {
                 match sr {
