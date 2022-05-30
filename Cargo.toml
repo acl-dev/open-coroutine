@@ -5,6 +5,7 @@ edition = "2021"
 license-file = "LICENSE.txt"
 
 [dependencies]
+libc = "0.2.119"
 
 [build-dependencies]
 # 从c/c++头文件自动生成rust

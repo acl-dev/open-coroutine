@@ -14,5 +14,5 @@ fn main() {
     let scheduler = Scheduler::new(EventMode::Kernel);
     scheduler.start();
     scheduler.stop();
-    println!("Hello, world!");
+    println!("finished !");
 }
