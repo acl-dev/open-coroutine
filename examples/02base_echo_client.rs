@@ -11,12 +11,11 @@ struct Count {
     outb: u64,
 }
 
-fn main() {
-    let address = "127.0.0.1:9898";
-    let package_length = 512;
-    let clients = 500;
-    let duration = 30;
+const package_length: usize = 512;
+const clients: i32 = 500;
+const duration: u64 = 30;
 
+fn main() {
     let (tx, rx) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let control = Arc::downgrade(&stop);
@@ -28,8 +27,8 @@ fn main() {
             let mut out_buf: Vec<u8> = vec![0; package_length];
             out_buf[package_length - 1] = b'\n';
             let mut in_buf: Vec<u8> = vec![0; package_length];
-            match TcpStream::connect(&*address) {
-                Ok(mut stream)=>{
+            match TcpStream::connect("127.0.0.1:9898") {
+                Ok(mut stream) => {
                     loop {
                         if (*stop).load(Ordering::Relaxed) {
                             break;
@@ -58,8 +57,8 @@ fn main() {
                         };
                         sum.inb += 1;
                     }
-                },
-                Err(e)=>println!("connect failed !")
+                }
+                Err(e) => println!("connect failed !")
             }
             tx.send(sum).unwrap();
         });
@@ -79,7 +78,7 @@ fn main() {
         sum.inb += c.inb;
         sum.outb += c.outb;
     }
-    println!("Benchmarking: {}", address);
+    println!("Benchmarking: 127.0.0.1:9898");
     println!(
         "{} clients, running {} bytes, {} sec.",
         clients, package_length, duration
