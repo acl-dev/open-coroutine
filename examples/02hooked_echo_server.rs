@@ -31,9 +31,10 @@ fn echo_client(fiber: &Fiber, arg: Option<*mut c_void>) {
                 break;
             }
 
-            let recv_str = String::from_utf8_lossy(&buf[0..n as usize]);
-            println!("fiber-{} receive {}", fiber.get_id(), recv_str);
-            let n = c::write(client_socket, &recv_str as *const _ as *const c_void, recv_str.len());
+            let n = n as usize;
+            let recv_str = String::from_utf8_lossy(&buf[0..n]);
+            print!("fiber-{} receive {}", fiber.get_id(), recv_str);
+            let n = c::write(client_socket, &buf as *const _ as *const c_void, n);
             if n < 0 {
                 eprintln!("write failed !");
                 break;

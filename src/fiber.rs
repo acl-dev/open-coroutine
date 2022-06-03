@@ -1,6 +1,6 @@
 use std::mem;
 use std::os::raw::{c_int, c_uint, c_void};
-use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id, acl_fiber_kill, acl_fiber_killed, acl_fiber_running, acl_fiber_status, acl_fiber_yield, size_t};
+use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id, acl_fiber_kill, acl_fiber_killed, acl_fiber_running, acl_fiber_status, acl_fiber_switch, acl_fiber_yield, size_t};
 
 pub struct Fiber {
     fiber: Option<*mut ACL_FIBER>,
@@ -38,6 +38,12 @@ impl Fiber {
     pub fn yields(&self) {
         unsafe {
             acl_fiber_yield();
+        }
+    }
+
+    pub fn switch(&self) {
+        unsafe {
+            acl_fiber_switch();
         }
     }
 

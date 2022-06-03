@@ -6,6 +6,9 @@ license-file = "LICENSE.txt"
 
 [dependencies]
 libc = "0.2.119"
+chrono = "0.4.19"
+threadpool = "1.8.1"
+num_cpus = "1.13.1"
 
 [build-dependencies]
 # 从c/c++头文件自动生成rust
