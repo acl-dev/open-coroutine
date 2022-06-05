@@ -52,11 +52,13 @@ fn fiber_accept(fiber: &Fiber, arg: Option<*mut c_void>) {
     unsafe {
         let socket = c::socket(c::AF_INET, c::SOCK_STREAM, c::IPPROTO_TCP);
         if socket < 0 {
-            panic!("last OS error: {:?}", Error::last_os_error());
+            eprintln!("last OS error: {:?}", Error::last_os_error());
+            return;
         }
         if c::setsockopt(socket, c::SOL_SOCKET, c::SO_REUSEADDR,
                          1 as *const c_void, size_of::<i32> as c::socklen_t) > 0 {
-            panic!("setsockopt failed !");
+            eprintln!("setsockopt failed !");
+            return;
         }
 
         let serv_addr = c::sockaddr_in {
@@ -74,7 +76,8 @@ fn fiber_accept(fiber: &Fiber, arg: Option<*mut c_void>) {
             c::close(socket);
         }
         if c::listen(socket, 128) < 0 {
-            panic!("listen failed !");
+            eprintln!("listen failed !");
+            return;
         };
         println!("fiber-{} listen ok !", fiber.get_id());
 

@@ -17,7 +17,8 @@ fn fiber_request(fiber: &Fiber, arg: Option<*mut c_void>) {
     unsafe {
         let socket = c::socket(c::AF_INET, c::SOCK_STREAM, c::IPPROTO_TCP);
         if socket < 0 {
-            panic!("last OS error: {:?}", Error::last_os_error());
+            eprintln!("last OS error: {:?}", Error::last_os_error());
+            return;
         }
 
         let servaddr = c::sockaddr_in {

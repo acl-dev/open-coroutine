@@ -15,7 +15,6 @@ impl Fiber {
         let fiber = mem::transmute::<_, &Fiber>(arg);
         let function = fiber.function;
         function(fiber, fiber.param);
-        fiber.exit();
     }
 
     /// 创建纤程
