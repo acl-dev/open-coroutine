@@ -6,33 +6,29 @@ use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id
 pub struct Fiber {
     fiber: Option<*mut ACL_FIBER>,
     ///用户函数
-    function: Box<dyn FnOnce(&Fiber, Option<*mut c_void>)>,
+    function: Box<dyn FnMut(&Fiber, Option<*mut c_void>)>,
     ///用户参数
-    param: Option<Box<*mut c_void>>,
+    param: Option<*mut c_void>,
 }
 
 impl Fiber {
     unsafe extern "C" fn fiber_main(_: *mut ACL_FIBER, arg: *mut c_void) {
         let mut fiber = arg as *mut Fiber;
-        //fixme 这里如何调用闭包?
-        let function = (*fiber).function.as_ref();
+        //调用闭包
+        let param = (*fiber).param;
+        ((*fiber).function)(&*fiber, param);
     }
 
     /// 创建纤程
     pub fn new<F>(function: F,
                   param: Option<*mut c_void>, size: size_t) -> Self
-        where F: FnOnce(&Fiber, Option<*mut c_void>) + Sized + 'static
+        where F: FnMut(&Fiber, Option<*mut c_void>) + Sized + 'static
     {
         unsafe {
             let mut fiber = Fiber {
                 fiber: None,
                 function: Box::new(function),
-                param: match param {
-                    Some(param) => {
-                        Some(Box::new(param))
-                    }
-                    None => None,
-                },
+                param,
             };
             let native_fiber = acl_fiber_create(Some(Fiber::fiber_main),
                                                 &mut fiber as *mut _ as *mut c_void, size);
