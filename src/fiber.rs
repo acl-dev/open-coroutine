@@ -21,7 +21,7 @@ impl Fiber {
     /// 创建纤程
     pub fn new<F>(function: F,
                   param: Option<*mut c_void>, size: size_t) -> Self
-        where F: FnOnce(&Fiber, Option<*mut c_void>) + 'static
+        where F: FnOnce(&Fiber, Option<*mut c_void>) + Sized + 'static
     {
         unsafe {
             let mut fiber = Fiber {
