@@ -1,33 +1,41 @@
-use std::mem;
+use std::{mem, ptr};
+use std::borrow::Borrow;
 use std::os::raw::{c_int, c_uint, c_void};
 use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id, acl_fiber_kill, acl_fiber_killed, acl_fiber_running, acl_fiber_status, acl_fiber_switch, acl_fiber_yield, size_t};
 
 pub struct Fiber {
     fiber: Option<*mut ACL_FIBER>,
     ///用户函数
-    function: fn(&Fiber, Option<*mut c_void>),
+    function: Box<dyn FnOnce(&Fiber, Option<*mut c_void>)>,
     ///用户参数
-    param: Option<*mut c_void>,
+    param: Option<Box<*mut c_void>>,
 }
 
 impl Fiber {
     unsafe extern "C" fn fiber_main(_: *mut ACL_FIBER, arg: *mut c_void) {
-        let fiber = mem::transmute::<_, &Fiber>(arg);
-        let function = fiber.function;
-        function(fiber, fiber.param);
+        let mut fiber = arg as *mut Fiber;
+        //fixme 这里如何调用闭包?
+        let function = (*fiber).function.as_ref();
     }
 
     /// 创建纤程
-    pub fn new(function: fn(&Fiber, Option<*mut c_void>),
-               param: Option<*mut c_void>, size: size_t) -> Self {
+    pub fn new<F>(function: F,
+                  param: Option<*mut c_void>, size: size_t) -> Self
+        where F: FnOnce(&Fiber, Option<*mut c_void>) + 'static
+    {
         unsafe {
             let mut fiber = Fiber {
                 fiber: None,
-                function,
-                param,
+                function: Box::new(function),
+                param: match param {
+                    Some(param) => {
+                        Some(Box::new(param))
+                    }
+                    None => None,
+                },
             };
             let native_fiber = acl_fiber_create(Some(Fiber::fiber_main),
-                                                &mut fiber as *mut Fiber as *mut c_void, size);
+                                                &mut fiber as *mut _ as *mut c_void, size);
             fiber.fiber = Some(native_fiber);
             fiber
         }
