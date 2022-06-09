@@ -4,9 +4,7 @@ use std::os::raw::{c_int, c_uint, c_void};
 use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id, acl_fiber_kill, acl_fiber_killed, acl_fiber_running, acl_fiber_status, acl_fiber_switch, acl_fiber_yield, size_t};
 
 #[derive(Copy, Clone)]
-pub struct Fiber<F>
-    where F: FnOnce(*const c_void, Option<*mut c_void>) + Copy
-{
+pub struct Fiber<F> {
     fiber: Option<*mut ACL_FIBER>,
     ///用户函数
     function: F,
@@ -41,7 +39,22 @@ impl<F> Fiber<F>
             fiber
         }
     }
+}
 
+///获取当前运行的纤程，如果没有正在运行的纤程将返回null
+pub fn current_running_fiber() -> *mut ACL_FIBER {
+    unsafe {
+        acl_fiber_running()
+    }
+}
+
+pub fn current_id() -> c_uint {
+    unsafe {
+        acl_fiber_id(acl_fiber_running())
+    }
+}
+
+impl<F> Fiber<F> {
     ///主动让出CPU给其它纤程
     pub fn yields(&self) {
         unsafe {
@@ -52,13 +65,6 @@ impl<F> Fiber<F>
     pub fn switch(&self) {
         unsafe {
             acl_fiber_switch();
-        }
-    }
-
-    ///获取当前运行的纤程，如果没有正在运行的纤程将返回null
-    pub fn current_running_fiber() -> *mut ACL_FIBER {
-        unsafe {
-            acl_fiber_running()
         }
     }
 
