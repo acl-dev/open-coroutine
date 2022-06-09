@@ -3,34 +3,39 @@ use std::borrow::Borrow;
 use std::os::raw::{c_int, c_uint, c_void};
 use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id, acl_fiber_kill, acl_fiber_killed, acl_fiber_running, acl_fiber_status, acl_fiber_switch, acl_fiber_yield, size_t};
 
-pub struct Fiber {
+#[derive(Copy, Clone)]
+pub struct Fiber<F>
+    where F: FnOnce(*const c_void, Option<*mut c_void>) + Copy
+{
     fiber: Option<*mut ACL_FIBER>,
     ///用户函数
-    function: Box<dyn FnMut(&Fiber, Option<*mut c_void>)>,
+    function: F,
     ///用户参数
     param: Option<*mut c_void>,
 }
 
-impl Fiber {
+impl<F> Fiber<F>
+    where F: FnOnce(*const c_void, Option<*mut c_void>) + Copy
+{
     unsafe extern "C" fn fiber_main(_: *mut ACL_FIBER, arg: *mut c_void) {
-        let mut fiber = arg as *mut Fiber;
+        let mut fiber = arg as *mut Fiber<F>;
         //调用闭包
         let param = (*fiber).param;
-        ((*fiber).function)(&*fiber, param);
+        ((*fiber).function)(mem::transmute(fiber), param);
     }
 
     /// 创建纤程
-    pub fn new<F>(function: F,
-                  param: Option<*mut c_void>, size: size_t) -> Self
-        where F: FnMut(&Fiber, Option<*mut c_void>) + Sized + 'static
+    pub fn new(function: F,
+               param: Option<*mut c_void>,
+               size: size_t) -> Self
     {
         unsafe {
             let mut fiber = Fiber {
                 fiber: None,
-                function: Box::new(function),
+                function,
                 param,
             };
-            let native_fiber = acl_fiber_create(Some(Fiber::fiber_main),
+            let native_fiber = acl_fiber_create(Some(Fiber::<F>::fiber_main),
                                                 &mut fiber as *mut _ as *mut c_void, size);
             fiber.fiber = Some(native_fiber);
             fiber
