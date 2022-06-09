@@ -6,18 +6,19 @@ use libc as c;
 use threadpool::ThreadPool;
 use libfiber::condition::Condition;
 use libfiber::event::Event;
-use libfiber::fiber::Fiber;
+use libfiber::fiber::{current_id, delay, Fiber};
 use libfiber::scheduler::{EventMode, Scheduler};
 
 const package_length: usize = 512;
 const clients: i32 = 500;
 const duration: i64 = 30 * 1000;
 
-fn fiber_request(fiber: &Fiber, arg: Option<*mut c_void>) {
+fn fiber_request(_: *const c_void, _: Option<*mut c_void>) {
     unsafe {
         let socket = c::socket(c::AF_INET, c::SOCK_STREAM, c::IPPROTO_TCP);
         if socket < 0 {
-            panic!("last OS error: {:?}", Error::last_os_error());
+            eprintln!("last OS error: {:?}", Error::last_os_error());
+            return;
         }
 
         let servaddr = c::sockaddr_in {
@@ -35,7 +36,7 @@ fn fiber_request(fiber: &Fiber, arg: Option<*mut c_void>) {
             println!("last OS error: {:?}", Error::last_os_error());
             c::close(socket);
         }
-        println!("fiber-{} connect ok !", fiber.get_id());
+        println!("fiber-{} connect ok !", current_id());
         let msg = [0u8; package_length];
         loop {
             let n = c::write(socket, &msg as *const _ as *const c_void, package_length);
@@ -44,7 +45,7 @@ fn fiber_request(fiber: &Fiber, arg: Option<*mut c_void>) {
                 c::close(socket);
                 break;
             }
-            println!("fiber-{} send {}", fiber.get_id(), String::from_utf8_lossy(&msg[0..n as usize]));
+            println!("fiber-{} send {}", current_id(), String::from_utf8_lossy(&msg[0..n as usize]));
             let mut buf = [0u8; package_length];
             let n = c::read(socket, &mut buf as *mut _ as *mut c_void, package_length);
             if n <= 0 {
@@ -57,13 +58,13 @@ fn fiber_request(fiber: &Fiber, arg: Option<*mut c_void>) {
     }
 }
 
-fn fiber_main(main: &Fiber, arg: Option<*mut c_void>) {
+fn fiber_main(_: *const c_void, _: Option<*mut c_void>) {
     // create clients
     //todo 这里支持的不太好，另外需要添加统计信息
     let fiber1 = Fiber::new(fiber_request, None, 128000);
-    let fiber2 =Fiber::new(fiber_request, None, 128000);
-    let fiber3 =Fiber::new(fiber_request, None, 128000);
-    main.delay(duration as u32);
+    let fiber2 = Fiber::new(fiber_request, None, 128000);
+    let fiber3 = Fiber::new(fiber_request, None, 128000);
+    delay(duration as u32);
     fiber1.exit();
     fiber2.exit();
     fiber3.exit();

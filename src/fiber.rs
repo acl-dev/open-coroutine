@@ -1,39 +1,66 @@
-use std::mem;
+use std::{mem, ptr};
+use std::borrow::Borrow;
 use std::os::raw::{c_int, c_uint, c_void};
 use crate::libfiber::{ACL_FIBER, acl_fiber_create, acl_fiber_delay, acl_fiber_id, acl_fiber_kill, acl_fiber_killed, acl_fiber_running, acl_fiber_status, acl_fiber_switch, acl_fiber_yield, size_t};
 
-pub struct Fiber {
+#[derive(Copy, Clone)]
+pub struct Fiber<F> {
     fiber: Option<*mut ACL_FIBER>,
     ///用户函数
-    function: fn(&Fiber, Option<*mut c_void>),
+    function: F,
     ///用户参数
     param: Option<*mut c_void>,
 }
 
-impl Fiber {
+impl<F> Fiber<F>
+    where F: FnOnce(*const c_void, Option<*mut c_void>) + Copy
+{
     unsafe extern "C" fn fiber_main(_: *mut ACL_FIBER, arg: *mut c_void) {
-        let fiber = mem::transmute::<_, &Fiber>(arg);
-        let function = fiber.function;
-        function(fiber, fiber.param);
-        fiber.exit();
+        let mut fiber = arg as *mut Fiber<F>;
+        //调用闭包
+        let param = (*fiber).param;
+        ((*fiber).function)(mem::transmute(fiber), param);
     }
 
     /// 创建纤程
-    pub fn new(function: fn(&Fiber, Option<*mut c_void>),
-               param: Option<*mut c_void>, size: size_t) -> Self {
+    pub fn new(function: F,
+               param: Option<*mut c_void>,
+               size: size_t) -> Self
+    {
         unsafe {
             let mut fiber = Fiber {
                 fiber: None,
                 function,
                 param,
             };
-            let native_fiber = acl_fiber_create(Some(Fiber::fiber_main),
-                                                &mut fiber as *mut Fiber as *mut c_void, size);
+            let native_fiber = acl_fiber_create(Some(Fiber::<F>::fiber_main),
+                                                &mut fiber as *mut _ as *mut c_void, size);
             fiber.fiber = Some(native_fiber);
             fiber
         }
     }
+}
 
+///获取当前运行的纤程，如果没有正在运行的纤程将返回null
+pub fn current_running_fiber() -> *mut ACL_FIBER {
+    unsafe {
+        acl_fiber_running()
+    }
+}
+
+pub fn current_id() -> c_uint {
+    unsafe {
+        acl_fiber_id(acl_fiber_running())
+    }
+}
+
+pub fn delay(milliseconds: c_uint) -> c_uint {
+    unsafe {
+        acl_fiber_delay(milliseconds)
+    }
+}
+
+impl<F> Fiber<F> {
     ///主动让出CPU给其它纤程
     pub fn yields(&self) {
         unsafe {
@@ -44,13 +71,6 @@ impl Fiber {
     pub fn switch(&self) {
         unsafe {
             acl_fiber_switch();
-        }
-    }
-
-    ///获取当前运行的纤程，如果没有正在运行的纤程将返回null
-    pub fn current_running_fiber() -> *mut ACL_FIBER {
-        unsafe {
-            acl_fiber_running()
         }
     }
 
