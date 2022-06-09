@@ -54,6 +54,12 @@ pub fn current_id() -> c_uint {
     }
 }
 
+pub fn delay(milliseconds: c_uint) -> c_uint {
+    unsafe {
+        acl_fiber_delay(milliseconds)
+    }
+}
+
 impl<F> Fiber<F> {
     ///主动让出CPU给其它纤程
     pub fn yields(&self) {
