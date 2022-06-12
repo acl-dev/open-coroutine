@@ -32,7 +32,7 @@ fn echo_client(client_socket: c_int) {
 
             let n = n as usize;
             let recv_str = String::from_utf8_lossy(&buf[0..n]);
-            print!("fiber-{} receive {}", current_id(), recv_str);
+            // print!("fiber-{} receive {}", current_id(), recv_str);
             let n = c::write(client_socket, &buf as *const _ as *const c_void, n);
             if n < 0 {
                 eprintln!("write failed !");
@@ -88,7 +88,9 @@ fn fiber_accept(fiber: *const c_void, _: Option<*mut c_void>) {
                 eprintln!("last OS error: {:?}", Error::last_os_error());
                 break;
             }
+            println!("fiber_accept {}",client_socket);
             Fiber::new(move |_, _| {
+                println!("echo_client {}",client_socket);
                 echo_client(client_socket);
             }, None, 128000);
         }
