@@ -27,7 +27,7 @@ fn main() {
             let mut out_buf: Vec<u8> = vec![0; package_length];
             out_buf[package_length - 1] = b'\n';
             let mut in_buf: Vec<u8> = vec![0; package_length];
-            match TcpStream::connect("127.0.0.1:9898") {
+            match TcpStream::connect("127.0.0.1:9999") {
                 Ok(mut stream) => {
                     loop {
                         if (*stop).load(Ordering::Relaxed) {

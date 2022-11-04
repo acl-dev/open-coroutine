@@ -24,7 +24,7 @@ fn fiber_request(_: *const c_void, _: Option<*mut c_void>) {
         let servaddr = c::sockaddr_in {
             sin_len: 0,
             sin_family: c::AF_INET as u8,
-            sin_port: 9898u16.to_be(),
+            sin_port: 9999u16.to_be(),
             sin_addr: c::in_addr {
                 s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be()
             },
