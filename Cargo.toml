@@ -8,11 +8,13 @@ license = "LGPL-3.0 OR Apache-2.0"
 members = [
     "id-generator",
     "object-list",
-    "timer"
+    "timer",
+    "coroutine",
+    "libhook",
+    "open-coroutine"
 ]
 
 [dependencies]
-corosensei = "0.1.3"
 
 [dev-dependencies]
 # benchmark
