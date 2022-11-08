@@ -3,6 +3,7 @@ use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
 use id_generator::IdGenerator;
 use object_list::ObjectList;
 use once_cell::sync::Lazy;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
@@ -58,9 +59,6 @@ pub struct OpenCoroutine<'a, Input, Yield, Return> {
     param: ManuallyDrop<Input>,
     //最近一次yield的参数
     //last_yield: Yield,
-    main_yielder: Option<*const Yielder<(), ()>>,
-    //调度器
-    scheduler: Option<*mut Scheduler>,
 }
 
 impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
@@ -74,8 +72,6 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
             status: Status::Created,
             inner: None,
             param: ManuallyDrop::new(val),
-            main_yielder: None,
-            scheduler: None,
         };
         coroutine.inner = Some(ScopedCoroutine::with_stack(
             DefaultStack::new(size).expect("failed to allocate stack"),
@@ -83,13 +79,8 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
                 let _result = f(yielder, input);
                 //todo 实现个ObjectMap来保存结果
                 //RESULTS.insert(coroutine.id, _result);
-                if let Some(scheduler) = coroutine.scheduler {
-                    if let Some(pointer) = coroutine.main_yielder {
-                        let main_yielder = &*pointer as &Yielder<(), ()>;
-                        (*scheduler).do_schedule(main_yielder);
-                    }
-                }
-                unreachable!()
+                Scheduler::current().do_schedule();
+                unreachable!("should not execute to here !")
             },
         ));
         coroutine
@@ -123,8 +114,6 @@ impl<'a, Yield> OpenCoroutine<'a, (), Yield, ()> {
                 f,
             )),
             param: ManuallyDrop::new(()),
-            main_yielder: None,
-            scheduler: None,
         }
     }
 
@@ -134,6 +123,11 @@ impl<'a, Yield> OpenCoroutine<'a, (), Yield, ()> {
 }
 
 static mut RESULTS: Lazy<HashMap<usize, Option<*mut c_void>>> = Lazy::new(HashMap::new);
+
+thread_local! {
+    static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
+    static YIELDER: Box<RefCell<*const Yielder<(), ()>>> = Box::new(RefCell::new(std::ptr::null()));
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -153,7 +147,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
             ready: ObjectList::new(),
@@ -165,7 +159,30 @@ impl Scheduler {
         }
     }
 
-    pub fn submit(&mut self, mut coroutine: Coroutine<Option<*mut c_void>, Option<*mut c_void>>) {
+    pub fn current<'a>() -> &'a mut Scheduler {
+        SCHEDULER.with(|boxed| Box::leak(unsafe { std::ptr::read_unaligned(boxed) }))
+    }
+
+    fn init(yielder: &Yielder<(), ()>) {
+        YIELDER.with(|boxed| {
+            *boxed.borrow_mut() = yielder;
+        });
+    }
+
+    fn yielder() -> *const Yielder<(), ()> {
+        YIELDER.with(|boxed| *boxed.borrow_mut())
+    }
+
+    fn clean() {
+        YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
+    }
+
+    pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
+    where
+        F: FnOnce(&Yielder<Option<*mut c_void>, ()>, Option<*mut c_void>) -> Option<*mut c_void>,
+        F: 'static,
+    {
+        let mut coroutine = Coroutine::new(f, val, size);
         coroutine.status = Status::Ready;
         self.ready.push_back(coroutine);
     }
@@ -173,8 +190,9 @@ impl Scheduler {
     pub fn try_schedule(&mut self) -> &HashMap<usize, Option<*mut c_void>> {
         let mut main = MainCoroutine::create(
             |main_yielder, _input| unsafe {
-                self.do_schedule(main_yielder);
-                unreachable!()
+                Scheduler::init(main_yielder);
+                self.do_schedule();
+                unreachable!("should not execute to here !")
             },
             128 * 1024,
         );
@@ -182,12 +200,13 @@ impl Scheduler {
         unsafe { &RESULTS }
     }
 
-    unsafe fn do_schedule(&mut self, main_yielder: &Yielder<(), ()>) {
-        match self.next() {
-            Some(mut coroutine) => {
+    unsafe fn do_schedule(&mut self) {
+        match self.ready.pop_front_raw() {
+            Some(pointer) => {
+                let mut coroutine = std::ptr::read_unaligned(
+                    pointer as *mut Coroutine<Option<*mut c_void>, Option<*mut c_void>>,
+                );
                 self.running = Some(coroutine.id);
-                coroutine.scheduler = Some(self);
-                coroutine.main_yielder = Some(main_yielder);
                 let _result = match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         //切换到下一个协程执行
@@ -198,23 +217,15 @@ impl Scheduler {
                     CoroutineResult::Return(val) => val,
                 };
                 self.running = None;
-                self.do_schedule(main_yielder);
+                self.do_schedule();
             }
             None => {
                 //跳回主线程
-                main_yielder.suspend(());
+                let yielder = Scheduler::yielder();
+                Scheduler::clean();
+                (*yielder).suspend(());
             }
         }
-    }
-
-    unsafe fn next(&mut self) -> Option<Coroutine<Option<*mut c_void>, Option<*mut c_void>>> {
-        if let Some(pointer) = self.ready.pop_front_raw() {
-            let coroutine = std::ptr::read_unaligned(
-                pointer as *mut Coroutine<Option<*mut c_void>, Option<*mut c_void>>,
-            );
-            return Some(coroutine);
-        }
-        None
     }
 }
 
@@ -226,7 +237,9 @@ impl Default for Scheduler {
 
 #[cfg(test)]
 mod tests {
-    use corosensei::{Coroutine, CoroutineResult, Yielder};
+    use crate::Scheduler;
+    use corosensei::{CoroutineResult, Yielder};
+    use std::os::raw::c_void;
 
     #[test]
     fn test() {
@@ -262,5 +275,27 @@ mod tests {
         }
 
         println!("[main] exiting");
+    }
+
+    #[test]
+    fn simplest() {
+        let mut scheduler = Scheduler::current();
+        scheduler.submit(
+            move |yielder, input| {
+                println!("[coroutine1] launched");
+                None
+            },
+            Some(1 as *mut c_void),
+            4096,
+        );
+        scheduler.submit(
+            move |yielder, input| {
+                println!("[coroutine2] launched");
+                Some(1 as *mut c_void)
+            },
+            Some(3 as *mut c_void),
+            4096,
+        );
+        scheduler.try_schedule();
     }
 }
