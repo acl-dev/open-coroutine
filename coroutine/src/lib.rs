@@ -117,8 +117,8 @@ impl<'a, Yield> OpenCoroutine<'a, (), Yield, ()> {
         }
     }
 
-    fn start(&mut self) -> CoroutineResult<Yield, ()> {
-        self.inner.as_mut().unwrap().resume(())
+    fn start(&mut self) -> Option<Yield> {
+        self.inner.as_mut().unwrap().resume(()).as_yield()
     }
 }
 
@@ -163,7 +163,7 @@ impl Scheduler {
         SCHEDULER.with(|boxed| Box::leak(unsafe { std::ptr::read_unaligned(boxed) }))
     }
 
-    fn init(yielder: &Yielder<(), ()>) {
+    fn init_yielder(yielder: &Yielder<(), ()>) {
         YIELDER.with(|boxed| {
             *boxed.borrow_mut() = yielder;
         });
@@ -173,7 +173,7 @@ impl Scheduler {
         YIELDER.with(|boxed| *boxed.borrow_mut())
     }
 
-    fn clean() {
+    fn clean_yielder() {
         YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
     }
 
@@ -190,13 +190,13 @@ impl Scheduler {
     pub fn try_schedule(&mut self) -> &HashMap<usize, Option<*mut c_void>> {
         let mut main = MainCoroutine::create(
             |main_yielder, _input| unsafe {
-                Scheduler::init(main_yielder);
+                Scheduler::init_yielder(main_yielder);
                 self.do_schedule();
                 unreachable!("should not execute to here !")
             },
             128 * 1024,
         );
-        main.start().as_yield().unwrap();
+        main.start();
         unsafe { &RESULTS }
     }
 
@@ -207,14 +207,12 @@ impl Scheduler {
                     pointer as *mut Coroutine<Option<*mut c_void>, Option<*mut c_void>>,
                 );
                 self.running = Some(coroutine.id);
-                let _result = match coroutine.resume() {
+                match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         //切换到下一个协程执行
                         self.ready.push_back(coroutine);
-                        self.running = None;
-                        None
                     }
-                    CoroutineResult::Return(val) => val,
+                    CoroutineResult::Return(_) => unreachable!("never have a result"),
                 };
                 self.running = None;
                 self.do_schedule();
@@ -222,7 +220,7 @@ impl Scheduler {
             None => {
                 //跳回主线程
                 let yielder = Scheduler::yielder();
-                Scheduler::clean();
+                Scheduler::clean_yielder();
                 (*yielder).suspend(());
             }
         }
