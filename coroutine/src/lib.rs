@@ -245,18 +245,18 @@ mod tests {
     fn test() {
         println!("[main] creating coroutine");
 
-        let mut main_coroutine = Coroutine::new(|main_yielder, input| {
+        let mut main_coroutine = corosensei::Coroutine::new(|main_yielder, input| {
             println!("[main coroutine] launched");
             let main_yielder =
                 unsafe { std::ptr::read_unaligned(main_yielder as *const Yielder<(), i32>) };
 
-            let mut coroutine2 = Coroutine::new(move |_: &Yielder<(), ()>, input| {
+            let mut coroutine2 = corosensei::Coroutine::new(move |_: &Yielder<(), ()>, input| {
                 println!("[coroutine2] launched");
                 main_yielder.suspend(1);
                 2
             });
 
-            let mut coroutine1 = Coroutine::new(move |_: &Yielder<(), ()>, input| {
+            let mut coroutine1 = corosensei::Coroutine::new(move |_: &Yielder<(), ()>, input| {
                 println!("[coroutine1] launched");
                 //这里loop + match确保子协程coroutine2不被中断
                 coroutine2.resume(());
