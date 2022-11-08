@@ -1,4 +1,3 @@
-use crossbeam_deque::{Steal, Worker};
 use std::collections::VecDeque;
 use std::os::raw::c_void;
 use std::ptr;
