@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
+use std::time::Duration;
 use timer::TimerList;
 
 #[repr(C)]
@@ -75,7 +76,7 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
         };
         coroutine.inner = Some(ScopedCoroutine::with_stack(
             DefaultStack::new(size).expect("failed to allocate stack"),
-            move |yielder, input| unsafe {
+            move |yielder, input| {
                 let _result = f(yielder, input);
                 //todo 实现个ObjectMap来保存结果
                 //RESULTS.insert(coroutine.id, _result);
@@ -127,6 +128,7 @@ static mut RESULTS: Lazy<HashMap<usize, Option<*mut c_void>>> = Lazy::new(HashMa
 thread_local! {
     static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
     static YIELDER: Box<RefCell<*const Yielder<(), ()>>> = Box::new(RefCell::new(std::ptr::null()));
+    static TIMEOUT_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
 }
 
 #[repr(C)]
@@ -177,6 +179,20 @@ impl Scheduler {
         YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
     }
 
+    fn init_timeout_time(timeout_time: u64) {
+        TIMEOUT_TIME.with(|boxed| {
+            *boxed.borrow_mut() = timeout_time;
+        });
+    }
+
+    fn timeout_time() -> u64 {
+        TIMEOUT_TIME.with(|boxed| *boxed.borrow_mut())
+    }
+
+    fn clean_time() {
+        TIMEOUT_TIME.with(|boxed| *boxed.borrow_mut() = 0)
+    }
+
     pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
     where
         F: FnOnce(&Yielder<Option<*mut c_void>, ()>, Option<*mut c_void>) -> Option<*mut c_void>,
@@ -188,8 +204,17 @@ impl Scheduler {
     }
 
     pub fn try_schedule(&mut self) -> &HashMap<usize, Option<*mut c_void>> {
+        self.try_timed_schedule(Duration::MAX)
+    }
+
+    pub fn try_timed_schedule(
+        &mut self,
+        timeout: Duration,
+    ) -> &HashMap<usize, Option<*mut c_void>> {
         let mut main = MainCoroutine::create(
-            |main_yielder, _input| unsafe {
+            |main_yielder, _input| {
+                let timeout_time = timer::get_timeout_time(timeout);
+                Scheduler::init_timeout_time(timeout_time);
                 Scheduler::init_yielder(main_yielder);
                 self.do_schedule();
                 unreachable!("should not execute to here !")
@@ -200,12 +225,29 @@ impl Scheduler {
         unsafe { &RESULTS }
     }
 
-    unsafe fn do_schedule(&mut self) {
+    fn back_to_main() {
+        //跳回主线程
+        let yielder = Scheduler::yielder();
+        Scheduler::clean_yielder();
+        Scheduler::clean_time();
+        if !yielder.is_null() {
+            unsafe {
+                (*yielder).suspend(());
+            }
+        }
+    }
+
+    fn do_schedule(&mut self) {
+        if Scheduler::timeout_time() <= timer::now() {
+            Scheduler::back_to_main()
+        }
         match self.ready.pop_front_raw() {
             Some(pointer) => {
-                let mut coroutine = std::ptr::read_unaligned(
-                    pointer as *mut Coroutine<Option<*mut c_void>, Option<*mut c_void>>,
-                );
+                let mut coroutine = unsafe {
+                    std::ptr::read_unaligned(
+                        pointer as *mut Coroutine<Option<*mut c_void>, Option<*mut c_void>>,
+                    )
+                };
                 self.running = Some(coroutine.id);
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
@@ -217,12 +259,7 @@ impl Scheduler {
                 self.running = None;
                 self.do_schedule();
             }
-            None => {
-                //跳回主线程
-                let yielder = Scheduler::yielder();
-                Scheduler::clean_yielder();
-                (*yielder).suspend(());
-            }
+            None => Scheduler::back_to_main(),
         }
     }
 }

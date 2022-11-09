@@ -23,7 +23,12 @@ pub fn dur_to_ns(dur: Duration) -> u64 {
 }
 
 pub fn get_timeout_time(dur: Duration) -> u64 {
-    now() + dur_to_ns(dur)
+    let now = now();
+    match now.checked_add(dur_to_ns(dur)) {
+        Some(time) => time,
+        //处理溢出
+        None => u64::MAX,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -137,5 +142,24 @@ mod tests {
         let mut entry = list.pop_front().unwrap();
         assert_eq!(entry.len(), 1);
         assert!(entry.pop_front::<i32>().is_some());
+    }
+
+    #[test]
+    fn overflow_or_not() {
+        let base = u64::MAX - 1;
+        match base.checked_add(1) {
+            Some(val) => {
+                assert_eq!(u64::MAX, val)
+            }
+            None => panic!(),
+        }
+        match base.checked_add(2) {
+            Some(_) => {
+                panic!()
+            }
+            None => {
+                println!("overflow")
+            }
+        }
     }
 }
