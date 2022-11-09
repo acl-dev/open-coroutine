@@ -7,7 +7,7 @@ license = "LGPL-3.0 OR Apache-2.0"
 [workspace]
 members = [
     "id-generator",
-    "object-list",
+    "object-collection",
     "timer",
     "base-coroutine",
     "libhook",

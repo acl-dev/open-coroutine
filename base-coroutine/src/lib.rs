@@ -1,7 +1,7 @@
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
 use id_generator::IdGenerator;
-use object_list::ObjectList;
+use object_collection::ObjectList;
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -84,6 +84,10 @@ type MainCoroutine<'a, Yield> = OpenCoroutine<'a, (), Yield, ()>;
 /// 子协程
 pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
 
+thread_local! {
+    static COROUTINE: Box<RefCell<*mut c_void>> = Box::new(RefCell::new(std::ptr::null_mut()));
+}
+
 #[repr(C)]
 pub struct OpenCoroutine<'a, Input, Yield, Return> {
     //协程状id
@@ -112,7 +116,15 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
         coroutine.inner = Some(ScopedCoroutine::with_stack(
             DefaultStack::new(size).expect("failed to allocate stack"),
             move |yielder, input| {
+                let current: *mut OpenCoroutine<'_, Input, (), Return> = OpenCoroutine::current();
+                unsafe {
+                    (*current).status = Status::Running;
+                }
                 let _result = f(&OpenYielder::new(yielder), input);
+                unsafe {
+                    (*current).status = Status::Finished;
+                }
+                OpenCoroutine::<Input, (), Return>::clean();
                 //todo 实现个ObjectMap来保存结果
                 //RESULTS.insert(coroutine.id, _result);
                 Scheduler::current().do_schedule();
@@ -133,6 +145,20 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
 
     pub fn resume_with(&mut self, val: Input) -> CoroutineResult<(), Return> {
         self.inner.as_mut().unwrap().resume(val)
+    }
+
+    fn init(coroutine: &mut OpenCoroutine<Input, (), Return>) {
+        COROUTINE.with(|boxed| {
+            *boxed.borrow_mut() = coroutine as *mut _ as *mut c_void;
+        });
+    }
+
+    fn current() -> *mut OpenCoroutine<'a, Input, (), Return> {
+        COROUTINE.with(|boxed| *boxed.borrow_mut() as *mut OpenCoroutine<Input, (), Return>)
+    }
+
+    fn clean() {
+        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
     }
 }
 
@@ -288,12 +314,14 @@ impl Scheduler {
                     )
                 };
                 self.running = Some(coroutine.id);
+                OpenCoroutine::init(&mut coroutine);
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         let delay_time = delay_time();
                         let time = timer::dur_to_ns(delay_time);
                         if time > 0 {
                             //挂起协程到时间轮
+                            coroutine.status = Status::Suspend;
                             self.suspend
                                 .insert(timer::get_timeout_time(delay_time), coroutine);
                             clean_delay();
