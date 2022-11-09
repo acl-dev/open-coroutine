@@ -31,6 +31,41 @@ pub enum Status {
     Exited,
 }
 
+thread_local! {
+    static DELAY_TIME: Box<RefCell<Duration>> = Box::new(RefCell::new(Duration::from_nanos(0)));
+}
+
+fn init_delay_time(time: Duration) {
+    DELAY_TIME.with(|boxed| {
+        *boxed.borrow_mut() = time;
+    });
+}
+
+fn delay_time() -> Duration {
+    DELAY_TIME.with(|boxed| *boxed.borrow_mut())
+}
+
+fn clean_delay() {
+    DELAY_TIME.with(|boxed| *boxed.borrow_mut() = Duration::from_nanos(0))
+}
+
+pub struct OpenYielder<'a, Input, Yield>(&'a Yielder<Input, Yield>);
+
+impl<'a, Input, Yield> OpenYielder<'a, Input, Yield> {
+    pub fn new(yielder: &'a Yielder<Input, Yield>) -> Self {
+        OpenYielder(yielder)
+    }
+
+    pub fn suspend(&self, val: Yield) -> Input {
+        self.0.suspend(val)
+    }
+
+    pub fn delay(&self, val: Yield, time: Duration) -> Input {
+        init_delay_time(time);
+        self.suspend(val)
+    }
+}
+
 /**
 主线程 -> 主协程(取得子协程的所有权,即scheduler)
            ↓
@@ -65,7 +100,7 @@ pub struct OpenCoroutine<'a, Input, Yield, Return> {
 impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
     pub fn new<F>(f: F, val: Input, size: usize) -> Self
     where
-        F: FnOnce(&Yielder<Input, ()>, Input) -> Return,
+        F: FnOnce(&OpenYielder<Input, ()>, Input) -> Return,
         F: 'a,
     {
         let mut coroutine = OpenCoroutine {
@@ -77,7 +112,7 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
         coroutine.inner = Some(ScopedCoroutine::with_stack(
             DefaultStack::new(size).expect("failed to allocate stack"),
             move |yielder, input| {
-                let _result = f(yielder, input);
+                let _result = f(&OpenYielder::new(yielder), input);
                 //todo 实现个ObjectMap来保存结果
                 //RESULTS.insert(coroutine.id, _result);
                 Scheduler::current().do_schedule();
@@ -195,7 +230,10 @@ impl Scheduler {
 
     pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
     where
-        F: FnOnce(&Yielder<Option<*mut c_void>, ()>, Option<*mut c_void>) -> Option<*mut c_void>,
+        F: FnOnce(
+            &OpenYielder<Option<*mut c_void>, ()>,
+            Option<*mut c_void>,
+        ) -> Option<*mut c_void>,
         F: 'static,
     {
         let mut coroutine = Coroutine::new(f, val, size);
@@ -241,6 +279,7 @@ impl Scheduler {
         if Scheduler::timeout_time() <= timer::now() {
             Scheduler::back_to_main()
         }
+        self.check_ready();
         match self.ready.pop_front_raw() {
             Some(pointer) => {
                 let mut coroutine = unsafe {
@@ -251,8 +290,17 @@ impl Scheduler {
                 self.running = Some(coroutine.id);
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
-                        //切换到下一个协程执行
-                        self.ready.push_back(coroutine);
+                        let delay_time = delay_time();
+                        let time = timer::dur_to_ns(delay_time);
+                        if time > 0 {
+                            //挂起协程到时间轮
+                            self.suspend
+                                .insert(timer::get_timeout_time(delay_time), coroutine);
+                            clean_delay();
+                        } else {
+                            //直接切换到下一个协程执行
+                            self.ready.push_back(coroutine);
+                        }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
                 };
@@ -260,6 +308,33 @@ impl Scheduler {
                 self.do_schedule();
             }
             None => Scheduler::back_to_main(),
+        }
+    }
+
+    fn check_ready(&mut self) {
+        for _ in 0..self.suspend.len() {
+            if let Some(entry) = self.suspend.front() {
+                let exec_time = entry.get_time();
+                if timer::now() < exec_time {
+                    break;
+                }
+                //移动至"就绪"队列
+                if let Some(mut entry) = self.suspend.pop_front() {
+                    for _ in 0..entry.len() {
+                        if let Some(pointer) = entry.pop_front_raw() {
+                            let mut coroutine = unsafe {
+                                std::ptr::read_unaligned(
+                                    pointer
+                                        as *mut Coroutine<Option<*mut c_void>, Option<*mut c_void>>,
+                                )
+                            };
+                            coroutine.status = Status::Ready;
+                            //优先执行到时间的协程
+                            self.ready.push_front(coroutine);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -275,23 +350,25 @@ mod tests {
     use crate::Scheduler;
     use corosensei::{CoroutineResult, Yielder};
     use std::os::raw::c_void;
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn test() {
         println!("[main] creating coroutine");
 
-        let mut main_coroutine = corosensei::Coroutine::new(|main_yielder, input| {
+        let mut main_coroutine = corosensei::Coroutine::new(|main_yielder, _input| {
             println!("[main coroutine] launched");
             let main_yielder =
                 unsafe { std::ptr::read_unaligned(main_yielder as *const Yielder<(), i32>) };
 
-            let mut coroutine2 = corosensei::Coroutine::new(move |_: &Yielder<(), ()>, input| {
+            let mut coroutine2 = corosensei::Coroutine::new(move |_: &Yielder<(), ()>, _input| {
                 println!("[coroutine2] launched");
                 main_yielder.suspend(1);
                 2
             });
 
-            let mut coroutine1 = corosensei::Coroutine::new(move |_: &Yielder<(), ()>, input| {
+            let mut coroutine1 = corosensei::Coroutine::new(move |_: &Yielder<(), ()>, _input| {
                 println!("[coroutine1] launched");
                 //这里loop + match确保子协程coroutine2不被中断
                 coroutine2.resume(());
@@ -314,9 +391,9 @@ mod tests {
 
     #[test]
     fn simplest() {
-        let mut scheduler = Scheduler::current();
+        let scheduler = Scheduler::current();
         scheduler.submit(
-            move |yielder, input| {
+            move |_yielder, _input| {
                 println!("[coroutine1] launched");
                 None
             },
@@ -324,13 +401,31 @@ mod tests {
             4096,
         );
         scheduler.submit(
-            move |yielder, input| {
+            move |_yielder, _input| {
                 println!("[coroutine2] launched");
                 Some(1 as *mut c_void)
             },
             Some(3 as *mut c_void),
             4096,
         );
+        scheduler.try_schedule();
+    }
+
+    #[test]
+    fn with_delay() {
+        let scheduler = Scheduler::current();
+        scheduler.submit(
+            move |yielder, _input| {
+                println!("[coroutine] delay");
+                yielder.delay((), Duration::from_millis(100));
+                println!("[coroutine] back");
+                None
+            },
+            None,
+            4096,
+        );
+        scheduler.try_schedule();
+        thread::sleep(Duration::from_millis(100));
         scheduler.try_schedule();
     }
 }
