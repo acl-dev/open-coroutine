@@ -9,7 +9,7 @@ members = [
     "id-generator",
     "object-list",
     "timer",
-    "coroutine",
+    "base-coroutine",
     "libhook",
     "open-coroutine"
 ]
