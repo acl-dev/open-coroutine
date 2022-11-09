@@ -1,0 +1,11 @@
+[package]
+name = "base-coroutine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+corosensei = "0.1.3"
+once_cell = "1.13.0"
+object-collection = { path = "../object-collection" }
+timer = { path = "../timer" }
+id-generator = { path = "../id-generator" }
