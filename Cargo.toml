@@ -10,8 +10,7 @@ members = [
     "object-collection",
     "timer",
     "base-coroutine",
-    "libhook",
-    "open-coroutine"
+    "libhook"
 ]
 
 [dependencies]
