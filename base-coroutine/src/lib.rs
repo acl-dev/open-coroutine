@@ -2,9 +2,7 @@ use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
 use id_generator::IdGenerator;
 use object_collection::ObjectList;
-use once_cell::sync::Lazy;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 use std::time::Duration;
@@ -49,20 +47,16 @@ fn clean_delay() {
     DELAY_TIME.with(|boxed| *boxed.borrow_mut() = Duration::from_nanos(0))
 }
 
-pub struct OpenYielder<'a, Input, Yield>(&'a Yielder<Input, Yield>);
+pub struct OpenYielder<'a, Input>(&'a Yielder<Input, ()>);
 
-impl<'a, Input, Yield> OpenYielder<'a, Input, Yield> {
-    pub fn new(yielder: &'a Yielder<Input, Yield>) -> Self {
-        OpenYielder(yielder)
+impl<'a, Input> OpenYielder<'a, Input> {
+    pub fn suspend(&self) -> Input {
+        self.0.suspend(())
     }
 
-    pub fn suspend(&self, val: Yield) -> Input {
-        self.0.suspend(val)
-    }
-
-    pub fn delay(&self, val: Yield, time: Duration) -> Input {
+    pub fn delay(&self, time: Duration) -> Input {
         init_delay_time(time);
-        self.suspend(val)
+        self.suspend()
     }
 }
 
@@ -79,7 +73,7 @@ impl<'a, Input, Yield> OpenYielder<'a, Input, Yield> {
  */
 
 /// 主线程
-type MainCoroutine<'a, Yield> = OpenCoroutine<'a, (), Yield, ()>;
+type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 
 /// 子协程
 pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
@@ -97,14 +91,12 @@ pub struct OpenCoroutine<'a, Input, Yield, Return> {
     inner: Option<ScopedCoroutine<'a, Input, Yield, Return, DefaultStack>>,
     //调用用户函数的参数
     param: ManuallyDrop<Input>,
-    //最近一次yield的参数
-    //last_yield: Yield,
 }
 
 impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
     pub fn new<F>(f: F, val: Input, size: usize) -> Self
     where
-        F: FnOnce(&OpenYielder<Input, ()>, Input) -> Return,
+        F: FnOnce(&OpenYielder<Input>, Input) -> Return,
         F: 'a,
     {
         let mut coroutine = OpenCoroutine {
@@ -120,13 +112,12 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
                 unsafe {
                     (*current).status = Status::Running;
                 }
-                let _result = f(&OpenYielder::new(yielder), input);
+                let _result = f(&OpenYielder(yielder), input);
                 unsafe {
                     (*current).status = Status::Finished;
                 }
                 OpenCoroutine::<Input, (), Return>::clean();
                 //todo 实现个ObjectMap来保存结果
-                //RESULTS.insert(coroutine.id, _result);
                 Scheduler::current().do_schedule();
                 unreachable!("should not execute to here !")
             },
@@ -183,8 +174,6 @@ impl<'a, Yield> OpenCoroutine<'a, (), Yield, ()> {
         self.inner.as_mut().unwrap().resume(()).as_yield()
     }
 }
-
-static mut RESULTS: Lazy<HashMap<usize, Option<*mut c_void>>> = Lazy::new(HashMap::new);
 
 thread_local! {
     static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
@@ -256,10 +245,7 @@ impl Scheduler {
 
     pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
     where
-        F: FnOnce(
-            &OpenYielder<Option<*mut c_void>, ()>,
-            Option<*mut c_void>,
-        ) -> Option<*mut c_void>,
+        F: FnOnce(&OpenYielder<Option<*mut c_void>>, Option<*mut c_void>) -> Option<*mut c_void>,
         F: 'static,
     {
         let mut coroutine = Coroutine::new(f, val, size);
@@ -267,14 +253,11 @@ impl Scheduler {
         self.ready.push_back(coroutine);
     }
 
-    pub fn try_schedule(&mut self) -> &HashMap<usize, Option<*mut c_void>> {
+    pub fn try_schedule(&mut self) {
         self.try_timed_schedule(Duration::MAX)
     }
 
-    pub fn try_timed_schedule(
-        &mut self,
-        timeout: Duration,
-    ) -> &HashMap<usize, Option<*mut c_void>> {
+    pub fn try_timed_schedule(&mut self, timeout: Duration) {
         let mut main = MainCoroutine::create(
             |main_yielder, _input| {
                 let timeout_time = timer::get_timeout_time(timeout);
@@ -286,7 +269,6 @@ impl Scheduler {
             128 * 1024,
         );
         main.start();
-        unsafe { &RESULTS }
     }
 
     fn back_to_main() {
@@ -445,7 +427,7 @@ mod tests {
         scheduler.submit(
             move |yielder, _input| {
                 println!("[coroutine1] suspend");
-                yielder.suspend(());
+                yielder.suspend();
                 println!("[coroutine1] back");
                 None
             },
@@ -455,7 +437,7 @@ mod tests {
         scheduler.submit(
             move |yielder, _input| {
                 println!("[coroutine2] suspend");
-                yielder.suspend(());
+                yielder.suspend();
                 println!("[coroutine2] back");
                 Some(1 as *mut c_void)
             },
@@ -471,7 +453,7 @@ mod tests {
         scheduler.submit(
             move |yielder, _input| {
                 println!("[coroutine] delay");
-                yielder.delay((), Duration::from_millis(100));
+                yielder.delay(Duration::from_millis(100));
                 println!("[coroutine] back");
                 None
             },
