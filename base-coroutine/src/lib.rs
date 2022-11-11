@@ -2,9 +2,7 @@ use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
 use id_generator::IdGenerator;
 use object_collection::ObjectList;
-use once_cell::sync::Lazy;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 use std::time::Duration;
@@ -93,8 +91,6 @@ pub struct OpenCoroutine<'a, Input, Yield, Return> {
     inner: Option<ScopedCoroutine<'a, Input, Yield, Return, DefaultStack>>,
     //调用用户函数的参数
     param: ManuallyDrop<Input>,
-    //最近一次yield的参数
-    //last_yield: Yield,
 }
 
 impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
@@ -122,7 +118,6 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
                 }
                 OpenCoroutine::<Input, (), Return>::clean();
                 //todo 实现个ObjectMap来保存结果
-                //RESULTS.insert(coroutine.id, _result);
                 Scheduler::current().do_schedule();
                 unreachable!("should not execute to here !")
             },
@@ -179,8 +174,6 @@ impl<'a, Yield> OpenCoroutine<'a, (), Yield, ()> {
         self.inner.as_mut().unwrap().resume(()).as_yield()
     }
 }
-
-static mut RESULTS: Lazy<HashMap<usize, Option<*mut c_void>>> = Lazy::new(HashMap::new);
 
 thread_local! {
     static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
@@ -252,10 +245,7 @@ impl Scheduler {
 
     pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
     where
-        F: FnOnce(
-            &OpenYielder<Option<*mut c_void>>,
-            Option<*mut c_void>,
-        ) -> Option<*mut c_void>,
+        F: FnOnce(&OpenYielder<Option<*mut c_void>>, Option<*mut c_void>) -> Option<*mut c_void>,
         F: 'static,
     {
         let mut coroutine = Coroutine::new(f, val, size);
@@ -263,14 +253,14 @@ impl Scheduler {
         self.ready.push_back(coroutine);
     }
 
-    pub fn try_schedule(&mut self) -> &HashMap<usize, Option<*mut c_void>> {
+    pub fn try_schedule(&mut self) {
         self.try_timed_schedule(Duration::MAX)
     }
 
     pub fn try_timed_schedule(
         &mut self,
         timeout: Duration,
-    ) -> &HashMap<usize, Option<*mut c_void>> {
+    ) {
         let mut main = MainCoroutine::create(
             |main_yielder, _input| {
                 let timeout_time = timer::get_timeout_time(timeout);
@@ -282,7 +272,6 @@ impl Scheduler {
             128 * 1024,
         );
         main.start();
-        unsafe { &RESULTS }
     }
 
     fn back_to_main() {
