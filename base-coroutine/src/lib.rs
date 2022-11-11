@@ -440,6 +440,32 @@ mod tests {
     }
 
     #[test]
+    fn with_suspend() {
+        let scheduler = Scheduler::current();
+        scheduler.submit(
+            move |yielder, _input| {
+                println!("[coroutine1] suspend");
+                yielder.suspend(());
+                println!("[coroutine1] back");
+                None
+            },
+            Some(1 as *mut c_void),
+            4096,
+        );
+        scheduler.submit(
+            move |yielder, _input| {
+                println!("[coroutine2] suspend");
+                yielder.suspend(());
+                println!("[coroutine2] back");
+                Some(1 as *mut c_void)
+            },
+            Some(3 as *mut c_void),
+            4096,
+        );
+        scheduler.try_schedule();
+    }
+
+    //#[test] fixme
     fn with_delay() {
         let scheduler = Scheduler::current();
         scheduler.submit(
