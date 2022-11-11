@@ -8,13 +8,6 @@ pub struct ObjectList {
     inner: VecDeque<*mut c_void>,
 }
 
-fn convert<T>(pointer: *mut c_void) -> Option<T> {
-    unsafe {
-        let node = Box::from_raw(pointer as *mut T);
-        Some(*node)
-    }
-}
-
 impl ObjectList {
     pub fn new() -> Self {
         ObjectList {
@@ -57,13 +50,6 @@ impl ObjectList {
         self.inner.push_front(ptr);
     }
 
-    pub fn pop_front<T>(&mut self) -> Option<T> {
-        match self.inner.pop_front() {
-            Some(pointer) => convert(pointer),
-            None => None,
-        }
-    }
-
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
     pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
         self.inner.pop_front()
@@ -102,13 +88,6 @@ impl ObjectList {
 
     pub fn push_back_raw(&mut self, ptr: *mut c_void) {
         self.inner.push_back(ptr);
-    }
-
-    pub fn pop_back<T>(&mut self) -> Option<T> {
-        match self.inner.pop_back() {
-            Some(pointer) => convert(pointer),
-            None => None,
-        }
     }
 
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
@@ -196,9 +175,11 @@ mod tests {
         assert_eq!(&true, list.get_mut(1).unwrap());
         assert_eq!(&true, list.get_mut(1).unwrap());
 
-        let b: bool = list.pop_back().unwrap();
-        assert_eq!(true, b);
-        let n: i32 = list.pop_back().unwrap();
-        assert_eq!(1, n);
+        unsafe {
+            let b = list.pop_back_raw().unwrap() as *mut _ as *mut bool;
+            assert_eq!(true, *b);
+            let n = list.pop_back_raw().unwrap() as *mut _ as *mut i32;
+            assert_eq!(1, *n);
+        }
     }
 }

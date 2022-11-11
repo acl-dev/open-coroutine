@@ -34,39 +34,35 @@ pub fn get_timeout_time(dur: Duration) -> u64 {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TimerEntry {
     time: u64,
-    dequeue: ObjectList,
+    object_list: ObjectList,
 }
 
 impl TimerEntry {
     pub fn new(time: u64) -> Self {
         TimerEntry {
             time,
-            dequeue: ObjectList::new(),
+            object_list: ObjectList::new(),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.dequeue.len()
+        self.object_list.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.dequeue.is_empty()
+        self.object_list.is_empty()
     }
 
     pub fn get_time(&self) -> u64 {
         self.time
     }
 
-    pub fn pop_front<T>(&mut self) -> Option<T> {
-        self.dequeue.pop_front()
-    }
-
     pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
-        self.dequeue.pop_front_raw()
+        self.object_list.pop_front_raw()
     }
 
     pub fn push_back<T>(&mut self, t: T) {
-        self.dequeue.push_back(t)
+        self.object_list.push_back(t)
     }
 }
 
@@ -141,7 +137,10 @@ mod tests {
 
         let mut entry = list.pop_front().unwrap();
         assert_eq!(entry.len(), 1);
-        assert!(entry.pop_front::<i32>().is_some());
+        let pointer = entry.pop_front_raw().unwrap() as *mut _ as *mut String;
+        unsafe {
+            assert_eq!(String::from("data can be everything"), *pointer);
+        }
     }
 
     #[test]

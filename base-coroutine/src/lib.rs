@@ -257,10 +257,7 @@ impl Scheduler {
         self.try_timed_schedule(Duration::MAX)
     }
 
-    pub fn try_timed_schedule(
-        &mut self,
-        timeout: Duration,
-    ) {
+    pub fn try_timed_schedule(&mut self, timeout: Duration) {
         let mut main = MainCoroutine::create(
             |main_yielder, _input| {
                 let timeout_time = timer::get_timeout_time(timeout);
