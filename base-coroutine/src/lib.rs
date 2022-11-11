@@ -113,7 +113,7 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
                     (*current).status = Status::Running;
                     let result = f(&OpenYielder(yielder), input);
                     (*current).status = Status::Finished;
-                    let results=Scheduler::results();
+                    let results = Scheduler::results();
                     (*results).insert((*current).id, result);
                 }
                 OpenCoroutine::<Input, (), Return>::clean();
