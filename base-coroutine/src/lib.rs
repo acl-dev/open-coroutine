@@ -1,7 +1,7 @@
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
 use id_generator::IdGenerator;
-use object_collection::ObjectList;
+use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
@@ -111,13 +111,12 @@ impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
                 let current: *mut OpenCoroutine<'_, Input, (), Return> = OpenCoroutine::current();
                 unsafe {
                     (*current).status = Status::Running;
-                }
-                let _result = f(&OpenYielder(yielder), input);
-                unsafe {
+                    let result = f(&OpenYielder(yielder), input);
                     (*current).status = Status::Finished;
+                    let results=Scheduler::results();
+                    (*results).insert((*current).id, result);
                 }
                 OpenCoroutine::<Input, (), Return>::clean();
-                //todo 实现个ObjectMap来保存结果
                 Scheduler::current().do_schedule();
                 unreachable!("should not execute to here !")
             },
@@ -179,6 +178,7 @@ thread_local! {
     static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
     static YIELDER: Box<RefCell<*const Yielder<(), ()>>> = Box::new(RefCell::new(std::ptr::null()));
     static TIMEOUT_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
+    static RESULTS: Box<RefCell<*mut ObjectMap<usize>>> = Box::new(RefCell::new(std::ptr::null_mut()));
 }
 
 #[repr(C)]
@@ -243,6 +243,20 @@ impl Scheduler {
         TIMEOUT_TIME.with(|boxed| *boxed.borrow_mut() = 0)
     }
 
+    fn init_results(result: &mut ObjectMap<usize>) {
+        RESULTS.with(|boxed| {
+            *boxed.borrow_mut() = result;
+        });
+    }
+
+    fn results() -> *mut ObjectMap<usize> {
+        RESULTS.with(|boxed| *boxed.borrow_mut())
+    }
+
+    fn clean_results() {
+        RESULTS.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
+    }
+
     pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
     where
         F: FnOnce(&OpenYielder<Option<*mut c_void>>, Option<*mut c_void>) -> Option<*mut c_void>,
@@ -253,11 +267,13 @@ impl Scheduler {
         self.ready.push_back(coroutine);
     }
 
-    pub fn try_schedule(&mut self) {
+    pub fn try_schedule(&mut self) -> ObjectMap<usize> {
         self.try_timed_schedule(Duration::MAX)
     }
 
-    pub fn try_timed_schedule(&mut self, timeout: Duration) {
+    pub fn try_timed_schedule(&mut self, timeout: Duration) -> ObjectMap<usize> {
+        let mut result = ObjectMap::new();
+        Scheduler::init_results(&mut result);
         let mut main = MainCoroutine::create(
             |main_yielder, _input| {
                 let timeout_time = timer::get_timeout_time(timeout);
@@ -269,6 +285,8 @@ impl Scheduler {
             128 * 1024,
         );
         main.start();
+        Scheduler::clean_results();
+        result
     }
 
     fn back_to_main() {
