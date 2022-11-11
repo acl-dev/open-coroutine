@@ -465,7 +465,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    //#[test] fixme
+    #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
         scheduler.submit(
