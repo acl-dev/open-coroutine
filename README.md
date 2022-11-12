@@ -1,7 +1,7 @@
-# libfiber-rs
+# open-coroutine
 
-### What is libfiber-rs ?
-`libfiber-rs` is a rust wrapper of `lib_fiber` module in `acl`, it is a high-performance and lightweight network library with stack coroutine.
+### What is open-coroutine ?
+The `open-coroutine` is a simple, efficient and generic stackful-coroutine library.
 
 ### How to use this library ?
 
@@ -9,7 +9,7 @@
 add dependency to your `Cargo.toml`
 ```toml
 [dependencies]
-libfiber = "0.1.0"
+open-coroutine = "0.0.1"
 ```
 
 #### step2 
@@ -17,15 +17,15 @@ enable hooks
 ```rust
 fn main() {
     //step2 enable hooks
-    todo!();
+    open_coroutine::init();
     //......
 }
 ```
 
 #### step3 
-enjoy the performance improvement brought by `libfiber`
+enjoy the performance improvement brought by `open-coroutine`
 
 ### How to run examples ?
 ```shell
-cargo run --example 01basic
+cargo run --example hello
 ```

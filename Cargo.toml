@@ -1,8 +1,14 @@
 [package]
-name = "libfiber"
-version = "0.1.0"
+name = "open-coroutine-all"
+version = "0.0.1"
 edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
+repository = "https://github.com/acl-dev/open-coroutine"
 license = "LGPL-3.0 OR Apache-2.0"
+readme = "README.md"
+keywords = ["coroutine", "fiber", "stackful", "hook"]
+exclude = [".github"]
 
 [workspace]
 members = [
@@ -10,10 +16,14 @@ members = [
     "object-collection",
     "timer",
     "base-coroutine",
-    "libhook"
+    "libhook",
+    "open-coroutine"
 ]
 
 [dependencies]
+libc = "0.2.119"
+base-coroutine = { version = "0.0.1", path = "base-coroutine" }
+open-coroutine = { version = "0.0.1", path = "open-coroutine" }
 
 [dev-dependencies]
 # benchmark

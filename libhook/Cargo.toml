@@ -1,6 +1,18 @@
 [package]
 name = "libhook"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+libc = "0.2.119"
+base-coroutine = { version = "0.0.1", path = "../base-coroutine" }
+timer = { version = "0.0.1", path = "../timer" }
+
+[build-dependencies]
+cbindgen = "0.24.3"
+rustversion = "1.0.6"
+
+[lib]
+crate-type = ["cdylib"]
+name = "hook"
+path = "src/lib.rs"

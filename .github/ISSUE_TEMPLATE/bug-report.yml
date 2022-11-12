@@ -1,5 +1,5 @@
 name: 🐛 Bug Report
-description: Problems and issues with code of libfiber-rs 🤔.
+description: Problems and issues with code of open-coroutine 🤔.
 title: "[BUG] title"
 labels: ["type: bug"]
 body:
@@ -38,8 +38,8 @@ body:
     label: Environment
     description: |
       examples:
-        - **libfiber-rs version(s)**: 0.1.0
-    value: "libfiber-rs version(s):"
+        - **open-coroutine version(s)**: 0.0.1
+    value: "open-coroutine version(s):"
     render: markdown
   validations:
     required: false

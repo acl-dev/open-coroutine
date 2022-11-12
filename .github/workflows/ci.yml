@@ -68,12 +68,3 @@ jobs:
         with:
           command: test
           args: --release
-  #只有通过集成测试的PR才允许被合并
-  requirement:
-    name: test
-    if: always()
-    needs:
-      - test
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 0

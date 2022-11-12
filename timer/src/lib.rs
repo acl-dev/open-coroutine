@@ -23,8 +23,12 @@ pub fn dur_to_ns(dur: Duration) -> u64 {
 }
 
 pub fn get_timeout_time(dur: Duration) -> u64 {
+    add_timeout_time(dur_to_ns(dur))
+}
+
+pub fn add_timeout_time(time: u64) -> u64 {
     let now = now();
-    match now.checked_add(dur_to_ns(dur)) {
+    match now.checked_add(time) {
         Some(time) => time,
         //处理溢出
         None => u64::MAX,
