@@ -2,6 +2,12 @@
 name = "open-coroutine"
 version = "0.0.1"
 edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine"
+license = "LGPL-3.0 OR Apache-2.0"
+readme = "README.md"
+keywords = ["coroutine", "fiber", "stackful", "hook"]
 
 [dependencies]
 # 添加libc的依赖后，就不需要再重复地一个个声明系统函数了

@@ -64,11 +64,11 @@ static mut NANOSLEEP: Option<
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
     let nanos_time = unsafe { (*rqtp).tv_sec * 1_000_000_000 + (*rqtp).tv_nsec } as u64;
-    let timeout_time = timer::get_timeout_time(Duration::from_nanos(nanos_time));
+    let timeout_time = timer_utils::get_timeout_time(Duration::from_nanos(nanos_time));
     Scheduler::current().try_timed_schedule(Duration::from_nanos(nanos_time));
     // 可能schedule完还剩一些时间，此时本地队列没有任务可做
     // 后续考虑work-steal，需要在Scheduler增加timed_schedule实现
-    let schedule_finished_time = timer::now();
+    let schedule_finished_time = timer_utils::now();
     let left_time = (timeout_time - schedule_finished_time) as i64;
     if left_time <= 0 {
         unsafe {

@@ -19,7 +19,7 @@ impl IdGenerator {
 
 #[cfg(test)]
 mod tests {
-    use crate::IdGenerator;
+    use super::IdGenerator;
 
     #[test]
     fn test() {
