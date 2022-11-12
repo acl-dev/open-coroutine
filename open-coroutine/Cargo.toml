@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 # 添加libc的依赖后，就不需要再重复地一个个声明系统函数了
 libc = "0.2.119"
-libhook = { path = "../libhook" }
-base-coroutine = { path = "../base-coroutine" }
+libhook = { version = "0.0.1", path = "../libhook" }
+base-coroutine = { version = "0.0.1", path = "../base-coroutine" }

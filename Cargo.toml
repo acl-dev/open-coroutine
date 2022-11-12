@@ -22,8 +22,8 @@ members = [
 
 [dependencies]
 libc = "0.2.119"
-base-coroutine = { path = "base-coroutine" }
-open-coroutine = { path = "open-coroutine" }
+base-coroutine = { version = "0.0.1", path = "base-coroutine" }
+open-coroutine = { version = "0.0.1", path = "open-coroutine" }
 
 [dev-dependencies]
 # benchmark

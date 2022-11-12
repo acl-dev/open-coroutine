@@ -4,4 +4,4 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-object-collection = { path = "../object-collection" }
+object-collection = { version = "0.0.1", path = "../object-collection" }

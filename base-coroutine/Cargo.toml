@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 corosensei = "0.1.3"
 once_cell = "1.13.0"
-object-collection = { path = "../object-collection" }
-timer = { path = "../timer" }
-id-generator = { path = "../id-generator" }
+object-collection = { version = "0.0.1", path = "../object-collection" }
+timer = { version = "0.0.1", path = "../timer" }
+id-generator = { version = "0.0.1", path = "../id-generator" }
