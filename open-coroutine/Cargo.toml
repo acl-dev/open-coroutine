@@ -12,5 +12,5 @@ keywords = ["coroutine", "fiber", "stackful", "hook"]
 [dependencies]
 # 添加libc的依赖后，就不需要再重复地一个个声明系统函数了
 libc = "0.2.119"
-libhook = { version = "0.0.1", path = "../libhook", type = "cdylib" }
+libhook = { version = "0.0.2", path = "../libhook", type = "cdylib" }
 base-coroutine = { version = "0.0.1", path = "../base-coroutine" }
