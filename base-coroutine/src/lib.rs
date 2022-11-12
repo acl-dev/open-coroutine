@@ -30,23 +30,24 @@ pub enum Status {
 }
 
 thread_local! {
-    static DELAY_TIME: Box<RefCell<Duration>> = Box::new(RefCell::new(Duration::from_nanos(0)));
+    static DELAY_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
 }
 
-fn init_delay_time(time: Duration) {
+fn init_delay_time(time: u64) {
     DELAY_TIME.with(|boxed| {
         *boxed.borrow_mut() = time;
     });
 }
 
-fn delay_time() -> Duration {
+fn delay_time() -> u64 {
     DELAY_TIME.with(|boxed| *boxed.borrow_mut())
 }
 
 fn clean_delay() {
-    DELAY_TIME.with(|boxed| *boxed.borrow_mut() = Duration::from_nanos(0))
+    DELAY_TIME.with(|boxed| *boxed.borrow_mut() = 0)
 }
 
+#[repr(transparent)]
 pub struct OpenYielder<'a, Input>(&'a Yielder<Input, ()>);
 
 impl<'a, Input> OpenYielder<'a, Input> {
@@ -54,8 +55,12 @@ impl<'a, Input> OpenYielder<'a, Input> {
         self.0.suspend(())
     }
 
-    pub fn delay(&self, time: Duration) -> Input {
-        init_delay_time(time);
+    pub fn delay(&self, ms_time: u64) -> Input {
+        self.delay_ns(ms_time * 1_000_000)
+    }
+
+    pub fn delay_ns(&self, ns_time: u64) -> Input {
+        init_delay_time(ns_time);
         self.suspend()
     }
 }
@@ -93,12 +98,10 @@ pub struct OpenCoroutine<'a, Input, Yield, Return> {
     param: ManuallyDrop<Input>,
 }
 
+pub type ContextFn<Input, Return> = extern "C" fn(&OpenYielder<Input>, Input) -> Return;
+
 impl<'a, Input, Return> OpenCoroutine<'a, Input, (), Return> {
-    pub fn new<F>(f: F, val: Input, size: usize) -> Self
-    where
-        F: FnOnce(&OpenYielder<Input>, Input) -> Return,
-        F: 'a,
-    {
+    pub fn new(f: ContextFn<Input, Return>, val: Input, size: usize) -> Self {
         let mut coroutine = OpenCoroutine {
             id: IdGenerator::next_coroutine_id(),
             status: Status::Created,
@@ -257,11 +260,12 @@ impl Scheduler {
         RESULTS.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
     }
 
-    pub fn submit<F>(&mut self, f: F, val: Option<*mut c_void>, size: usize)
-    where
-        F: FnOnce(&OpenYielder<Option<*mut c_void>>, Option<*mut c_void>) -> Option<*mut c_void>,
-        F: 'static,
-    {
+    pub fn submit(
+        &mut self,
+        f: ContextFn<Option<&'static mut c_void>, Option<&'static mut c_void>>,
+        val: Option<&'static mut c_void>,
+        size: usize,
+    ) {
         let mut coroutine = Coroutine::new(f, val, size);
         coroutine.status = Status::Ready;
         self.ready.push_back(coroutine);
@@ -318,12 +322,11 @@ impl Scheduler {
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         let delay_time = delay_time();
-                        let time = timer::dur_to_ns(delay_time);
-                        if time > 0 {
+                        if delay_time > 0 {
                             //挂起协程到时间轮
                             coroutine.status = Status::Suspend;
                             self.suspend
-                                .insert(timer::get_timeout_time(delay_time), coroutine);
+                                .insert(timer::add_timeout_time(delay_time), coroutine);
                             clean_delay();
                         } else {
                             //直接切换到下一个协程执行
@@ -375,7 +378,7 @@ impl Default for Scheduler {
 
 #[cfg(test)]
 mod tests {
-    use crate::Scheduler;
+    use crate::{OpenYielder, Scheduler};
     use corosensei::{CoroutineResult, Yielder};
     use std::os::raw::c_void;
     use std::thread;
@@ -420,64 +423,64 @@ mod tests {
     #[test]
     fn simplest() {
         let scheduler = Scheduler::current();
-        scheduler.submit(
-            move |_yielder, _input| {
-                println!("[coroutine1] launched");
-                None
-            },
-            Some(1 as *mut c_void),
-            4096,
-        );
-        scheduler.submit(
-            move |_yielder, _input| {
-                println!("[coroutine2] launched");
-                Some(1 as *mut c_void)
-            },
-            Some(3 as *mut c_void),
-            4096,
-        );
+        extern "C" fn f1(
+            _yielder: &OpenYielder<Option<&'static mut c_void>>,
+            _input: Option<&'static mut c_void>,
+        ) -> Option<&'static mut c_void> {
+            println!("[coroutine1] launched");
+            None
+        }
+        scheduler.submit(f1, None, 4096);
+        extern "C" fn f2(
+            _yielder: &OpenYielder<Option<&'static mut c_void>>,
+            _input: Option<&'static mut c_void>,
+        ) -> Option<&'static mut c_void> {
+            println!("[coroutine2] launched");
+            None
+        }
+        scheduler.submit(f2, None, 4096);
         scheduler.try_schedule();
     }
 
     #[test]
     fn with_suspend() {
         let scheduler = Scheduler::current();
-        scheduler.submit(
-            move |yielder, _input| {
-                println!("[coroutine1] suspend");
-                yielder.suspend();
-                println!("[coroutine1] back");
-                None
-            },
-            Some(1 as *mut c_void),
-            4096,
-        );
-        scheduler.submit(
-            move |yielder, _input| {
-                println!("[coroutine2] suspend");
-                yielder.suspend();
-                println!("[coroutine2] back");
-                Some(1 as *mut c_void)
-            },
-            Some(3 as *mut c_void),
-            4096,
-        );
+        extern "C" fn suspend1(
+            yielder: &OpenYielder<Option<&'static mut c_void>>,
+            _input: Option<&'static mut c_void>,
+        ) -> Option<&'static mut c_void> {
+            println!("[coroutine1] suspend");
+            yielder.suspend();
+            println!("[coroutine1] back");
+            None
+        }
+        scheduler.submit(suspend1, None, 4096);
+        extern "C" fn suspend2(
+            yielder: &OpenYielder<Option<&'static mut c_void>>,
+            _input: Option<&'static mut c_void>,
+        ) -> Option<&'static mut c_void> {
+            println!("[coroutine2] suspend");
+            yielder.suspend();
+            println!("[coroutine2] back");
+            None
+        }
+        scheduler.submit(suspend2, None, 4096);
         scheduler.try_schedule();
     }
 
     #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
-        scheduler.submit(
-            move |yielder, _input| {
-                println!("[coroutine] delay");
-                yielder.delay(Duration::from_millis(100));
-                println!("[coroutine] back");
-                None
-            },
-            None,
-            4096,
-        );
+        extern "C" fn delay(
+            yielder: &OpenYielder<Option<&'static mut c_void>>,
+            _input: Option<&'static mut c_void>,
+        ) -> Option<&'static mut c_void> {
+            println!("[coroutine] delay");
+            yielder.delay(100);
+            println!("[coroutine] back");
+            None
+        }
+        scheduler.submit(delay, None, 4096);
         scheduler.try_schedule();
         thread::sleep(Duration::from_millis(100));
         scheduler.try_schedule();
