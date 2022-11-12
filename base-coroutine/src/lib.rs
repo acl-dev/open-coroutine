@@ -1,3 +1,4 @@
+use crate::id::IdGenerator;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
 use object_collection::{ObjectList, ObjectMap};
@@ -6,7 +7,6 @@ use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 use std::time::Duration;
 use timer_utils::TimerList;
-use crate::id::IdGenerator;
 
 mod id;
 
