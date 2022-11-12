@@ -2,10 +2,13 @@
 name = "base-coroutine"
 version = "0.0.1"
 edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "A fast and safe implementation of stackful coroutines with schedulers."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/base-coroutine"
+license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
 corosensei = "0.1.3"
 once_cell = "1.13.0"
 object-collection = { version = "0.0.1", path = "../object-collection" }
-timer = { version = "0.0.1", path = "../timer" }
-id-generator = { version = "0.0.1", path = "../id-generator" }
+timer-utils = { version = "0.0.1", path = "../timer-utils" }

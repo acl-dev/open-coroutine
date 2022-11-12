@@ -12,9 +12,8 @@ exclude = [".github"]
 
 [workspace]
 members = [
-    "id-generator",
     "object-collection",
-    "timer",
+    "timer-utils",
     "base-coroutine",
     "libhook",
     "open-coroutine"

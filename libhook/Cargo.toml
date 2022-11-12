@@ -2,11 +2,15 @@
 name = "libhook"
 version = "0.0.1"
 edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "Hook system calls."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/libhook"
+license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
 libc = "0.2.119"
 base-coroutine = { version = "0.0.1", path = "../base-coroutine" }
-timer = { version = "0.0.1", path = "../timer" }
+timer-utils = { version = "0.0.1", path = "../timer-utils" }
 
 [build-dependencies]
 cbindgen = "0.24.3"

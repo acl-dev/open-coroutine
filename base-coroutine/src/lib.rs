@@ -1,12 +1,14 @@
+use crate::id::IdGenerator;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine, Yielder};
-use id_generator::IdGenerator;
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 use std::time::Duration;
-use timer::TimerList;
+use timer_utils::TimerList;
+
+mod id;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -280,7 +282,7 @@ impl Scheduler {
         Scheduler::init_results(&mut result);
         let mut main = MainCoroutine::create(
             |main_yielder, _input| {
-                let timeout_time = timer::get_timeout_time(timeout);
+                let timeout_time = timer_utils::get_timeout_time(timeout);
                 Scheduler::init_timeout_time(timeout_time);
                 Scheduler::init_yielder(main_yielder);
                 self.do_schedule();
@@ -306,7 +308,7 @@ impl Scheduler {
     }
 
     fn do_schedule(&mut self) {
-        if Scheduler::timeout_time() <= timer::now() {
+        if Scheduler::timeout_time() <= timer_utils::now() {
             Scheduler::back_to_main()
         }
         self.check_ready();
@@ -326,7 +328,7 @@ impl Scheduler {
                             //挂起协程到时间轮
                             coroutine.status = Status::Suspend;
                             self.suspend
-                                .insert(timer::add_timeout_time(delay_time), coroutine);
+                                .insert(timer_utils::add_timeout_time(delay_time), coroutine);
                             clean_delay();
                         } else {
                             //直接切换到下一个协程执行
@@ -346,7 +348,7 @@ impl Scheduler {
         for _ in 0..self.suspend.len() {
             if let Some(entry) = self.suspend.front() {
                 let exec_time = entry.get_time();
-                if timer::now() < exec_time {
+                if timer_utils::now() < exec_time {
                     break;
                 }
                 //移动至"就绪"队列
