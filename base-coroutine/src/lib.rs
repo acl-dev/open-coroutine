@@ -51,15 +51,15 @@ fn clean_delay() {
 pub struct OpenYielder<'a, Input>(&'a Yielder<Input, ()>);
 
 impl<'a, Input> OpenYielder<'a, Input> {
-    pub fn suspend(&self) -> Input {
+    pub extern "C" fn suspend(&self) -> Input {
         self.0.suspend(())
     }
 
-    pub fn delay(&self, ms_time: u64) -> Input {
+    pub extern "C" fn delay(&self, ms_time: u64) -> Input {
         self.delay_ns(ms_time * 1_000_000)
     }
 
-    pub fn delay_ns(&self, ns_time: u64) -> Input {
+    pub extern "C" fn delay_ns(&self, ns_time: u64) -> Input {
         init_delay_time(ns_time);
         self.suspend()
     }
