@@ -12,10 +12,6 @@ libc = "0.2.119"
 base-coroutine = { version = "0.0.1", path = "../base-coroutine" }
 timer-utils = { version = "0.0.1", path = "../timer-utils" }
 
-[build-dependencies]
-cbindgen = "0.24.3"
-rustversion = "1.0.6"
-
 [lib]
 crate-type = ["cdylib"]
 name = "hook"
