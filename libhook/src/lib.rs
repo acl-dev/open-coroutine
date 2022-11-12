@@ -6,6 +6,11 @@ use std::time::Duration;
 被hook的系统函数
 #[no_mangle]避免rust编译器修改方法名称
  */
+#[no_mangle]
+pub extern "C" fn _init() {
+    //啥都不做，只是为了保证hook的函数能够被重定向到
+    //主要为了防止有的程序压根不调用coroutine_crate的情况
+}
 
 ///创建协程
 #[no_mangle]
