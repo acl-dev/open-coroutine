@@ -1,5 +1,5 @@
 [package]
-name = "libfiber"
+name = "open-coroutine-all"
 version = "0.1.0"
 edition = "2021"
 license = "LGPL-3.0 OR Apache-2.0"
@@ -10,15 +10,14 @@ members = [
     "object-collection",
     "timer",
     "base-coroutine",
-    "libhook"
+    "libhook",
+    "open-coroutine"
 ]
 
 [dependencies]
-# 添加libc的依赖后，就不需要再重复地一个个声明系统函数了
 libc = "0.2.119"
-libhook = { path = "libhook" }
-object-collection = { path = "object-collection" }
 base-coroutine = { path = "base-coroutine" }
+open-coroutine = { path = "open-coroutine" }
 
 [dev-dependencies]
 # benchmark
