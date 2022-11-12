@@ -3,7 +3,7 @@ use std::os::raw::c_void;
 
 #[allow(dead_code)]
 extern "C" {
-    fn _init();
+    fn init_hook();
 
     fn coroutine_crate(
         f: ContextFn<Option<&'static mut c_void>, Option<&'static mut c_void>>,
@@ -13,7 +13,7 @@ extern "C" {
 }
 
 pub fn init() {
-    unsafe { _init() }
+    unsafe { init_hook() }
 }
 
 pub fn co(
