@@ -1,0 +1,67 @@
+name: build libhook
+
+on: [push]
+
+jobs:
+  linux:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: build
+      - name: cargo build --release
+        uses: actions-rs/cargo@v1
+          with:
+            command: build
+            args: --release
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/libhook*
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: build
+      - name: cargo build --release
+        uses: actions-rs/cargo@v1
+          with:
+            command: build
+            args: --release
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/libhook*
+
+  windows:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: build
+      - name: cargo build --release
+        uses: actions-rs/cargo@v1
+          with:
+            command: build
+            args: --release
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/libhook*
