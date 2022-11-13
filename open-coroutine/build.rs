@@ -8,6 +8,9 @@ fn main() {
     let dylib = env::current_dir().unwrap().join("dylib");
     std::fs::copy(dylib.join("libhook.dylib"), deps.join("libhook.dylib"))
         .expect("copy libhook.dylib failed!");
+    std::fs::copy(dylib.join("libhook.so"), deps.join("libhook.so"))
+        .expect("copy libhook.so failed!");
+    //todo support windows
     //link hook dylib
     println!("cargo:rustc-link-lib=dylib=hook");
 }

@@ -1,4 +1,4 @@
-use base_coroutine::OpenYielder;
+use open_coroutine::OpenYielder;
 use open_coroutine::co;
 use std::os::raw::c_void;
 

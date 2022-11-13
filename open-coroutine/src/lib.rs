@@ -1,5 +1,6 @@
-use base_coroutine::ContextFn;
 use std::os::raw::c_void;
+
+pub use base_coroutine::*;
 
 #[allow(dead_code)]
 extern "C" {
