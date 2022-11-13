@@ -1,5 +1,5 @@
-use open_coroutine::OpenYielder;
 use open_coroutine::co;
+use open_coroutine::OpenYielder;
 use std::os::raw::c_void;
 
 fn main() {
