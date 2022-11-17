@@ -1,4 +1,5 @@
-use base_coroutine::{ContextFn, Scheduler};
+use base_coroutine::coroutine::UserFunc;
+use base_coroutine::scheduler::Scheduler;
 use std::os::raw::c_void;
 use std::time::Duration;
 
@@ -15,11 +16,22 @@ pub extern "C" fn init_hook() {
 ///创建协程
 #[no_mangle]
 pub extern "C" fn coroutine_crate(
-    f: ContextFn<Option<&'static mut c_void>, Option<&'static mut c_void>>,
-    param: Option<&'static mut c_void>,
+    f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
+    param: &'static mut c_void,
     stack_size: usize,
 ) {
     Scheduler::current().submit(f, param, stack_size)
+}
+
+///轮询协程
+#[no_mangle]
+pub extern "C" fn try_timed_schedule(ns_time: u64) {
+    Scheduler::current().try_timed_schedule(Duration::from_nanos(ns_time));
+}
+
+#[no_mangle]
+pub extern "C" fn timed_schedule(ns_time: u64) {
+    Scheduler::current().timed_schedule(Duration::from_nanos(ns_time));
 }
 
 //sleep相关
@@ -55,6 +67,9 @@ pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
     nanosleep(&rqtp, &mut rmtp)
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[cfg(unix)]
+#[no_mangle]
 static mut NANOSLEEP: Option<
     extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int,
 > = None;
@@ -74,8 +89,11 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
             None => u64::MAX,
         }
     };
-    let timeout_time = timer_utils::get_timeout_time(Duration::from_nanos(nanos_time));
-    Scheduler::current().try_timed_schedule(Duration::from_nanos(nanos_time));
+    let nanos_time = Duration::from_nanos(nanos_time);
+    let timeout_time = timer_utils::get_timeout_time(nanos_time);
+    //fixme 这里会导致CPU空循环，先跑通demo
+    //Scheduler::current().try_timed_schedule(nanos_time);
+    Scheduler::current().timed_schedule(nanos_time);
     // 可能schedule完还剩一些时间，此时本地队列没有任务可做
     // 后续考虑work-steal，需要在Scheduler增加timed_schedule实现
     let schedule_finished_time = timer_utils::now();
@@ -113,6 +131,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
             }
         }
     };
+    //fixme 这里在linux环境下调用真实系统函数会报错
     //相当于libc::nanosleep(&rqtp, rmtp)
     original(&rqtp, rmtp)
 }

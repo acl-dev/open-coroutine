@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::hash_map::{Keys, RandomState};
+use std::collections::hash_map::{IntoIter, Keys, RandomState};
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash};
 use std::os::raw::c_void;
@@ -116,6 +116,16 @@ where
 impl<K> Default for ObjectMap<K, RandomState> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<K, S> IntoIterator for ObjectMap<K, S> {
+    type Item = (K, *mut c_void);
+    type IntoIter = IntoIter<K, *mut c_void>;
+
+    #[inline]
+    fn into_iter(self) -> IntoIter<K, *mut c_void> {
+        self.inner.into_iter()
     }
 }
 

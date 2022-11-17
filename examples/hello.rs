@@ -1,25 +1,26 @@
-use base_coroutine::OpenYielder;
-use open_coroutine::co;
+use open_coroutine::{co, Yielder};
 use std::os::raw::c_void;
+use std::time::Duration;
+
+extern "C" fn f1(
+    _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
+    _input: Option<&'static mut c_void>,
+) -> Option<&'static mut c_void> {
+    println!("[coroutine1] launched");
+    None
+}
+
+extern "C" fn f2(
+    _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
+    _input: Option<&'static mut c_void>,
+) -> Option<&'static mut c_void> {
+    println!("[coroutine2] launched");
+    None
+}
 
 fn main() {
-    extern "C" fn f1(
-        _yielder: &OpenYielder<Option<&'static mut c_void>>,
-        _input: Option<&'static mut c_void>,
-    ) -> Option<&'static mut c_void> {
-        println!("hello1 from coroutine");
-        None
-    }
-    co(f1, None, 2048);
-    extern "C" fn f2(
-        _yielder: &OpenYielder<Option<&'static mut c_void>>,
-        _input: Option<&'static mut c_void>,
-    ) -> Option<&'static mut c_void> {
-        println!("hello2 from coroutine");
-        None
-    }
-    co(f2, None, 2048);
-    unsafe {
-        libc::sleep(1);
-    }
+    co(f1, None, 4096);
+    co(f2, None, 4096);
+    std::thread::sleep(Duration::from_millis(1));
+    println!("scheduler finished successfully!");
 }

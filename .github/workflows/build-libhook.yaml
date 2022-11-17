@@ -1,0 +1,68 @@
+name: build libhook
+
+on: [push]
+
+jobs:
+  linux:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: cargo build --release -p libhook
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release -p libhook
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/libhook*
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: cargo build --release -p libhook
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release -p libhook
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/libhook*
+
+  windows:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: cargo build --release -p libhook
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release -p libhook
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/hook.dll
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: target/release/deps/hook.dll.lib

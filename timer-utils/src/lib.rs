@@ -68,6 +68,10 @@ impl TimerEntry {
     pub fn push_back<T>(&mut self, t: T) {
         self.object_list.push_back(t)
     }
+
+    pub fn push_back_raw(&mut self, ptr: *mut c_void) {
+        self.object_list.push_back_raw(ptr)
+    }
 }
 
 #[repr(C)]
@@ -88,17 +92,22 @@ impl TimerList {
     }
 
     pub fn insert<T>(&mut self, time: u64, t: T) {
+        let ptr = Box::leak(Box::new(t));
+        self.insert_raw(time, ptr as *mut _ as *mut c_void)
+    }
+
+    pub fn insert_raw(&mut self, time: u64, ptr: *mut c_void) {
         let index = self
             .dequeue
             .binary_search_by(|x| x.time.cmp(&time))
             .unwrap_or_else(|x| x);
         match self.dequeue.get_mut(index) {
             Some(entry) => {
-                entry.push_back(t);
+                entry.push_back_raw(ptr);
             }
             None => {
                 let mut entry = TimerEntry::new(time);
-                entry.push_back(t);
+                entry.push_back_raw(ptr);
                 self.dequeue.insert(index, entry);
             }
         }
