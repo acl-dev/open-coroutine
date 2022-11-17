@@ -1,6 +1,6 @@
 [package]
 name = "libhook"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 description = "Hook system calls."
@@ -9,8 +9,8 @@ license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
 libc = "0.2.119"
-base-coroutine = { version = "0.0.1", path = "../base-coroutine" }
-timer-utils = { version = "0.0.1", path = "../timer-utils" }
+base-coroutine = { version = "0.0.2", path = "../base-coroutine" }
+timer-utils = { version = "0.0.2", path = "../timer-utils" }
 
 [lib]
 crate-type = ["cdylib"]

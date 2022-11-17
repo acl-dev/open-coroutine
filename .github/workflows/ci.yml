@@ -47,8 +47,7 @@ jobs:
           - nightly
         os:
           - ubuntu-latest
-          #由于开发环境是mac，不太好对windows考虑周全，因此先去掉windows的CI
-          #- windows-latest
+          - windows-2019
           - macOS-latest
     steps:
       - name: Checkout sources
@@ -59,12 +58,13 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
       - name: Run cargo release test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release --all
+      - name: Run cargo release example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --example hello --release
