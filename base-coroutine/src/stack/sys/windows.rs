@@ -11,14 +11,19 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::usize;
 
+use windows_sys::Win32::System::Memory::{
+    VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_GUARD,
+    PAGE_PROTECTION_FLAGS, PAGE_READWRITE, VIRTUAL_ALLOCATION_TYPE,
+};
+use windows_sys::Win32::System::SystemInformation::GetSystemInfo;
+
 use crate::stack::Stack;
 
 pub unsafe fn allocate_stack(size: usize) -> io::Result<Stack> {
-    const NULL: winapi::LPVOID = 0 as winapi::LPVOID;
-    const PROT: winapi::DWORD = winapi::PAGE_READWRITE;
-    const TYPE: winapi::DWORD = winapi::MEM_COMMIT | winapi::MEM_RESERVE;
+    const NULL: *mut c_void = std::ptr::null_mut();
+    const TYPE: VIRTUAL_ALLOCATION_TYPE = MEM_COMMIT | MEM_RESERVE;
 
-    let ptr = kernel32::VirtualAlloc(NULL, size as winapi::SIZE_T, TYPE, PROT);
+    let ptr = VirtualAlloc(NULL, size, TYPE, PAGE_READWRITE);
 
     if ptr == NULL {
         Err(io::Error::last_os_error())
@@ -31,17 +36,14 @@ pub unsafe fn allocate_stack(size: usize) -> io::Result<Stack> {
 }
 
 pub unsafe fn protect_stack(stack: &Stack) -> io::Result<Stack> {
-    const TYPE: winapi::DWORD = winapi::PAGE_READWRITE | winapi::PAGE_GUARD;
+    const TYPE: PAGE_PROTECTION_FLAGS = PAGE_READWRITE | PAGE_GUARD;
 
     let page_size = page_size();
-    let mut old_prot: winapi::DWORD = 0;
+    let mut old_prot = 0;
 
     debug_assert!(stack.len() % page_size == 0 && stack.len() != 0);
 
-    let ret = {
-        let page_size = page_size as winapi::SIZE_T;
-        kernel32::VirtualProtect(stack.bottom(), page_size, TYPE, &mut old_prot)
-    };
+    let ret = VirtualProtect(stack.bottom(), page_size, TYPE, &mut old_prot);
 
     if ret == 0 {
         Err(io::Error::last_os_error())
@@ -52,7 +54,7 @@ pub unsafe fn protect_stack(stack: &Stack) -> io::Result<Stack> {
 }
 
 pub unsafe fn deallocate_stack(ptr: *mut c_void, _: usize) {
-    kernel32::VirtualFree(ptr as winapi::LPVOID, 0, winapi::MEM_RELEASE);
+    VirtualFree(ptr, 0, MEM_RELEASE);
 }
 
 pub fn page_size() -> usize {
@@ -63,7 +65,7 @@ pub fn page_size() -> usize {
     if ret == 0 {
         ret = unsafe {
             let mut info = mem::zeroed();
-            kernel32::GetSystemInfo(&mut info);
+            GetSystemInfo(&mut info);
             info.dwPageSize as usize
         };
 
