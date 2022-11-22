@@ -51,9 +51,9 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
-      - name: cargo build --release -p libhook
+      - name: cargo +nightly build --release -p libhook
         uses: actions-rs/cargo@v1
         with:
           command: build
