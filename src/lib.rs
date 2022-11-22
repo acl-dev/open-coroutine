@@ -37,6 +37,7 @@ pub fn schedule() {
 mod tests {
     use crate::{co, init, schedule, Yielder};
     use std::os::raw::c_void;
+    use std::time::Duration;
 
     fn null() -> &'static mut c_void {
         unsafe { std::mem::transmute(10usize) }
@@ -70,22 +71,19 @@ mod tests {
         schedule();
     }
 
-    fn hook_test(secs: libc::c_uint) {
+    fn hook_test(secs: u64) {
         co(f1, Some(null()), 4096);
         co(f2, Some(null()), 4096);
-        #[cfg(unix)]
-        unsafe {
-            assert_eq!(0, libc::usleep(secs));
-        }
+        std::thread::sleep(Duration::from_millis(secs))
     }
 
     #[test]
     fn hook_test_schedule_timeout() {
-        hook_test(1_000)
+        hook_test(1)
     }
 
     #[test]
     fn hook_test_schedule_normal() {
-        hook_test(1_000_000)
+        hook_test(1_000)
     }
 }
