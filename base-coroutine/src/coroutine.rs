@@ -54,6 +54,8 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
                 .resume(&mut coroutine_result as *mut _ as usize);
             let backed = transfer.data as *mut c_void as *mut _
                 as *mut OpenCoroutine<'_, Param, Yield, Return>;
+            //更新sp
+            (*backed).sp = transfer;
             std::ptr::read_unaligned(&(*backed).param)
         }
     }
