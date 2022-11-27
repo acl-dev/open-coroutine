@@ -1,5 +1,6 @@
 use crate::context::{Context, Transfer};
 use crate::id::IdGenerator;
+#[cfg(unix)]
 use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
@@ -151,11 +152,14 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             let proc = (*coroutine).proc;
             let param = std::ptr::read_unaligned(&(*coroutine).param);
             let result = proc(&yielder, param);
-            //还没执行到10ms就返回了，此时需要清理signal
-            //否则下一个协程执行不到10ms就被抢占调度了
-            Monitor::clean_task(Monitor::signal_time(), &mut libc::pthread_self());
-            Monitor::clean_signal_time();
-            OpenCoroutine::<Param, Yield, Return>::clean_yielder();
+            #[cfg(unix)]
+            {
+                //还没执行到10ms就返回了，此时需要清理signal
+                //否则下一个协程执行不到10ms就被抢占调度了
+                Monitor::clean_task(Monitor::signal_time(), &mut libc::pthread_self());
+                Monitor::clean_signal_time();
+                OpenCoroutine::<Param, Yield, Return>::clean_yielder();
+            }
             //执行下一个子协程
             Scheduler::current().do_schedule();
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);

@@ -1,5 +1,6 @@
 use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFunc, Yielder};
 use crate::id::IdGenerator;
+#[cfg(unix)]
 use crate::monitor::Monitor;
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
@@ -181,9 +182,11 @@ impl Scheduler {
                 };
                 self.running = Some(coroutine.id);
                 let start = timer_utils::get_timeout_time(Duration::from_millis(10));
-                let mut pthread = unsafe { libc::pthread_self() };
-                Monitor::init_signal_time(start);
-                Monitor::add_task(start, pthread);
+                #[cfg(unix)]
+                {
+                    Monitor::init_signal_time(start);
+                    Monitor::add_task(start, unsafe { libc::pthread_self() });
+                }
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         let delay_time =
@@ -204,10 +207,13 @@ impl Scheduler {
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
                 };
                 self.running = None;
-                //还没执行到10ms就主动yield了，此时需要清理signal
-                //否则下一个协程执行不到10ms就被抢占调度了
-                Monitor::clean_task(start, &mut pthread);
-                Monitor::clean_signal_time();
+                #[cfg(unix)]
+                {
+                    //还没执行到10ms就主动yield了，此时需要清理signal
+                    //否则下一个协程执行不到10ms就被抢占调度了
+                    Monitor::clean_task(start, &mut unsafe { libc::pthread_self() });
+                    Monitor::clean_signal_time();
+                }
                 self.do_schedule();
             }
             None => Scheduler::back_to_main(),
