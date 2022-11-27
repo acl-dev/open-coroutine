@@ -9,9 +9,6 @@ use crate::stack::Stack;
 use std::fmt;
 use std::os::raw::c_void;
 
-// export defer
-pub use scopeguard::*;
-
 // Requires cdecl calling convention on x86, which is the default for "C" blocks.
 extern "C" {
     /// Creates a new `Context` ontop of some stack.

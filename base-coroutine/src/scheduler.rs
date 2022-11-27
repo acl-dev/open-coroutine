@@ -13,7 +13,7 @@ thread_local! {
     static RESULTS: Box<RefCell<*mut ObjectMap<usize>>> = Box::new(RefCell::new(std::ptr::null_mut()));
 }
 
-/// 主线程
+/// 主协程
 type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 
 #[repr(C)]
@@ -35,6 +35,20 @@ pub struct Scheduler {
 
 impl Scheduler {
     fn new() -> Self {
+        #[cfg(unix)]
+        unsafe {
+            extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                //挂起当前协程
+                let yielder: *const Yielder<&'static mut c_void, (), &'static mut c_void> =
+                    OpenCoroutine::yielder();
+                if !yielder.is_null() {
+                    unsafe {
+                        (*yielder).suspend(());
+                    }
+                }
+            }
+            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
+        }
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
             ready: ObjectList::new(),
@@ -316,5 +330,45 @@ mod tests {
         }
         scheduler.submit(delay, null(), 4096);
         scheduler.timed_schedule(Duration::from_millis(200));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preemptive_schedule() {
+        use std::os::unix::thread::JoinHandleExt;
+        static mut FLAG: bool = true;
+        let handler = std::thread::spawn(|| {
+            let scheduler = Scheduler::current();
+            extern "C" fn f1(
+                _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+                _input: &'static mut c_void,
+            ) -> &'static mut c_void {
+                unsafe {
+                    while FLAG {
+                        println!("loop");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                }
+                null()
+            }
+            scheduler.submit(f1, null(), 4096);
+            extern "C" fn f2(
+                _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+                _input: &'static mut c_void,
+            ) -> &'static mut c_void {
+                unsafe {
+                    FLAG = false;
+                }
+                null()
+            }
+            scheduler.submit(f2, null(), 4096);
+            scheduler.try_schedule();
+        });
+        std::thread::sleep(Duration::from_millis(10));
+        unsafe {
+            libc::pthread_kill(handler.as_pthread_t(), libc::SIGURG);
+            handler.join().unwrap();
+            assert!(!FLAG);
+        }
     }
 }
