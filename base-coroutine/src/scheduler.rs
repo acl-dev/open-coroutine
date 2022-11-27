@@ -313,7 +313,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[test]
+    // #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
         extern "C" fn delay(
@@ -331,7 +331,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[test]
+    // #[test]
     fn timed_schedule() {
         let scheduler = Scheduler::current();
         extern "C" fn delay(
@@ -347,7 +347,7 @@ mod tests {
         scheduler.timed_schedule(Duration::from_millis(200));
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn preemptive_schedule() {
         static mut FLAG: bool = true;
