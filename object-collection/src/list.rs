@@ -134,6 +134,14 @@ impl ObjectList {
             self.inner.push_back(pointer)
         }
     }
+
+    pub fn remove_raw(&mut self, val: *mut c_void) -> Option<*mut c_void> {
+        let index = self
+            .inner
+            .binary_search_by(|x| x.cmp(&val))
+            .unwrap_or_else(|x| x);
+        self.inner.remove(index)
+    }
 }
 
 impl Default for ObjectList {
@@ -156,6 +164,7 @@ impl AsMut<ObjectList> for ObjectList {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::c_void;
     use crate::ObjectList;
 
     #[test]
@@ -181,5 +190,16 @@ mod tests {
             let n = list.pop_back_raw().unwrap() as *mut _ as *mut i32;
             assert_eq!(1, *n);
         }
+    }
+
+    #[test]
+    fn test_remove_raw() {
+        let mut list = ObjectList::new();
+        list.push_back_raw(1 as *mut c_void);
+        list.push_back_raw(2 as *mut c_void);
+        list.push_back_raw(3 as *mut c_void);
+        list.remove_raw(2 as *mut c_void);
+        assert_eq!(1 as *mut c_void, list.pop_front_raw().unwrap());
+        assert_eq!(3 as *mut c_void, list.pop_back_raw().unwrap());
     }
 }

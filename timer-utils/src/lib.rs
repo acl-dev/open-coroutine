@@ -69,6 +69,10 @@ impl TimerEntry {
         self.object_list.push_back(t)
     }
 
+    pub fn remove_raw(&mut self, pointer: *mut c_void) -> Option<*mut c_void> {
+        self.object_list.remove_raw(pointer)
+    }
+
     pub fn push_back_raw(&mut self, ptr: *mut c_void) {
         self.object_list.push_back_raw(ptr)
     }
@@ -123,6 +127,14 @@ impl TimerList {
 
     pub fn is_empty(&self) -> bool {
         self.dequeue.is_empty()
+    }
+
+    pub fn get_entry(&mut self, time: u64) -> Option<&mut TimerEntry> {
+        let index = self
+            .dequeue
+            .binary_search_by(|x| x.time.cmp(&time))
+            .unwrap_or_else(|x| x);
+        self.dequeue.get_mut(index)
     }
 }
 
