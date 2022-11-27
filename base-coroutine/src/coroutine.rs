@@ -120,6 +120,10 @@ pub type UserFunc<'a, Param, Yield, Return> =
 /// 子协程
 pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
 
+thread_local! {
+    static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
+}
+
 #[repr(C)]
 pub struct OpenCoroutine<'a, Param, Yield, Return> {
     pub(crate) id: usize,
@@ -141,10 +145,12 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             sp: &t,
             marker: Default::default(),
         };
+        OpenCoroutine::init_yielder(&yielder);
         unsafe {
             let proc = (*coroutine).proc;
             let param = std::ptr::read_unaligned(&(*coroutine).param);
             let result = proc(&yielder, param);
+            OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             //执行下一个子协程
             Scheduler::current().do_schedule();
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
@@ -192,6 +198,20 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 transfer.data as *mut c_void as *mut _ as *mut CoroutineResult<Yield, Return>,
             )
         }
+    }
+
+    fn init_yielder(yielder: &Yielder<Param, Yield, Return>) {
+        YIELDER.with(|boxed| {
+            *boxed.borrow_mut() = yielder as *const _ as *const c_void;
+        });
+    }
+
+    pub fn yielder<'y>() -> *const Yielder<'y, Param, Yield, Return> {
+        YIELDER.with(|boxed| unsafe { std::mem::transmute(*boxed.borrow_mut()) })
+    }
+
+    fn clean_yielder() {
+        YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
     }
 }
 

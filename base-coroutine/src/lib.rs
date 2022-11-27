@@ -7,6 +7,9 @@ mod stack;
 #[allow(dead_code)]
 mod context;
 
+// export defer
+pub use scopeguard::*;
+
 #[allow(dead_code)]
 pub mod coroutine;
 
