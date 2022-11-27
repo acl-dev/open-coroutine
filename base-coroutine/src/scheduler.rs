@@ -350,6 +350,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn preemptive_schedule() {
+        use std::os::unix::thread::JoinHandleExt;
         static mut FLAG: bool = true;
         let handler = std::thread::spawn(|| {
             let scheduler = Scheduler::current();
@@ -378,7 +379,10 @@ mod tests {
             scheduler.submit(f2, null(), 4096);
             scheduler.try_schedule();
         });
+        std::thread::sleep(Duration::from_millis(50));
         unsafe {
+            #[cfg(not(target_os = "macos"))]
+            libc::pthread_kill(handler.as_pthread_t(), libc::SIGURG);
             handler.join().unwrap();
             assert!(!FLAG);
         }
