@@ -164,8 +164,8 @@ impl AsMut<ObjectList> for ObjectList {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::c_void;
     use crate::ObjectList;
+    use std::ffi::c_void;
 
     #[test]
     fn test() {
