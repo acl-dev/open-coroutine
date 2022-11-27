@@ -46,6 +46,13 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
     /// [`Coroutine::resume`]. This function will then return once the
     /// [`Coroutine::resume`] function is called again.
     pub extern "C" fn suspend(&self, val: Yield) -> Param {
+        #[cfg(unix)]
+        {
+            //还没执行到10ms就主动yield了，此时需要清理signal
+            //否则下一个协程执行不到10ms就被抢占调度了
+            Monitor::clean_task(Monitor::signal_time(), &mut unsafe { libc::pthread_self() });
+            Monitor::clean_signal_time();
+        }
         unsafe {
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Yield(val);
             let transfer = self
@@ -158,8 +165,8 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 //否则下一个协程执行不到10ms就被抢占调度了
                 Monitor::clean_task(Monitor::signal_time(), &mut libc::pthread_self());
                 Monitor::clean_signal_time();
-                OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             }
+            OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             //执行下一个子协程
             Scheduler::current().do_schedule();
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
