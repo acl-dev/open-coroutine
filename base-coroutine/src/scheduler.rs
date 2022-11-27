@@ -331,7 +331,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    // #[test]
+    #[test]
     fn timed_schedule() {
         let scheduler = Scheduler::current();
         extern "C" fn delay(
