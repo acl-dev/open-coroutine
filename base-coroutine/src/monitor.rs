@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 use std::thread::JoinHandle;
+use std::time::Duration;
 use timer_utils::TimerList;
 
 static mut GLOBAL: Lazy<ManuallyDrop<Monitor>> = Lazy::new(|| ManuallyDrop::new(Monitor::new()));
@@ -10,7 +11,9 @@ static mut GLOBAL: Lazy<ManuallyDrop<Monitor>> = Lazy::new(|| ManuallyDrop::new(
 static MONITOR: Lazy<JoinHandle<()>> = Lazy::new(|| {
     std::thread::spawn(|| {
         while Monitor::global().flag {
-            Monitor::global().signal()
+            Monitor::global().signal();
+            //fixme 这里在hook的情况下应该调用原始系统函数
+            std::thread::sleep(Duration::from_millis(1));
         }
     })
 });
