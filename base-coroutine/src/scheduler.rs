@@ -347,7 +347,7 @@ mod tests {
         scheduler.timed_schedule(Duration::from_millis(200));
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn preemptive_schedule() {
         static mut FLAG: bool = true;
