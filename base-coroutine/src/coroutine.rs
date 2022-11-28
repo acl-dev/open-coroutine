@@ -1,5 +1,7 @@
 use crate::context::{Context, Transfer};
 use crate::id::IdGenerator;
+#[cfg(unix)]
+use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use std::cell::RefCell;
@@ -44,12 +46,15 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
     /// [`Coroutine::resume`]. This function will then return once the
     /// [`Coroutine::resume`] function is called again.
     pub extern "C" fn suspend(&self, val: Yield) -> Param {
+        let yielder = OpenCoroutine::<Param, Yield, Return>::yielder();
+        OpenCoroutine::<Param, Yield, Return>::clean_yielder();
         unsafe {
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Yield(val);
             let transfer = self
                 .sp
                 .context
                 .resume(&mut coroutine_result as *mut _ as usize);
+            OpenCoroutine::init_yielder(&*yielder);
             let backed = transfer.data as *mut c_void as *mut _
                 as *mut OpenCoroutine<'_, Param, Yield, Return>;
             std::ptr::read_unaligned(&(*backed).param)
@@ -151,6 +156,13 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             let param = std::ptr::read_unaligned(&(*coroutine).param);
             let result = proc(&yielder, param);
             OpenCoroutine::<Param, Yield, Return>::clean_yielder();
+            #[cfg(unix)]
+            {
+                //还没执行到10ms就返回了，此时需要清理signal
+                //否则下一个协程执行不到10ms就被抢占调度了
+                Monitor::clean_task(Monitor::signal_time());
+                Monitor::clean_signal_time();
+            }
             //执行下一个子协程
             Scheduler::current().do_schedule();
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);

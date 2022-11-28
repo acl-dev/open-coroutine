@@ -1,5 +1,7 @@
 use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFunc, Yielder};
 use crate::id::IdGenerator;
+#[cfg(unix)]
+use crate::monitor::Monitor;
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -179,6 +181,12 @@ impl Scheduler {
                     &mut *(pointer as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                 };
                 self.running = Some(coroutine.id);
+                let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
+                #[cfg(unix)]
+                {
+                    Monitor::init_signal_time(_start);
+                    Monitor::add_task(_start);
+                }
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         let delay_time =
@@ -199,6 +207,13 @@ impl Scheduler {
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
                 };
                 self.running = None;
+                #[cfg(unix)]
+                {
+                    //还没执行到10ms就主动yield了，此时需要清理signal
+                    //否则下一个协程执行不到10ms就被抢占调度了
+                    Monitor::clean_task(_start);
+                    Monitor::clean_signal_time();
+                }
                 self.do_schedule();
             }
             None => Scheduler::back_to_main(),
@@ -335,7 +350,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn preemptive_schedule() {
-        use std::os::unix::thread::JoinHandleExt;
         static mut FLAG: bool = true;
         let handler = std::thread::spawn(|| {
             let scheduler = Scheduler::current();
@@ -364,9 +378,7 @@ mod tests {
             scheduler.submit(f2, null(), 4096);
             scheduler.try_schedule();
         });
-        std::thread::sleep(Duration::from_millis(10));
         unsafe {
-            libc::pthread_kill(handler.as_pthread_t(), libc::SIGURG);
             handler.join().unwrap();
             assert!(!FLAG);
         }
