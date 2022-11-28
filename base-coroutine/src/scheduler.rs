@@ -313,18 +313,19 @@ mod tests {
         scheduler.try_schedule();
     }
 
+    extern "C" fn delay(
+        yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+        _input: &'static mut c_void,
+    ) -> &'static mut c_void {
+        println!("[coroutine] delay");
+        yielder.delay((), 100);
+        println!("[coroutine] back");
+        null()
+    }
+
     #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
-        extern "C" fn delay(
-            yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
-            _input: &'static mut c_void,
-        ) -> &'static mut c_void {
-            println!("[coroutine] delay");
-            yielder.delay((), 100);
-            println!("[coroutine] back");
-            null()
-        }
         scheduler.submit(delay, null(), 4096);
         scheduler.try_schedule();
         thread::sleep(Duration::from_millis(100));
@@ -334,15 +335,6 @@ mod tests {
     #[test]
     fn timed_schedule() {
         let scheduler = Scheduler::current();
-        extern "C" fn delay(
-            yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
-            _input: &'static mut c_void,
-        ) -> &'static mut c_void {
-            println!("[coroutine] delay");
-            yielder.delay((), 100);
-            println!("[coroutine] back");
-            null()
-        }
         scheduler.submit(delay, null(), 4096);
         scheduler.timed_schedule(Duration::from_millis(200));
     }
