@@ -36,19 +36,15 @@ jobs:
         with:
           command: clippy
           args: -- -D warnings
-  test:
-    name: Test ${{ matrix.rust }} on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  linux:
+    name: Test ${{ matrix.rust }} on ubuntu-latest
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         rust:
           - stable
           - nightly
-        os:
-          - ubuntu-latest
-          - windows-2019
-          - macOS-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -58,11 +54,73 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
-      - name: Run cargo release test
+      - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --all
+          args: --release --all --no-run
+      - name: Run cargo release test
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo test --release --all"
+      - name: Run cargo release example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --example hello --release
+  macos:
+    name: Test ${{ matrix.rust }} on macOS-latest
+    runs-on: macOS-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - nightly
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install Rust (${{ matrix.rust }})
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run cargo release test compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --all --no-run
+      - name: Run cargo release test
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo test --release --all"
+      - name: Run cargo release example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --example hello --release
+  windows:
+    name: Test ${{ matrix.rust }} on windows-2019
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - nightly
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install Rust (${{ matrix.rust }})
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run cargo release test compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --all --no-run
+      - name: Run cargo release test
+        run: bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe test --release --all"
       - name: Run cargo release example
         uses: actions-rs/cargo@v1
         with:
