@@ -51,11 +51,6 @@ impl Monitor {
         Monitor::global().flag.store(false, Ordering::Release);
     }
 
-    /// 只在测试时使用
-    pub(crate) fn clear() {
-        Monitor::global().task.clear();
-    }
-
     fn signal(&mut self) {
         while !self.task.is_empty() {
             self.do_signal();
@@ -98,9 +93,6 @@ impl Monitor {
                 let mut pthread = libc::pthread_self();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
             }
-            if entry.is_empty() {
-                Monitor::global().task.remove_entry(time);
-            }
         }
     }
 
@@ -131,7 +123,6 @@ mod tests {
         }
         unsafe {
             libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            Monitor::clear();
             Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -144,7 +135,6 @@ mod tests {
         }
         unsafe {
             libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            Monitor::clear();
             let time = timer_utils::get_timeout_time(Duration::from_millis(10));
             Monitor::add_task(time);
             Monitor::clean_task(time);
