@@ -39,10 +39,6 @@ mod tests {
     use std::os::raw::c_void;
     use std::time::Duration;
 
-    fn null() -> &'static mut c_void {
-        unsafe { std::mem::transmute(10usize) }
-    }
-
     #[test]
     fn test_link() {
         init();
@@ -53,7 +49,7 @@ mod tests {
         _input: Option<&'static mut c_void>,
     ) -> Option<&'static mut c_void> {
         println!("[coroutine1] launched");
-        Some(null())
+        None
     }
 
     extern "C" fn f2(
@@ -61,19 +57,19 @@ mod tests {
         _input: Option<&'static mut c_void>,
     ) -> Option<&'static mut c_void> {
         println!("[coroutine2] launched");
-        Some(null())
+        None
     }
 
     #[test]
     fn simplest() {
-        co(f1, Some(null()), 4096);
-        co(f2, Some(null()), 4096);
+        co(f1, None, 4096);
+        co(f2, None, 4096);
         schedule();
     }
 
     fn hook_test(secs: u64) {
-        co(f1, Some(null()), 4096);
-        co(f2, Some(null()), 4096);
+        co(f1, None, 4096);
+        co(f2, None, 4096);
         std::thread::sleep(Duration::from_millis(secs))
     }
 
