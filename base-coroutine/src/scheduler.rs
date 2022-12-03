@@ -2,14 +2,14 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
+use crate::work_steal::{LocalQueue, LocalQueues, Queue};
 use object_collection::{ObjectList, ObjectMap};
+use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use once_cell::sync::Lazy;
 use timer_utils::TimerList;
-use crate::work_steal::{LocalQueue, LocalQueues, Queue};
 
 static CORES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(num_cpus::get()));
 
