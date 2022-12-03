@@ -2,52 +2,11 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
-use crate::work_steal::{LocalQueue, LocalQueues, Queue};
 use object_collection::{ObjectList, ObjectMap};
-use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::time::Duration;
 use timer_utils::TimerList;
-
-static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
-
-static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
-
-#[derive(Debug)]
-struct WorkStealQueue {
-    inner: LocalQueue<usize>,
-}
-
-impl WorkStealQueue {
-    fn new() -> Self {
-        unsafe {
-            QUEUES.get_or_init(|| GLOBAL_QUEUE.local_queues());
-            let local_queues = QUEUES.get_mut().unwrap();
-            WorkStealQueue {
-                inner: local_queues.next().expect("should never happen"),
-            }
-        }
-    }
-
-    pub fn push_back<T>(&mut self, element: T) {
-        let ptr = Box::leak(Box::new(element));
-        self.push_back_raw(ptr as *mut _ as *mut c_void);
-    }
-
-    pub fn push_back_raw(&mut self, ptr: *mut c_void) {
-        self.inner.push_yield(ptr as usize);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
-    pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
-        self.inner.pop().map(|p| p as *mut c_void)
-    }
-}
 
 thread_local! {
     static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
@@ -63,7 +22,7 @@ type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: WorkStealQueue,
+    ready: ObjectList,
     //正在执行的协程id
     running: Option<usize>,
     suspend: TimerList,
@@ -94,7 +53,7 @@ impl Scheduler {
         }
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: WorkStealQueue::new(),
+            ready: ObjectList::new(),
             running: None,
             suspend: TimerList::new(),
             system_call: ObjectList::new(),
@@ -277,9 +236,9 @@ impl Scheduler {
                                     as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                             };
                             coroutine.status = Status::Ready;
-                            //把到时间的协程加入就绪队列
-                            //这里出于性能考虑，没有支持push_front_raw
-                            self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                            //优先执行到时间的协程
+                            self.ready
+                                .push_front_raw(coroutine as *mut _ as *mut c_void);
                         }
                     }
                 }

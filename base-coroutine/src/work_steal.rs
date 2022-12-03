@@ -29,6 +29,7 @@
 //! [non-stealable LIFO slot]: https://tokio.rs/blog/2019-10-scheduler#optimizing-for-message-passing-patterns
 
 use concurrent_queue::ConcurrentQueue;
+use once_cell::sync::{Lazy, OnceCell};
 use std::cell::UnsafeCell as StdUnsafeCell;
 use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::fmt::{Debug, Formatter};
@@ -36,10 +37,52 @@ use std::hash::{BuildHasher, Hasher};
 use std::iter::FusedIterator;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
+use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
+static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
+
+static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct WorkStealQueue {
+    inner: LocalQueue<usize>,
+}
+
+impl WorkStealQueue {
+    pub fn new() -> Self {
+        unsafe {
+            QUEUES.get_or_init(|| GLOBAL_QUEUE.local_queues());
+            let local_queues = QUEUES.get_mut().unwrap();
+            WorkStealQueue {
+                inner: local_queues.next().expect("should never happen"),
+            }
+        }
+    }
+
+    pub fn push_back<T>(&mut self, element: T) {
+        let ptr = Box::leak(Box::new(element));
+        self.push_back_raw(ptr as *mut _ as *mut c_void);
+    }
+
+    pub fn push_back_raw(&mut self, ptr: *mut c_void) {
+        self.inner.push_yield(ptr as usize);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
+    pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
+        self.inner.pop().map(|p| p as *mut c_void)
+    }
+}
+
+#[repr(C)]
 pub struct UnsafeCell<T>(StdUnsafeCell<T>);
 
 impl<T> UnsafeCell<T> {
@@ -58,6 +101,7 @@ pub unsafe fn atomic_u16_unsync_load(atomic: &AtomicU16) -> u16 {
     *(atomic as *const AtomicU16).cast()
 }
 
+#[repr(C)]
 #[derive(Debug)]
 pub struct GlobalQueue<T>(ConcurrentQueue<T>);
 
@@ -78,6 +122,7 @@ impl<T> GlobalQueue<T> {
 ///
 /// This implements [`Clone`] and so multiple handles to the queue can be easily created and
 /// shared.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Queue<T>(Arc<Shared<T>>);
 
@@ -157,6 +202,7 @@ impl<T> Clone for Queue<T> {
     }
 }
 
+#[repr(C)]
 #[derive(Debug)]
 struct Shared<T> {
     local_queues: Box<[LocalQueueInner<T>]>,
@@ -172,6 +218,7 @@ struct Shared<T> {
 }
 
 /// The fixed-capacity SP2C queue owned by each local queue.
+#[repr(C)]
 struct LocalQueueInner<T> {
     /// The two heads (fronts) of the queue, packed into one atomic by `pack_heads` and
     /// `unpack_heads`.
@@ -212,6 +259,7 @@ impl<T> Debug for LocalQueueInner<T> {
 fn unpack_heads(heads: u32) -> (u16, u16) {
     ((heads >> 16) as u16, heads as u16)
 }
+
 /// Pack the `heads` value in a `LocalQueueInner` from its stealer head and real head.
 fn pack_heads(stealer: u16, real: u16) -> u32 {
     (stealer as u32) << 16 | real as u32
@@ -220,6 +268,7 @@ fn pack_heads(stealer: u16, real: u16) -> u32 {
 /// One of the local queues in a [`Queue`].
 ///
 /// You can create this using [`Queue::local_queues`].
+#[repr(C)]
 #[derive(Debug)]
 pub struct LocalQueue<T> {
     /// Special slot that is always popped from first, to optimize for message passing where one
@@ -595,6 +644,7 @@ impl<T> LocalQueue<T> {
 }
 
 /// An iterator over the [`LocalQueue`]s in a [`Queue`]. Created by [`Queue::local_queues`].
+#[repr(C)]
 #[derive(Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct LocalQueues<'a, T> {
@@ -639,8 +689,10 @@ impl<T> ExactSizeIterator for LocalQueues<'_, T> {
 impl<T> FusedIterator for LocalQueues<'_, T> {}
 
 /// A `*const T` that is guaranteed to always be valid and non-null.
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 struct ValidPtr<T: ?Sized>(NonNull<T>);
+
 impl<T: ?Sized> ValidPtr<T> {
     unsafe fn new(ptr: *const T) -> Self {
         Self(NonNull::new_unchecked(ptr as *mut T))
@@ -655,6 +707,7 @@ impl<T: ?Sized> Deref for ValidPtr<T> {
 }
 
 unsafe impl<T: ?Sized + Sync> Send for ValidPtr<T> {}
+
 unsafe impl<T: ?Sized + Sync> Sync for ValidPtr<T> {}
 
 #[cfg(target_pointer_width = "64")]
@@ -663,10 +716,12 @@ type DoubleUsize = u128;
 type DoubleUsize = u64;
 
 /// Wyrand RNG.
+#[repr(C)]
 #[derive(Debug)]
 struct Rng {
     state: u64,
 }
+
 impl Rng {
     fn gen_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0xA0761D6478BD642F);
@@ -910,5 +965,12 @@ mod tests {
         for thread in threads {
             thread.join().unwrap();
         }
+    }
+
+    #[test]
+    fn test_work_steal_queue() {
+        let mut queue = WorkStealQueue::new();
+        queue.push_back_raw(1usize as *mut c_void);
+        assert_eq!(1usize as *mut c_void, queue.pop_front_raw().unwrap())
     }
 }
