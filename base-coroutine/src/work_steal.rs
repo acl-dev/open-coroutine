@@ -29,7 +29,7 @@
 //! [non-stealable LIFO slot]: https://tokio.rs/blog/2019-10-scheduler#optimizing-for-message-passing-patterns
 
 use concurrent_queue::ConcurrentQueue;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
 use std::cell::UnsafeCell as StdUnsafeCell;
 use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::fmt::{Debug, Formatter};
@@ -44,7 +44,7 @@ use std::sync::Arc;
 
 static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
 
-static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
+static mut QUEUES: Lazy<LocalQueues<'static, usize>> = Lazy::new(|| GLOBAL_QUEUE.local_queues());
 
 #[repr(C)]
 #[derive(Debug)]
@@ -55,10 +55,8 @@ pub struct WorkStealQueue {
 impl WorkStealQueue {
     pub fn new() -> Self {
         unsafe {
-            QUEUES.get_or_init(|| GLOBAL_QUEUE.local_queues());
-            let local_queues = QUEUES.get_mut().unwrap();
             WorkStealQueue {
-                inner: local_queues.next().expect("should never happen"),
+                inner: QUEUES.next().expect("should never happen"),
             }
         }
     }
