@@ -5,8 +5,49 @@ use crate::monitor::Monitor;
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+use once_cell::sync::Lazy;
 use timer_utils::TimerList;
+use crate::work_steal::{LocalQueue, LocalQueues, Queue};
+
+static CORES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(num_cpus::get()));
+
+static GLOBAL_QUEUE: Lazy<Queue<usize>> =
+    Lazy::new(|| Queue::new(CORES.load(Ordering::Relaxed), 256));
+
+static mut QUEUES: Lazy<LocalQueues<'_, usize>> = Lazy::new(|| GLOBAL_QUEUE.local_queues());
+
+#[derive(Debug)]
+struct WorkStealQueue {
+    inner: LocalQueue<usize>,
+}
+
+impl WorkStealQueue {
+    fn new() -> Self {
+        WorkStealQueue {
+            inner: unsafe { QUEUES.next().expect("should never happen") },
+        }
+    }
+
+    pub fn push_back<T>(&mut self, element: T) {
+        let ptr = Box::leak(Box::new(element));
+        self.push_back_raw(ptr as *mut _ as *mut c_void);
+    }
+
+    pub fn push_back_raw(&mut self, ptr: *mut c_void) {
+        self.inner.push_yield(ptr as usize);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
+    pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
+        self.inner.pop().map(|p| p as *mut c_void)
+    }
+}
 
 thread_local! {
     static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
@@ -22,7 +63,7 @@ type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: ObjectList,
+    ready: WorkStealQueue,
     //正在执行的协程id
     running: Option<usize>,
     suspend: TimerList,
@@ -53,7 +94,7 @@ impl Scheduler {
         }
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: ObjectList::new(),
+            ready: WorkStealQueue::new(),
             running: None,
             suspend: TimerList::new(),
             system_call: ObjectList::new(),
@@ -236,9 +277,9 @@ impl Scheduler {
                                     as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                             };
                             coroutine.status = Status::Ready;
-                            //优先执行到时间的协程
-                            self.ready
-                                .push_front_raw(coroutine as *mut _ as *mut c_void);
+                            //把到时间的协程加入就绪队列
+                            //这里出于性能考虑，没有支持push_front_raw
+                            self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
                         }
                     }
                 }
