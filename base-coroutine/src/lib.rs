@@ -16,6 +16,11 @@ pub mod coroutine;
 pub use coroutine::*;
 
 #[allow(dead_code)]
+mod work_steal;
+
+pub use work_steal::*;
+
+#[allow(dead_code)]
 pub mod scheduler;
 
 pub use scheduler::*;
