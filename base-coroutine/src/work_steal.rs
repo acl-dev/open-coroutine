@@ -42,7 +42,13 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
+static CORES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(num_cpus::get()));
+
+pub fn get_cores() -> usize {
+    CORES.load(Ordering::Relaxed)
+}
+
+static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(get_cores(), 256));
 
 static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
 

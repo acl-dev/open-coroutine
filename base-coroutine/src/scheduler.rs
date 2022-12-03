@@ -2,14 +2,21 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
+use crate::work_steal::get_cores;
 use object_collection::{ObjectList, ObjectMap};
+use once_cell::sync::Lazy;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use timer_utils::TimerList;
 
+static INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+
+static mut SCHEDULERS: Lazy<HashMap<usize, Scheduler>> = Lazy::new(HashMap::new);
+
 thread_local! {
-    static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static TIMEOUT_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
     static RESULTS: Box<RefCell<*mut ObjectMap<usize>>> = Box::new(RefCell::new(std::ptr::null_mut()));
@@ -63,7 +70,32 @@ impl Scheduler {
     }
 
     pub fn current<'a>() -> &'a mut Scheduler {
-        SCHEDULER.with(|boxed| Box::leak(unsafe { std::ptr::read_unaligned(boxed) }))
+        unsafe {
+            let cores = get_cores();
+            #[cfg(windows)]
+            let thread_id = windows_sys::Win32::System::Threading::GetCurrentThreadId();
+
+            #[cfg(unix)]
+            let thread_id = libc::pthread_self();
+            Scheduler::get_or_init(thread_id as usize % cores)
+        }
+    }
+
+    pub fn next<'a>() -> &'a mut Scheduler {
+        let index = INDEX.fetch_add(1, Ordering::Relaxed) % get_cores();
+        Scheduler::get_or_init(index)
+    }
+
+    fn get_or_init<'a>(index: usize) -> &'a mut Scheduler {
+        unsafe {
+            match SCHEDULERS.get_mut(&index) {
+                Some(v) => v,
+                None => {
+                    SCHEDULERS.insert(index, Scheduler::new());
+                    SCHEDULERS.get_mut(&index).unwrap()
+                }
+            }
+        }
     }
 
     fn init_yielder(yielder: &Yielder<(), (), ()>) {
