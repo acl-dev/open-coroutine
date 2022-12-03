@@ -16,7 +16,7 @@ static CORES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(num_cpus::get())
 static GLOBAL_QUEUE: Lazy<Queue<usize>> =
     Lazy::new(|| Queue::new(CORES.load(Ordering::Relaxed), 256));
 
-static mut QUEUES: Lazy<LocalQueues<'_, usize>> = Lazy::new(|| GLOBAL_QUEUE.local_queues());
+static mut QUEUES: Lazy<LocalQueues<'static, usize>> = Lazy::new(|| GLOBAL_QUEUE.local_queues());
 
 #[derive(Debug)]
 struct WorkStealQueue {
