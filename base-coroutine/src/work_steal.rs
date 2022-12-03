@@ -82,6 +82,12 @@ impl WorkStealQueue {
     }
 }
 
+impl Default for WorkStealQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[repr(C)]
 pub struct UnsafeCell<T>(StdUnsafeCell<T>);
 
@@ -95,10 +101,6 @@ impl<T> UnsafeCell<T> {
     pub fn with_mut<F: FnOnce(*mut T) -> R, R>(&self, f: F) -> R {
         f(self.0.get())
     }
-}
-
-pub unsafe fn atomic_u16_unsync_load(atomic: &AtomicU16) -> u16 {
-    *(atomic as *const AtomicU16).cast()
 }
 
 #[repr(C)]
@@ -115,6 +117,12 @@ impl<T> GlobalQueue<T> {
     }
     pub fn pop(&self) -> Option<T> {
         self.0.pop().ok()
+    }
+}
+
+impl<T> Default for GlobalQueue<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -285,7 +293,7 @@ impl<T> LocalQueue<T> {
     fn local_tail(&mut self) -> u16 {
         // SAFETY: The tail can be loaded without synchronization because only `self` can write to
         // it, and we have an `&mut self`.
-        unsafe { atomic_u16_unsync_load(&self.local.tail) }
+        unsafe { *(&self.local.tail as *const AtomicU16).cast() }
     }
 
     pub fn len(&self) -> usize {
