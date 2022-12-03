@@ -4,19 +4,15 @@ use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::work_steal::{LocalQueue, LocalQueues, Queue};
 use object_collection::{ObjectList, ObjectMap};
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use timer_utils::TimerList;
 
-static CORES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(num_cpus::get()));
+static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
 
-static GLOBAL_QUEUE: Lazy<Queue<usize>> =
-    Lazy::new(|| Queue::new(CORES.load(Ordering::Relaxed), 256));
-
-static mut QUEUES: Lazy<LocalQueues<'static, usize>> = Lazy::new(|| GLOBAL_QUEUE.local_queues());
+static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
 
 #[derive(Debug)]
 struct WorkStealQueue {
@@ -25,8 +21,12 @@ struct WorkStealQueue {
 
 impl WorkStealQueue {
     fn new() -> Self {
-        WorkStealQueue {
-            inner: unsafe { QUEUES.next().expect("should never happen") },
+        unsafe {
+            QUEUES.get_or_init(|| GLOBAL_QUEUE.local_queues());
+            let local_queues = QUEUES.get_mut().unwrap();
+            WorkStealQueue {
+                inner: local_queues.next().expect("should never happen"),
+            }
         }
     }
 
