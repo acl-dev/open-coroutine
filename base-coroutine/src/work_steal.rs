@@ -76,6 +76,10 @@ impl WorkStealQueue {
         self.inner.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
     pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
         self.inner.pop().map(|p| p as *mut c_void)
@@ -297,11 +301,11 @@ impl<T> LocalQueue<T> {
     }
 
     pub fn len(&self) -> usize {
-        self.local.items.len()
+        self.local.tail.load(Ordering::Acquire) as usize
     }
 
     pub fn is_empty(&self) -> bool {
-        self.local.items.is_empty()
+        self.len() == 0
     }
 
     /// Push an item to the local queue. If the local queue is full, it will move half of its items
@@ -978,7 +982,9 @@ mod tests {
     #[test]
     fn test_work_steal_queue() {
         let mut queue = WorkStealQueue::new();
+        assert!(queue.is_empty());
         queue.push_back_raw(1usize as *mut c_void);
-        assert_eq!(1usize as *mut c_void, queue.pop_front_raw().unwrap())
+        assert_eq!(1, queue.len());
+        assert_eq!(1usize as *mut c_void, queue.pop_front_raw().unwrap());
     }
 }
