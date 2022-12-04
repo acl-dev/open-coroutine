@@ -29,7 +29,7 @@
 //! [non-stealable LIFO slot]: https://tokio.rs/blog/2019-10-scheduler#optimizing-for-message-passing-patterns
 
 use concurrent_queue::ConcurrentQueue;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
 use std::cell::UnsafeCell as StdUnsafeCell;
 use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::fmt::{Debug, Formatter};
@@ -42,7 +42,7 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-static GLOBAL_QUEUE: OnceCell<Queue<usize>> = OnceCell::new();
+static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
 
 static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
 
@@ -55,13 +55,7 @@ pub struct WorkStealQueue {
 impl WorkStealQueue {
     pub fn new() -> Self {
         unsafe {
-            QUEUES.get_or_init(|| {
-                let cpus = num_cpus::get();
-                assert!(cpus > 0);
-                GLOBAL_QUEUE
-                    .get_or_init(|| Queue::new(cpus, 256))
-                    .local_queues()
-            });
+            QUEUES.get_or_init(|| GLOBAL_QUEUE.local_queues());
             let local_queues = QUEUES.get_mut().unwrap();
             WorkStealQueue {
                 inner: local_queues.next().expect("should never happen"),
@@ -692,7 +686,6 @@ impl<T> Iterator for LocalQueues<'_, T> {
             },
         })
     }
-
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.len();
         (len, Some(len))
