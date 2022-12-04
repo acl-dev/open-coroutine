@@ -21,6 +21,12 @@ mod work_steal;
 pub use work_steal::*;
 
 #[allow(dead_code)]
+mod random;
+
+#[allow(dead_code)]
+mod work_steal_v2;
+
+#[allow(dead_code)]
 pub mod scheduler;
 
 pub use scheduler::*;

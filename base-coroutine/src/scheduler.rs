@@ -2,6 +2,7 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
+use crate::work_steal_v2::WorkStealQueue;
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -22,7 +23,7 @@ type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: ObjectList,
+    ready: &'static mut WorkStealQueue,
     //正在执行的协程id
     running: Option<usize>,
     suspend: TimerList,
@@ -53,7 +54,7 @@ impl Scheduler {
         }
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: ObjectList::new(),
+            ready: crate::work_steal_v2::get_queue(),
             running: None,
             suspend: TimerList::new(),
             system_call: ObjectList::new(),
@@ -237,8 +238,7 @@ impl Scheduler {
                             };
                             coroutine.status = Status::Ready;
                             //优先执行到时间的协程
-                            self.ready
-                                .push_front_raw(coroutine as *mut _ as *mut c_void);
+                            self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
                         }
                     }
                 }
