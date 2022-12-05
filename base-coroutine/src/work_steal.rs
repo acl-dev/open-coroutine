@@ -1,5 +1,5 @@
 use crate::random::Rng;
-use concurrent_queue::{ConcurrentQueue, PopError};
+use concurrent_queue::ConcurrentQueue;
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
 use std::os::raw::c_void;
@@ -13,7 +13,7 @@ pub fn get_queue() -> &'static mut WorkStealQueue {
 
 static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> = Lazy::new(ConcurrentQueue::unbounded);
 
-static mut LOCAL_QUEUES: OnceCell<Vec<WorkStealQueue>> = OnceCell::new();
+static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
 
 #[repr(C)]
 #[derive(Debug)]
@@ -25,11 +25,9 @@ impl Queue {
     pub fn new(local_queues: usize, local_capacity: usize) -> Self {
         unsafe {
             LOCAL_QUEUES.get_or_init(|| {
-                let mut queues = Vec::new();
-                for _ in 0..local_queues {
-                    queues.push(WorkStealQueue::new(local_capacity));
-                }
-                queues
+                (0..local_queues)
+                    .map(|_| WorkStealQueue::new(local_capacity))
+                    .collect()
             });
         }
         Queue {
@@ -130,13 +128,8 @@ impl WorkStealQueue {
                 let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
                 for _ in 0..count {
                     match GLOBAL_QUEUE.pop() {
-                        Ok(item) => {
-                            self.queue.push(item).expect("steal to local queue failed!");
-                        }
-                        Err(e) => match e {
-                            PopError::Empty => break,
-                            _ => unreachable!("should never happen !"),
-                        },
+                        Ok(item) => self.queue.push(item).expect("steal to local queue failed!"),
+                        Err(_) => break,
                     }
                 }
                 return Some(popped_item);

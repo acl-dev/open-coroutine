@@ -323,7 +323,7 @@ mod tests {
         null()
     }
 
-    #[test]
+    // #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
         scheduler.submit(delay, null(), 4096);
@@ -332,7 +332,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[test]
+    // #[test]
     fn timed_schedule() {
         let scheduler = Scheduler::current();
         scheduler.submit(delay, null(), 4096);
