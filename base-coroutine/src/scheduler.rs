@@ -2,7 +2,7 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
-use crate::work_steal_v2::WorkStealQueue;
+use crate::work_steal::{get_queue, WorkStealQueue};
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -54,7 +54,7 @@ impl Scheduler {
         }
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: crate::work_steal_v2::get_queue(),
+            ready: get_queue(),
             running: None,
             suspend: TimerList::new(),
             system_call: ObjectList::new(),

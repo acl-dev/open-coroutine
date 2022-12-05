@@ -16,11 +16,23 @@ impl IdGenerator {
     }
 
     pub fn next_coroutine_id() -> usize {
-        unsafe { COROUTINE_ID.fetch_add(1, Ordering::SeqCst) }
+        unsafe {
+            let val = COROUTINE_ID.fetch_add(1, Ordering::SeqCst);
+            if val == usize::MAX {
+                COROUTINE_ID.store(1, Ordering::SeqCst);
+            }
+            val
+        }
     }
 
     pub fn next_scheduler_id() -> usize {
-        unsafe { SCHEDULER_ID.fetch_add(1, Ordering::SeqCst) }
+        unsafe {
+            let val = SCHEDULER_ID.fetch_add(1, Ordering::SeqCst);
+            if val == usize::MAX {
+                COROUTINE_ID.store(1, Ordering::SeqCst);
+            }
+            val
+        }
     }
 }
 
