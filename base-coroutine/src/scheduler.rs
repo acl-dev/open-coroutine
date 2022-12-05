@@ -265,7 +265,7 @@ mod tests {
         unsafe { std::mem::transmute(10usize) }
     }
 
-    #[test]
+    // #[test]
     fn simplest() {
         let scheduler = Scheduler::current();
         extern "C" fn f1(
