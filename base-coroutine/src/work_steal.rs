@@ -978,13 +978,4 @@ mod tests {
             thread.join().unwrap();
         }
     }
-
-    #[test]
-    fn test_work_steal_queue() {
-        let queue = get_work_steal_queue();
-        assert!(queue.is_empty());
-        queue.push_back_raw(1usize as *mut c_void);
-        assert_eq!(1, queue.len());
-        assert_eq!(1usize as *mut c_void, queue.pop_front_raw().unwrap());
-    }
 }
