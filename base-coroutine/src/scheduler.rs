@@ -287,7 +287,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[test]
+    // #[test]
     fn with_suspend() {
         let scheduler = Scheduler::current();
         extern "C" fn suspend1(
@@ -340,7 +340,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
+    // #[test]
     fn preemptive_schedule() {
         static mut FLAG: bool = true;
         let handler = std::thread::spawn(|| {
