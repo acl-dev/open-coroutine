@@ -29,7 +29,7 @@
 //! [non-stealable LIFO slot]: https://tokio.rs/blog/2019-10-scheduler#optimizing-for-message-passing-patterns
 
 use concurrent_queue::ConcurrentQueue;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
 use std::cell::UnsafeCell as StdUnsafeCell;
 use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::fmt::{Debug, Formatter};
@@ -44,7 +44,23 @@ use std::sync::Arc;
 
 static GLOBAL_QUEUE: Lazy<Queue<usize>> = Lazy::new(|| Queue::new(num_cpus::get(), 256));
 
-static mut QUEUES: OnceCell<LocalQueues<'static, usize>> = OnceCell::new();
+static mut QUEUES: Lazy<LocalQueues<'static, usize>> = Lazy::new(|| GLOBAL_QUEUE.local_queues());
+
+static mut INSTANCES: Lazy<Box<[WorkStealQueue]>> = Lazy::new(|| unsafe {
+    (0..num_cpus::get())
+        .map(|_| WorkStealQueue {
+            inner: QUEUES.next().expect("should never happen"),
+        })
+        .collect()
+});
+
+pub fn get_work_steal_queue() -> &'static mut WorkStealQueue {
+    unsafe {
+        let queue = INSTANCES.get_mut(QUEUES.index % num_cpus::get()).unwrap();
+        QUEUES.index = QUEUES.index.checked_add(1).unwrap_or(0);
+        queue
+    }
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -53,16 +69,6 @@ pub struct WorkStealQueue {
 }
 
 impl WorkStealQueue {
-    pub fn new() -> Self {
-        unsafe {
-            QUEUES.get_or_init(|| GLOBAL_QUEUE.local_queues());
-            let local_queues = QUEUES.get_mut().unwrap();
-            WorkStealQueue {
-                inner: local_queues.next().expect("should never happen"),
-            }
-        }
-    }
-
     pub fn push_back<T>(&mut self, element: T) {
         let ptr = Box::leak(Box::new(element));
         self.push_back_raw(ptr as *mut _ as *mut c_void);
@@ -83,12 +89,6 @@ impl WorkStealQueue {
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
     pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
         self.inner.pop().map(|p| p as *mut c_void)
-    }
-}
-
-impl Default for WorkStealQueue {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -670,7 +670,7 @@ impl<T> Iterator for LocalQueues<'_, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let inner = self.shared.0.local_queues.get(self.index)?;
-        self.index += 1;
+        self.index = self.index.checked_add(1).unwrap_or(0);
 
         Some(LocalQueue {
             lifo_slot: None,
@@ -981,7 +981,7 @@ mod tests {
 
     #[test]
     fn test_work_steal_queue() {
-        let mut queue = WorkStealQueue::new();
+        let queue = get_work_steal_queue();
         assert!(queue.is_empty());
         queue.push_back_raw(1usize as *mut c_void);
         assert_eq!(1, queue.len());
