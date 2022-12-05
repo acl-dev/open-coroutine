@@ -265,7 +265,7 @@ mod tests {
         unsafe { std::mem::transmute(10usize) }
     }
 
-    // #[test]
+    #[test]
     fn simplest() {
         let scheduler = Scheduler::current();
         extern "C" fn f1(
@@ -287,7 +287,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    // #[test]
+    #[test]
     fn with_suspend() {
         let scheduler = Scheduler::current();
         extern "C" fn suspend1(
@@ -323,7 +323,7 @@ mod tests {
         null()
     }
 
-    // #[test]
+    #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
         scheduler.submit(delay, null(), 4096);
@@ -332,7 +332,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    // #[test]
+    #[test]
     fn timed_schedule() {
         let scheduler = Scheduler::current();
         scheduler.submit(delay, null(), 4096);
@@ -340,7 +340,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    // #[test]
+    #[test]
     fn preemptive_schedule() {
         static mut FLAG: bool = true;
         let handler = std::thread::spawn(|| {
