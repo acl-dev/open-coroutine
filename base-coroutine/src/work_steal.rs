@@ -188,100 +188,39 @@ impl WorkStealQueue {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
-    // use std::os::raw::c_void;
-    //
-    // #[test]
-    // fn push_less() {
-    //     let mut queue = Queue::new(1, 2);
-    //     let local = queue.local_queue();
-    //     for i in 0..2 {
-    //         local.push_back_raw(i as *mut c_void);
-    //     }
-    //     assert_eq!(local.pop_front_raw().unwrap(), 0 as *mut c_void);
-    //     assert_eq!(local.pop_front_raw().unwrap(), 1 as *mut c_void);
-    //     assert_eq!(local.pop_front_raw(), None);
-    // }
-    //
-    // #[test]
-    // fn push_many() {
-    //     let mut queue = Queue::new(1, 2);
-    //     let local = queue.local_queue();
-    //     for i in 0..4 {
-    //         local.push_back_raw(i as *mut c_void);
-    //     }
-    //     assert_eq!(local.pop_front_raw().unwrap(), 1 as *mut c_void);
-    //     assert_eq!(local.pop_front_raw().unwrap(), 3 as *mut c_void);
-    //     assert_eq!(local.pop_front_raw().unwrap(), 0 as *mut c_void);
-    //     assert_eq!(local.pop_front_raw().unwrap(), 2 as *mut c_void);
-    //     assert_eq!(local.pop_front_raw(), None);
-    // }
-    //
-    // #[test]
-    // fn wrapping() {
-    //     let mut queue = Queue::new(1, 2);
-    //     let local = queue.local_queue();
-    //
-    //     local.push_back_raw(0 as *mut c_void);
-    //
-    //     for i in 0..10 {
-    //         local.push_back_raw((i + 1) as *mut c_void);
-    //
-    //         assert_eq!(local.pop_front_raw(), Some(i as *mut c_void));
-    //     }
-    //
-    //     assert_eq!(local.pop_front_raw(), Some(10 as *mut c_void));
-    //     assert_eq!(local.pop_front_raw(), None);
-    //     assert_eq!(local.pop_front_raw(), None);
-    // }
-    //
-    // #[test]
-    // fn steal_global() {
-    //     for &size in &[2, 4, 8, 16, 32, 64] {
-    //         let mut queue = Queue::new(4, size);
-    //
-    //         for i in 0..16 {
-    //             queue.push_raw(i as *mut c_void);
-    //         }
-    //
-    //         let local = queue.local_queue();
-    //
-    //         for i in 0..16 {
-    //             assert_eq!(local.pop_front_raw().unwrap(), i as *mut c_void);
-    //         }
-    //
-    //         assert_eq!(local.pop_front_raw(), None);
-    //     }
-    // }
-    //
-    // #[test]
-    // fn steal_siblings() {
-    //     let queue = Queue::new(2, 64);
-    //
-    //     let locals = unsafe { LOCAL_QUEUES.get_mut().unwrap() };
-    //
-    //     locals[0].push_back_raw(4 as *mut c_void);
-    //     locals[0].push_back_raw(5 as *mut c_void);
-    //     locals[0].push_back_raw(6 as *mut c_void);
-    //     locals[0].push_back_raw(7 as *mut c_void);
-    //
-    //     locals[1].push_back_raw(0 as *mut c_void);
-    //     locals[1].push_back_raw(1 as *mut c_void);
-    //
-    //     queue.push_raw(2 as *mut c_void);
-    //     queue.push_raw(3 as *mut c_void);
-    //
-    //     for i in 0..6 {
-    //         assert_eq!(locals[1].pop_front_raw().unwrap(), i as *mut c_void);
-    //     }
-    // }
-    //
-    // #[test]
-    // fn test_work_steal_queue() {
-    //     let queue = get_queue();
-    //     assert!(queue.is_empty());
-    //     queue.push_back_raw(1usize as *mut c_void);
-    //     assert_eq!(1, queue.len());
-    //     assert_eq!(1usize as *mut c_void, queue.pop_front_raw().unwrap());
-    // }
+    use super::*;
+    use std::os::raw::c_void;
+
+    #[test]
+    fn steal_global() {
+        for i in 0..16 {
+            unsafe { INSTANCE.push_raw(i as *mut c_void); }
+        }
+        let local = get_queue();
+        for i in 0..16 {
+            assert_eq!(local.pop_front_raw().unwrap(), i as *mut c_void);
+        }
+        assert_eq!(local.pop_front_raw(), None);
+    }
+
+    #[test]
+    fn steal_siblings() {
+        unsafe {
+            INSTANCE.push_raw(2 as *mut c_void);
+            INSTANCE.push_raw(3 as *mut c_void);
+        }
+
+        let local0 = get_queue();
+        local0.push_back_raw(4 as *mut c_void);
+        local0.push_back_raw(5 as *mut c_void);
+        local0.push_back_raw(6 as *mut c_void);
+        local0.push_back_raw(7 as *mut c_void);
+
+        let local1 = get_queue();
+        local1.push_back_raw(0 as *mut c_void);
+        local1.push_back_raw(1 as *mut c_void);
+        for i in 0..7 {
+            assert_eq!(local1.pop_front_raw().unwrap(), i as *mut c_void);
+        }
+    }
 }
