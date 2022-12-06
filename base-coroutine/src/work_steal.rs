@@ -3,13 +3,15 @@ use concurrent_queue::ConcurrentQueue;
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 static mut INSTANCE: Lazy<Queue> = Lazy::new(Queue::default);
 
 pub fn get_queue() -> &'static mut WorkStealQueue {
     unsafe { INSTANCE.local_queue() }
 }
+
+static mut GLOBAL_LOCK: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> = Lazy::new(ConcurrentQueue::unbounded);
 
@@ -123,18 +125,26 @@ impl WorkStealQueue {
             return Some(val);
         }
         unsafe {
-            //从全局队列steal
-            if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
-                for _ in 0..count {
-                    match GLOBAL_QUEUE.pop() {
-                        Ok(item) => self.queue.push(item).expect("steal to local queue failed!"),
-                        Err(_) => break,
+            //尝试从全局队列steal
+            if GLOBAL_LOCK
+                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
+                    let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
+                    for _ in 0..count {
+                        match GLOBAL_QUEUE.pop() {
+                            Ok(item) => {
+                                self.queue.push(item).expect("steal to local queue failed!")
+                            }
+                            Err(_) => break,
+                        }
                     }
+                    GLOBAL_LOCK.store(false, Ordering::Relaxed);
+                    return Some(popped_item);
                 }
-                return Some(popped_item);
             }
-            //从其他本地队列steal
+            //尝试从其他本地队列steal
             let local_queues = LOCAL_QUEUES.get_mut().unwrap();
             //这里生成一个打乱顺序的数组，遍历获取index
             let mut indexes = Vec::new();
