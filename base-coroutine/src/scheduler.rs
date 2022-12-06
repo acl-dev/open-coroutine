@@ -4,7 +4,7 @@ use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::work_steal::get_cores;
 use object_collection::{ObjectList, ObjectMap};
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,8 +13,7 @@ use timer_utils::TimerList;
 
 static INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
-static mut SCHEDULERS: Lazy<Box<[Scheduler]>> =
-    Lazy::new(|| (0..get_cores()).map(|_| Scheduler::new()).collect());
+static mut SCHEDULERS: OnceCell<Box<[Scheduler]>> = OnceCell::new();
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -76,7 +75,10 @@ impl Scheduler {
 
             #[cfg(unix)]
             let thread_id = libc::pthread_self();
+            SCHEDULERS.get_or_init(|| (0..get_cores()).map(|_| Scheduler::new()).collect());
             SCHEDULERS
+                .get_mut()
+                .unwrap()
                 .get_mut(thread_id as usize % get_cores())
                 .unwrap()
         }
@@ -87,7 +89,10 @@ impl Scheduler {
         if index == usize::MAX {
             INDEX.store(0, Ordering::Relaxed)
         }
-        unsafe { SCHEDULERS.get_mut(index).unwrap() }
+        unsafe {
+            SCHEDULERS.get_or_init(|| (0..get_cores()).map(|_| Scheduler::new()).collect());
+            SCHEDULERS.get_mut().unwrap().get_mut(index).unwrap()
+        }
     }
 
     fn init_yielder(yielder: &Yielder<(), (), ()>) {
