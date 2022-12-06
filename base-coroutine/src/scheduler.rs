@@ -6,7 +6,6 @@ use crate::work_steal::get_cores;
 use object_collection::{ObjectList, ObjectMap};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -14,7 +13,8 @@ use timer_utils::TimerList;
 
 static INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
-static mut SCHEDULERS: Lazy<HashMap<usize, Scheduler>> = Lazy::new(HashMap::new);
+static mut SCHEDULERS: Lazy<Box<[Scheduler]>> =
+    Lazy::new(|| (0..get_cores()).map(|_| Scheduler::new()).collect());
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -69,33 +69,25 @@ impl Scheduler {
         }
     }
 
-    pub fn current<'a>() -> &'a mut Scheduler {
+    pub fn current() -> &'static mut Scheduler {
         unsafe {
-            let cores = get_cores();
             #[cfg(windows)]
             let thread_id = windows_sys::Win32::System::Threading::GetCurrentThreadId();
 
             #[cfg(unix)]
             let thread_id = libc::pthread_self();
-            Scheduler::get_or_init(thread_id as usize % cores)
+            SCHEDULERS
+                .get_mut(thread_id as usize % get_cores())
+                .unwrap()
         }
     }
 
-    pub fn next<'a>() -> &'a mut Scheduler {
+    pub fn next() -> &'static mut Scheduler {
         let index = INDEX.fetch_add(1, Ordering::Relaxed) % get_cores();
-        Scheduler::get_or_init(index)
-    }
-
-    fn get_or_init<'a>(index: usize) -> &'a mut Scheduler {
-        unsafe {
-            match SCHEDULERS.get_mut(&index) {
-                Some(v) => v,
-                None => {
-                    SCHEDULERS.insert(index, Scheduler::new());
-                    SCHEDULERS.get_mut(&index).unwrap()
-                }
-            }
+        if index == usize::MAX {
+            INDEX.store(0, Ordering::Relaxed)
         }
+        unsafe { SCHEDULERS.get_mut(index).unwrap() }
     }
 
     fn init_yielder(yielder: &Yielder<(), (), ()>) {
