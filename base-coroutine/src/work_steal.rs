@@ -2,6 +2,8 @@ use crate::random::Rng;
 use concurrent_queue::ConcurrentQueue;
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -69,6 +71,30 @@ impl Default for Queue {
     }
 }
 
+/// Error type returned by steal methods.
+#[derive(Debug)]
+pub enum StealError {
+    CanNotStealSelf,
+    EmptySibling,
+    NoMoreSpare,
+}
+
+impl Display for StealError {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        match *self {
+            StealError::CanNotStealSelf => write!(fmt, "can not steal self"),
+            StealError::EmptySibling => write!(fmt, "the sibling is empty"),
+            StealError::NoMoreSpare => write!(fmt, "self has no more spare"),
+        }
+    }
+}
+
+impl Error for StealError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct WorkStealQueue {
@@ -131,16 +157,7 @@ impl WorkStealQueue {
                 .is_ok()
             {
                 if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                    let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
-                    for _ in 0..count {
-                        match GLOBAL_QUEUE.pop() {
-                            Ok(item) => {
-                                self.queue.push(item).expect("steal to local queue failed!")
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                    GLOBAL_LOCK.store(false, Ordering::Relaxed);
+                    self.steal_global();
                     return Some(popped_item);
                 }
             }
@@ -160,28 +177,52 @@ impl WorkStealQueue {
                 indexes.swap(i, random);
             }
             for i in indexes {
-                let another: &mut WorkStealQueue =
-                    local_queues.get_mut(i).expect("get local queue failed!");
-                if std::ptr::eq(&another.queue, &self.queue) {
-                    continue;
+                if let Ok(()) = self.steal_siblings(local_queues, i) {
+                    return self.queue.pop();
                 }
-                if another.is_empty() {
-                    continue;
-                }
-                let stealer = another.queue.stealer();
-                let count = (another.len() / 2).min(self.queue.spare_capacity());
-                if count == 0 {
-                    continue;
-                }
-                stealer
-                    .steal(&self.queue, |_n| count)
-                    .expect("steal half from another local queue failed !");
-                return self.queue.pop();
             }
             match GLOBAL_QUEUE.pop() {
                 Ok(item) => Some(item),
                 Err(_) => None,
             }
+        }
+    }
+
+    pub(crate) fn steal_siblings(
+        &mut self,
+        local_queues: &mut Box<[WorkStealQueue]>,
+        i: usize,
+    ) -> Result<(), StealError> {
+        let another: &mut WorkStealQueue =
+            local_queues.get_mut(i).expect("get local queue failed!");
+        if std::ptr::eq(&another.queue, &self.queue) {
+            return Err(StealError::CanNotStealSelf);
+        }
+        if another.is_empty() {
+            return Err(StealError::EmptySibling);
+        }
+        let count = (another.len() / 2).min(self.queue.spare_capacity());
+        if count == 0 {
+            return Err(StealError::NoMoreSpare);
+        }
+        another
+            .queue
+            .stealer()
+            .steal(&self.queue, |_n| count)
+            .expect("steal half from another local queue failed !");
+        Ok(())
+    }
+
+    pub(crate) fn steal_global(&mut self) {
+        let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
+        unsafe {
+            for _ in 0..count {
+                match GLOBAL_QUEUE.pop() {
+                    Ok(item) => self.queue.push(item).expect("steal to local queue failed!"),
+                    Err(_) => break,
+                }
+            }
+            GLOBAL_LOCK.store(false, Ordering::Relaxed);
         }
     }
 }
