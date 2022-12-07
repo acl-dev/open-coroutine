@@ -152,12 +152,9 @@ impl WorkStealQueue {
         }
         unsafe {
             //尝试从全局队列steal
-            if GLOBAL_LOCK
-                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                .is_ok()
-            {
+            if WorkStealQueue::try_global_lock() {
                 if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                    self.steal_global();
+                    self.steal_global(self.queue.capacity() / 2);
                     return Some(popped_item);
                 }
             }
@@ -177,7 +174,9 @@ impl WorkStealQueue {
                 indexes.swap(i, random);
             }
             for i in indexes {
-                if let Ok(()) = self.steal_siblings(local_queues, i) {
+                let another: &mut WorkStealQueue =
+                    local_queues.get_mut(i).expect("get local queue failed!");
+                if let Ok(()) = self.steal_siblings(another, usize::MAX) {
                     return self.queue.pop();
                 }
             }
@@ -190,18 +189,18 @@ impl WorkStealQueue {
 
     pub(crate) fn steal_siblings(
         &mut self,
-        local_queues: &mut Box<[WorkStealQueue]>,
-        i: usize,
+        another: &mut WorkStealQueue,
+        count: usize,
     ) -> Result<(), StealError> {
-        let another: &mut WorkStealQueue =
-            local_queues.get_mut(i).expect("get local queue failed!");
         if std::ptr::eq(&another.queue, &self.queue) {
             return Err(StealError::CanNotStealSelf);
         }
         if another.is_empty() {
             return Err(StealError::EmptySibling);
         }
-        let count = (another.len() / 2).min(self.queue.spare_capacity());
+        let count = (another.len() / 2)
+            .min(self.queue.spare_capacity())
+            .min(count);
         if count == 0 {
             return Err(StealError::NoMoreSpare);
         }
@@ -213,9 +212,17 @@ impl WorkStealQueue {
         Ok(())
     }
 
-    pub(crate) fn steal_global(&mut self) {
-        let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
+    pub(crate) fn try_global_lock() -> bool {
         unsafe {
+            GLOBAL_LOCK
+                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+        }
+    }
+
+    pub(crate) fn steal_global(&mut self, count: usize) {
+        unsafe {
+            let count = count.min(self.queue.spare_capacity());
             for _ in 0..count {
                 match GLOBAL_QUEUE.pop() {
                     Ok(item) => self.queue.push(item).expect("steal to local queue failed!"),
