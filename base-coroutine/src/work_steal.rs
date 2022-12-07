@@ -15,9 +15,10 @@ pub fn get_queue() -> &'static mut WorkStealQueue {
 
 static mut GLOBAL_LOCK: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
-static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> = Lazy::new(ConcurrentQueue::unbounded);
+pub(crate) static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> =
+    Lazy::new(ConcurrentQueue::unbounded);
 
-static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
+pub(crate) static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
 
 #[repr(C)]
 #[derive(Debug)]
@@ -98,12 +99,14 @@ impl Error for StealError {
 #[repr(C)]
 #[derive(Debug)]
 pub struct WorkStealQueue {
+    stealing: AtomicBool,
     queue: Worker<*mut c_void>,
 }
 
 impl WorkStealQueue {
     fn new(max_capacity: usize) -> Self {
         WorkStealQueue {
+            stealing: AtomicBool::new(false),
             queue: Worker::new(max_capacity),
         }
     }
@@ -141,7 +144,25 @@ impl WorkStealQueue {
     }
 
     pub fn len(&self) -> usize {
-        self.queue.capacity() - self.queue.spare_capacity()
+        self.capacity() - self.spare()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.queue.capacity()
+    }
+
+    pub fn spare(&self) -> usize {
+        self.queue.spare_capacity()
+    }
+
+    pub(crate) fn try_lock(&mut self) -> bool {
+        self.stealing
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    }
+
+    pub(crate) fn release_lock(&mut self) {
+        self.stealing.store(false, Ordering::Relaxed);
     }
 
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
@@ -151,34 +172,39 @@ impl WorkStealQueue {
             return Some(val);
         }
         unsafe {
-            //尝试从全局队列steal
-            if WorkStealQueue::try_global_lock() {
-                if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                    self.steal_global(self.queue.capacity() / 2);
-                    return Some(popped_item);
+            if self.try_lock() {
+                //尝试从全局队列steal
+                if WorkStealQueue::try_global_lock() {
+                    if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
+                        self.steal_global(self.queue.capacity() / 2);
+                        self.release_lock();
+                        return Some(popped_item);
+                    }
                 }
-            }
-            //尝试从其他本地队列steal
-            let local_queues = LOCAL_QUEUES.get_mut().unwrap();
-            //这里生成一个打乱顺序的数组，遍历获取index
-            let mut indexes = Vec::new();
-            let len = local_queues.len();
-            for i in 0..len {
-                indexes.push(i);
-            }
-            for i in 0..(len / 2) {
-                let random = Rng {
-                    state: timer_utils::now(),
+                //尝试从其他本地队列steal
+                let local_queues = LOCAL_QUEUES.get_mut().unwrap();
+                //这里生成一个打乱顺序的数组，遍历获取index
+                let mut indexes = Vec::new();
+                let len = local_queues.len();
+                for i in 0..len {
+                    indexes.push(i);
                 }
-                .gen_usize_to(len);
-                indexes.swap(i, random);
-            }
-            for i in indexes {
-                let another: &mut WorkStealQueue =
-                    local_queues.get_mut(i).expect("get local queue failed!");
-                if let Ok(()) = self.steal_siblings(another, usize::MAX) {
-                    return self.queue.pop();
+                for i in 0..(len / 2) {
+                    let random = Rng {
+                        state: timer_utils::now(),
+                    }
+                    .gen_usize_to(len);
+                    indexes.swap(i, random);
                 }
+                for i in indexes {
+                    let another: &mut WorkStealQueue =
+                        local_queues.get_mut(i).expect("get local queue failed!");
+                    if self.steal_siblings(another, usize::MAX).is_ok() {
+                        self.release_lock();
+                        return self.queue.pop();
+                    }
+                }
+                self.release_lock();
             }
             match GLOBAL_QUEUE.pop() {
                 Ok(item) => Some(item),
