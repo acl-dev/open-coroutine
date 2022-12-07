@@ -2,6 +2,8 @@ use crate::random::Rng;
 use concurrent_queue::ConcurrentQueue;
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -13,9 +15,10 @@ pub fn get_queue() -> &'static mut WorkStealQueue {
 
 static mut GLOBAL_LOCK: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
-static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> = Lazy::new(ConcurrentQueue::unbounded);
+pub(crate) static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> =
+    Lazy::new(ConcurrentQueue::unbounded);
 
-static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
+pub(crate) static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
 
 #[repr(C)]
 #[derive(Debug)]
@@ -69,15 +72,41 @@ impl Default for Queue {
     }
 }
 
+/// Error type returned by steal methods.
+#[derive(Debug)]
+pub enum StealError {
+    CanNotStealSelf,
+    EmptySibling,
+    NoMoreSpare,
+}
+
+impl Display for StealError {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        match *self {
+            StealError::CanNotStealSelf => write!(fmt, "can not steal self"),
+            StealError::EmptySibling => write!(fmt, "the sibling is empty"),
+            StealError::NoMoreSpare => write!(fmt, "self has no more spare"),
+        }
+    }
+}
+
+impl Error for StealError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct WorkStealQueue {
+    stealing: AtomicBool,
     queue: Worker<*mut c_void>,
 }
 
 impl WorkStealQueue {
     fn new(max_capacity: usize) -> Self {
         WorkStealQueue {
+            stealing: AtomicBool::new(false),
             queue: Worker::new(max_capacity),
         }
     }
@@ -115,7 +144,25 @@ impl WorkStealQueue {
     }
 
     pub fn len(&self) -> usize {
-        self.queue.capacity() - self.queue.spare_capacity()
+        self.capacity() - self.spare()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.queue.capacity()
+    }
+
+    pub fn spare(&self) -> usize {
+        self.queue.spare_capacity()
+    }
+
+    pub(crate) fn try_lock(&mut self) -> bool {
+        self.stealing
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    }
+
+    pub(crate) fn release_lock(&mut self) {
+        self.stealing.store(false, Ordering::Relaxed);
     }
 
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
@@ -125,63 +172,90 @@ impl WorkStealQueue {
             return Some(val);
         }
         unsafe {
-            //尝试从全局队列steal
-            if GLOBAL_LOCK
-                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                .is_ok()
-            {
-                if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                    let count = (self.queue.capacity() / 2).min(self.queue.spare_capacity());
-                    for _ in 0..count {
-                        match GLOBAL_QUEUE.pop() {
-                            Ok(item) => {
-                                self.queue.push(item).expect("steal to local queue failed!")
-                            }
-                            Err(_) => break,
-                        }
+            if self.try_lock() {
+                //尝试从全局队列steal
+                if WorkStealQueue::try_global_lock() {
+                    if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
+                        self.steal_global(self.queue.capacity() / 2);
+                        self.release_lock();
+                        return Some(popped_item);
                     }
-                    GLOBAL_LOCK.store(false, Ordering::Relaxed);
-                    return Some(popped_item);
                 }
-            }
-            //尝试从其他本地队列steal
-            let local_queues = LOCAL_QUEUES.get_mut().unwrap();
-            //这里生成一个打乱顺序的数组，遍历获取index
-            let mut indexes = Vec::new();
-            let len = local_queues.len();
-            for i in 0..len {
-                indexes.push(i);
-            }
-            for i in 0..(len / 2) {
-                let random = Rng {
-                    state: timer_utils::now(),
+                //尝试从其他本地队列steal
+                let local_queues = LOCAL_QUEUES.get_mut().unwrap();
+                //这里生成一个打乱顺序的数组，遍历获取index
+                let mut indexes = Vec::new();
+                let len = local_queues.len();
+                for i in 0..len {
+                    indexes.push(i);
                 }
-                .gen_usize_to(len);
-                indexes.swap(i, random);
-            }
-            for i in indexes {
-                let another: &mut WorkStealQueue =
-                    local_queues.get_mut(i).expect("get local queue failed!");
-                if std::ptr::eq(&another.queue, &self.queue) {
-                    continue;
+                for i in 0..(len / 2) {
+                    let random = Rng {
+                        state: timer_utils::now(),
+                    }
+                    .gen_usize_to(len);
+                    indexes.swap(i, random);
                 }
-                if another.is_empty() {
-                    continue;
+                for i in indexes {
+                    let another: &mut WorkStealQueue =
+                        local_queues.get_mut(i).expect("get local queue failed!");
+                    if self.steal_siblings(another, usize::MAX).is_ok() {
+                        self.release_lock();
+                        return self.queue.pop();
+                    }
                 }
-                let stealer = another.queue.stealer();
-                let count = (another.len() / 2).min(self.queue.spare_capacity());
-                if count == 0 {
-                    continue;
-                }
-                stealer
-                    .steal(&self.queue, |_n| count)
-                    .expect("steal half from another local queue failed !");
-                return self.queue.pop();
+                self.release_lock();
             }
             match GLOBAL_QUEUE.pop() {
                 Ok(item) => Some(item),
                 Err(_) => None,
             }
+        }
+    }
+
+    pub(crate) fn steal_siblings(
+        &mut self,
+        another: &mut WorkStealQueue,
+        count: usize,
+    ) -> Result<(), StealError> {
+        if std::ptr::eq(&another.queue, &self.queue) {
+            return Err(StealError::CanNotStealSelf);
+        }
+        if another.is_empty() {
+            return Err(StealError::EmptySibling);
+        }
+        let count = (another.len() / 2)
+            .min(self.queue.spare_capacity())
+            .min(count);
+        if count == 0 {
+            return Err(StealError::NoMoreSpare);
+        }
+        another
+            .queue
+            .stealer()
+            .steal(&self.queue, |_n| count)
+            .expect("steal half from another local queue failed !");
+        Ok(())
+    }
+
+    pub(crate) fn try_global_lock() -> bool {
+        unsafe {
+            GLOBAL_LOCK
+                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+        }
+    }
+
+    pub(crate) fn steal_global(&mut self, count: usize) {
+        unsafe {
+            let count = count.min(self.queue.spare_capacity());
+            for _ in 0..count {
+                match GLOBAL_QUEUE.pop() {
+                    Ok(item) => self.queue.push(item).expect("steal to local queue failed!"),
+                    Err(_) => break,
+                }
+            }
+            GLOBAL_LOCK.store(false, Ordering::Relaxed);
         }
     }
 }
