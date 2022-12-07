@@ -29,10 +29,10 @@ impl Monitor {
         //通过这种方式来初始化monitor线程
         MONITOR.get_or_init(|| {
             std::thread::spawn(|| {
-                let global = Monitor::global();
-                while global.flag.load(Ordering::Acquire) {
-                    global.signal();
-                    global.work_balance();
+                let monitor = Monitor::global();
+                while monitor.flag.load(Ordering::Acquire) {
+                    monitor.signal();
+                    monitor.balance();
                     //fixme 这里在hook的情况下应该调用原始系统函数
                     std::thread::sleep(Duration::from_millis(1));
                 }
@@ -112,7 +112,7 @@ impl Monitor {
         SIGNAL_TIME.with(|boxed| *boxed.borrow_mut() = 0)
     }
 
-    fn work_balance(&self) {
+    fn balance(&self) {
         unsafe {
             if let Some(local_queues) = LOCAL_QUEUES.get_mut() {
                 let mut max = (0, 0);
