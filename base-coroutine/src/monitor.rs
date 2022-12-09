@@ -115,7 +115,7 @@ impl Monitor {
     fn balance(&self) {
         unsafe {
             if let Some(local_queues) = LOCAL_QUEUES.get_mut() {
-                let mut max = (0, 0);
+                let mut max = (usize::MIN, 0);
                 let mut min = (usize::MAX, 0);
                 //全局队列没有则不从全局队列steal
                 if !GLOBAL_QUEUE.is_empty() {
@@ -144,13 +144,14 @@ impl Monitor {
                     }
                 }
                 //任务少的从任务多的steal，相差不大时不steal
-                let count = max.0 - min.0;
-                if count >= 64 {
-                    let idle_more = local_queues.get_mut(max.1).unwrap();
-                    let idle_less = LOCAL_QUEUES.get_mut().unwrap().get_mut(min.1).unwrap();
-                    if idle_more.try_lock() {
-                        let _ = idle_more.steal_siblings(idle_less, count / 2);
-                        idle_more.release_lock();
+                if let Some(count) = max.0.checked_sub(min.0) {
+                    if count >= 64 {
+                        let idle_more = local_queues.get_mut(max.1).unwrap();
+                        let idle_less = LOCAL_QUEUES.get_mut().unwrap().get_mut(min.1).unwrap();
+                        if idle_more.try_lock() {
+                            let _ = idle_more.steal_siblings(idle_less, count / 2);
+                            idle_more.release_lock();
+                        }
                     }
                 }
             }
