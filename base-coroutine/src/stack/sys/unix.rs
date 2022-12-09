@@ -29,11 +29,17 @@ const MAP_STACK: libc::c_int = 0;
 )))]
 const MAP_STACK: libc::c_int = libc::MAP_STACK;
 
+use jemallocator::Jemalloc;
+
+#[global_allocator]
+static ALLOCATOR: Jemalloc = Jemalloc;
+
 pub unsafe fn allocate_stack(size: usize) -> io::Result<Stack> {
     const NULL: *mut libc::c_void = 0 as *mut libc::c_void;
     const PROT: libc::c_int = libc::PROT_READ | libc::PROT_WRITE;
     const TYPE: libc::c_int = libc::MAP_PRIVATE | libc::MAP_ANON | MAP_STACK;
 
+    //todo use Jemalloc
     let ptr = libc::mmap(NULL, size, PROT, TYPE, -1, 0);
 
     if ptr == libc::MAP_FAILED {
@@ -65,6 +71,7 @@ pub unsafe fn protect_stack(stack: &Stack) -> io::Result<Stack> {
 }
 
 pub unsafe fn deallocate_stack(ptr: *mut c_void, size: usize) {
+    //todo use Jemalloc
     libc::munmap(ptr as *mut libc::c_void, size);
 }
 
