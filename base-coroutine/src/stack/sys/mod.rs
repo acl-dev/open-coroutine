@@ -23,6 +23,6 @@ pub use self::windows::{
 
 pub fn default_stack_size() -> usize {
     let size = self::min_stack_size() * 8;
-    let max_stack_size = self::max_stack_size(true);
+    let max_stack_size = self::max_stack_size(false);
     size.min(max_stack_size)
 }

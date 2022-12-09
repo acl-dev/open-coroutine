@@ -96,7 +96,7 @@ impl Stack {
     /// Returns the maximum stack size allowed by the current platform.
     #[inline]
     pub fn max_size() -> usize {
-        sys::max_stack_size(true)
+        sys::max_stack_size(false)
     }
 
     /// Returns a implementation defined default stack size.
@@ -114,7 +114,6 @@ impl Stack {
         let page_size = sys::page_size();
         let min_stack_size = sys::min_stack_size();
         let max_stack_size = sys::max_stack_size(false);
-        let add = page_size << 1;
 
         if size < min_stack_size {
             size = min_stack_size;
@@ -122,19 +121,23 @@ impl Stack {
 
         size = (size - 1) & !(page_size - 1);
 
-        if let Some(size) = size.checked_add(add) {
+        if let Some(size) = size.checked_add(page_size) {
             if size <= max_stack_size {
-                let mut ret = unsafe { sys::allocate_stack(size) };
-
-                if let Ok(stack) = ret {
-                    ret = unsafe { sys::protect_stack(&stack) };
-                }
-
-                return ret.map_err(StackError::IoError);
+                unsafe {
+                    let ptr = jemalloc_sys::malloc(size);
+                    return if ptr.is_null() {
+                        Err(io::Error::last_os_error()).map_err(StackError::IoError)
+                    } else {
+                        Ok(Stack::new(
+                            (ptr as usize + size) as *mut c_void,
+                            ptr as *mut c_void,
+                        ))
+                    };
+                };
             }
         }
 
-        Err(StackError::ExceedsMaximumSize(max_stack_size - add))
+        Err(StackError::ExceedsMaximumSize(max_stack_size - page_size))
     }
 }
 
@@ -181,33 +184,25 @@ impl Default for ProtectedFixedSizeStack {
 
 impl Drop for ProtectedFixedSizeStack {
     fn drop(&mut self) {
-        let page_size = sys::page_size();
-        let guard = (self.0.bottom() as usize - page_size) as *mut c_void;
-        let size_with_guard = self.0.len() + page_size;
-        unsafe {
-            sys::deallocate_stack(guard, size_with_guard);
-        }
+        unsafe { jemalloc_sys::sdallocx(self.0.bottom(), self.0.len(), 0) };
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::ptr::write_bytes;
-
     use super::*;
-    use sys;
 
     #[test]
     fn stack_size_too_small() {
         let stack = ProtectedFixedSizeStack::new(0).unwrap();
-        assert_eq!(stack.len(), sys::min_stack_size());
+        assert_eq!(stack.len(), Stack::min_size());
 
-        unsafe { write_bytes(stack.bottom() as *mut u8, 0x1d, stack.len()) };
+        unsafe { std::ptr::write_bytes(stack.bottom() as *mut u8, 0x1d, stack.len()) };
     }
 
     #[test]
     fn stack_size_too_large() {
-        let stack_size = sys::max_stack_size(true);
+        let stack_size = Stack::max_size();
 
         match ProtectedFixedSizeStack::new(stack_size) {
             Err(StackError::ExceedsMaximumSize(..)) => panic!(),
