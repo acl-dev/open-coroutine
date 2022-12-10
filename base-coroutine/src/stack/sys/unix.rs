@@ -30,13 +30,9 @@ const MAP_STACK: libc::c_int = 0;
 const MAP_STACK: libc::c_int = libc::MAP_STACK;
 
 pub unsafe fn allocate_stack(size: usize) -> io::Result<Stack> {
-    const NULL: *mut libc::c_void = 0 as *mut libc::c_void;
-    const PROT: libc::c_int = libc::PROT_READ | libc::PROT_WRITE;
-    const TYPE: libc::c_int = libc::MAP_PRIVATE | libc::MAP_ANON | MAP_STACK;
-
-    let ptr = libc::mmap(NULL, size, PROT, TYPE, -1, 0);
-
-    if ptr == libc::MAP_FAILED {
+    let size = size - page_size();
+    let ptr = jemalloc_sys::malloc(size);
+    if ptr.is_null() {
         Err(io::Error::last_os_error())
     } else {
         Ok(Stack::new(
@@ -48,24 +44,16 @@ pub unsafe fn allocate_stack(size: usize) -> io::Result<Stack> {
 
 pub unsafe fn protect_stack(stack: &Stack) -> io::Result<Stack> {
     let page_size = page_size();
-
     debug_assert!(stack.len() % page_size == 0 && stack.len() != 0);
-
-    let ret = {
-        let bottom = stack.bottom() as *mut libc::c_void;
-        libc::mprotect(bottom, page_size, libc::PROT_NONE)
-    };
-
-    if ret != 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        let bottom = (stack.bottom() as usize + page_size) as *mut c_void;
-        Ok(Stack::new(stack.top(), bottom))
-    }
+    //使用jemalloc后不需要mprotect
+    Ok(Stack::new(stack.top(), stack.bottom()))
 }
 
 pub unsafe fn deallocate_stack(ptr: *mut c_void, size: usize) {
-    libc::munmap(ptr as *mut libc::c_void, size);
+    let page_size = page_size();
+    let ptr = (ptr as usize + page_size) as *mut c_void;
+    let size = size - page_size;
+    jemalloc_sys::sdallocx(ptr, size, 0);
 }
 
 pub fn page_size() -> usize {
