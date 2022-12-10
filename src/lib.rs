@@ -10,11 +10,11 @@ extern "C" {
         f: UserFunc<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
         param: Option<&'static mut c_void>,
         stack_size: usize,
-    );
+    ) -> libc::c_int;
 
-    fn try_timed_schedule(ns_time: u64);
+    fn try_timed_schedule(ns_time: u64) -> libc::c_int;
 
-    fn timed_schedule(ns_time: u64);
+    fn timed_schedule(ns_time: u64) -> libc::c_int;
 }
 
 pub fn init() {
@@ -25,12 +25,12 @@ pub fn co(
     f: UserFunc<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
     param: Option<&'static mut c_void>,
     stack_size: usize,
-) {
-    unsafe { coroutine_crate(f, param, stack_size) }
+) -> bool {
+    unsafe { coroutine_crate(f, param, stack_size) == 0 }
 }
 
-pub fn schedule() {
-    unsafe { try_timed_schedule(u64::MAX) }
+pub fn schedule() -> bool {
+    unsafe { try_timed_schedule(u64::MAX) == 0 }
 }
 
 #[cfg(test)]
@@ -62,14 +62,14 @@ mod tests {
 
     #[test]
     fn simplest() {
-        co(f1, None, 4096);
-        co(f2, None, 4096);
-        schedule();
+        assert!(co(f1, None, 4096));
+        assert!(co(f2, None, 4096));
+        assert!(schedule());
     }
 
     fn hook_test(secs: u64) {
-        co(f1, None, 4096);
-        co(f2, None, 4096);
+        assert!(co(f1, None, 4096));
+        assert!(co(f2, None, 4096));
         std::thread::sleep(Duration::from_millis(secs))
     }
 

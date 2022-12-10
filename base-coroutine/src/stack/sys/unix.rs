@@ -44,7 +44,7 @@ pub unsafe fn allocate_stack(size: usize) -> io::Result<Stack> {
 
 pub unsafe fn protect_stack(stack: &Stack) -> io::Result<Stack> {
     let page_size = page_size();
-    debug_assert!(stack.len() % page_size == 0 && stack.len() != 0);
+    debug_assert!(stack.len() % page_size == 0 && !stack.is_empty());
     //使用jemalloc后不需要mprotect
     Ok(Stack::new(stack.top(), stack.bottom()))
 }

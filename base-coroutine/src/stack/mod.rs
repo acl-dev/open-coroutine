@@ -63,7 +63,7 @@ impl Stack {
     /// It is unsafe because it is your reponsibility to make sure that `top` and `buttom` are valid
     /// addresses.
     #[inline]
-    pub unsafe fn new(top: *mut c_void, bottom: *mut c_void) -> Stack {
+    pub(crate) unsafe fn new(top: *mut c_void, bottom: *mut c_void) -> Stack {
         debug_assert!(top >= bottom);
 
         Stack { top, bottom }
@@ -85,6 +85,11 @@ impl Stack {
     #[inline]
     pub fn len(&self) -> usize {
         self.top as usize - self.bottom as usize
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns the minimal stack size allowed by the current platform.

@@ -3,7 +3,7 @@ use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
-use crate::stack::ProtectedFixedSizeStack;
+use crate::stack::{ProtectedFixedSizeStack, StackError};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
@@ -171,11 +171,13 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         }
     }
 
-    pub fn new(proc: UserFunc<'a, Param, Yield, Return>, param: Param, size: usize) -> Self {
-        let stack = ProtectedFixedSizeStack::new(size).unwrap_or_else(|err| {
-            panic!("Failed to allocate ProtectedFixedSizeStack with {:?}", err)
-        });
-        OpenCoroutine {
+    pub fn new(
+        proc: UserFunc<'a, Param, Yield, Return>,
+        param: Param,
+        size: usize,
+    ) -> Result<Self, StackError> {
+        let stack = ProtectedFixedSizeStack::new(size)?;
+        Ok(OpenCoroutine {
             id: IdGenerator::next_coroutine_id(),
             sp: Transfer::new(
                 unsafe {
@@ -191,7 +193,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             proc,
             marker: Default::default(),
             param,
-        }
+        })
     }
 
     pub fn resume_with(&mut self, val: Param) -> CoroutineResult<Yield, Return> {
@@ -237,7 +239,8 @@ mod tests {
             assert_eq!(0, input);
             1
         }
-        let mut coroutine = OpenCoroutine::new(context_func, 0, 2048);
+        let mut coroutine =
+            OpenCoroutine::new(context_func, 0, 2048).expect("create coroutine failed !");
         assert_eq!(1, coroutine.resume_with(0).as_return().unwrap());
     }
 
@@ -248,7 +251,8 @@ mod tests {
             assert_eq!(3, yielder.suspend(2));
             6
         }
-        let mut coroutine = OpenCoroutine::new(context_func, 1, 2048);
+        let mut coroutine =
+            OpenCoroutine::new(context_func, 1, 2048).expect("create coroutine failed !");
         assert_eq!(2, coroutine.resume_with(1).as_yield().unwrap());
     }
 
@@ -260,7 +264,8 @@ mod tests {
             assert_eq!(5, yielder.suspend(4));
             6
         }
-        let mut coroutine = OpenCoroutine::new(context_func, 1, 2048);
+        let mut coroutine =
+            OpenCoroutine::new(context_func, 1, 2048).expect("create coroutine failed !");
         assert_eq!(2, coroutine.resume_with(1).as_yield().unwrap());
         assert_eq!(4, coroutine.resume_with(3).as_yield().unwrap());
         assert_eq!(6, coroutine.resume_with(5).as_return().unwrap());

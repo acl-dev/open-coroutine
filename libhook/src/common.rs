@@ -19,17 +19,26 @@ pub extern "C" fn coroutine_crate(
     f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
     param: &'static mut c_void,
     stack_size: usize,
-) {
-    Scheduler::current().submit(f, param, stack_size)
+) -> libc::c_int {
+    match Scheduler::current().submit(f, param, stack_size) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
 }
 
 ///轮询协程
 #[no_mangle]
-pub extern "C" fn try_timed_schedule(ns_time: u64) {
-    Scheduler::current().try_timed_schedule(Duration::from_nanos(ns_time));
+pub extern "C" fn try_timed_schedule(ns_time: u64) -> libc::c_int {
+    match Scheduler::current().try_timed_schedule(Duration::from_nanos(ns_time)) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn timed_schedule(ns_time: u64) {
-    Scheduler::current().timed_schedule(Duration::from_nanos(ns_time));
+pub extern "C" fn timed_schedule(ns_time: u64) -> libc::c_int {
+    match Scheduler::current().timed_schedule(Duration::from_nanos(ns_time)) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
 }
