@@ -2,6 +2,7 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
+use crate::stack::{Stack, StackError};
 use crate::work_steal::{get_queue, WorkStealQueue};
 use object_collection::{ObjectList, ObjectMap};
 use std::cell::RefCell;
@@ -114,36 +115,40 @@ impl Scheduler {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
-    ) {
-        let mut coroutine = Coroutine::new(f, val, size);
+    ) -> Result<(), StackError> {
+        let mut coroutine = Coroutine::new(f, val, size)?;
         coroutine.status = Status::Ready;
         self.ready.push_back(coroutine);
+        Ok(())
     }
 
-    pub fn timed_schedule(&mut self, timeout: Duration) -> ObjectMap<usize> {
+    pub fn timed_schedule(&mut self, timeout: Duration) -> Result<ObjectMap<usize>, StackError> {
         let timeout_time = timer_utils::get_timeout_time(timeout);
         let mut scheduled = ObjectMap::new();
         while !self.suspend.is_empty() || !self.ready.is_empty() {
             if timeout_time <= timer_utils::now() {
                 break;
             }
-            let temp = self.try_timeout_schedule(timeout_time);
+            let temp = self.try_timeout_schedule(timeout_time)?;
             for (k, v) in temp {
                 scheduled.insert(k, v);
             }
         }
-        scheduled
+        Ok(scheduled)
     }
 
-    pub fn try_schedule(&mut self) -> ObjectMap<usize> {
+    pub fn try_schedule(&mut self) -> Result<ObjectMap<usize>, StackError> {
         self.try_timeout_schedule(Duration::MAX.as_secs())
     }
 
-    pub fn try_timed_schedule(&mut self, time: Duration) -> ObjectMap<usize> {
+    pub fn try_timed_schedule(&mut self, time: Duration) -> Result<ObjectMap<usize>, StackError> {
         self.try_timeout_schedule(timer_utils::get_timeout_time(time))
     }
 
-    pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> ObjectMap<usize> {
+    pub fn try_timeout_schedule(
+        &mut self,
+        timeout_time: u64,
+    ) -> Result<ObjectMap<usize>, StackError> {
         let mut result = ObjectMap::new();
         Scheduler::init_results(&mut result);
         Scheduler::init_timeout_time(timeout_time);
@@ -153,11 +158,11 @@ impl Scheduler {
             Scheduler::current().do_schedule();
             unreachable!("should not execute to here !")
         }
-        let mut main = MainCoroutine::new(main_context_func, (), 128 * 1024);
+        let mut main = MainCoroutine::new(main_context_func, (), Stack::default_size())?;
         main.resume();
         Scheduler::clean_results();
         Scheduler::clean_time();
-        result
+        Ok(result)
     }
 
     fn back_to_main() {
@@ -275,7 +280,7 @@ mod tests {
             println!("[coroutine1] launched");
             null()
         }
-        scheduler.submit(f1, null(), 4096);
+        scheduler.submit(f1, null(), 4096).expect("submit failed !");
         extern "C" fn f2(
             _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
@@ -283,8 +288,8 @@ mod tests {
             println!("[coroutine2] launched");
             null()
         }
-        scheduler.submit(f2, null(), 4096);
-        scheduler.try_schedule();
+        scheduler.submit(f2, null(), 4096).expect("submit failed !");
+        scheduler.try_schedule().expect("try_schedule failed !");
     }
 
     #[test]
@@ -299,7 +304,9 @@ mod tests {
             println!("[coroutine1] back");
             null()
         }
-        scheduler.submit(suspend1, null(), 4096);
+        scheduler
+            .submit(suspend1, null(), 4096)
+            .expect("submit failed !");
         extern "C" fn suspend2(
             yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
@@ -309,8 +316,10 @@ mod tests {
             println!("[coroutine2] back");
             null()
         }
-        scheduler.submit(suspend2, null(), 4096);
-        scheduler.try_schedule();
+        scheduler
+            .submit(suspend2, null(), 4096)
+            .expect("submit failed !");
+        scheduler.try_schedule().expect("try_schedule failed !");
     }
 
     extern "C" fn delay(
@@ -326,17 +335,23 @@ mod tests {
     #[test]
     fn with_delay() {
         let scheduler = Scheduler::current();
-        scheduler.submit(delay, null(), 4096);
-        scheduler.try_schedule();
+        scheduler
+            .submit(delay, null(), 4096)
+            .expect("submit failed !");
+        scheduler.try_schedule().expect("try_schedule failed !");
         thread::sleep(Duration::from_millis(100));
-        scheduler.try_schedule();
+        scheduler.try_schedule().expect("try_schedule failed !");
     }
 
     #[test]
     fn timed_schedule() {
         let scheduler = Scheduler::current();
-        scheduler.submit(delay, null(), 4096);
-        scheduler.timed_schedule(Duration::from_millis(200));
+        scheduler
+            .submit(delay, null(), 4096)
+            .expect("submit failed !");
+        scheduler
+            .timed_schedule(Duration::from_millis(200))
+            .expect("try_schedule failed !");
     }
 
     #[cfg(unix)]
@@ -357,7 +372,7 @@ mod tests {
                 }
                 null()
             }
-            scheduler.submit(f1, null(), 4096);
+            scheduler.submit(f1, null(), 4096).expect("submit failed !");
             extern "C" fn f2(
                 _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
                 _input: &'static mut c_void,
@@ -367,8 +382,8 @@ mod tests {
                 }
                 null()
             }
-            scheduler.submit(f2, null(), 4096);
-            scheduler.try_schedule();
+            scheduler.submit(f2, null(), 4096).expect("submit failed !");
+            scheduler.try_schedule().expect("try_schedule failed !");
         });
         unsafe {
             handler.join().unwrap();

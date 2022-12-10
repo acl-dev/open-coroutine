@@ -4,6 +4,8 @@ mod id;
 #[allow(dead_code)]
 mod stack;
 
+pub use stack::{Stack, StackError};
+
 #[allow(dead_code)]
 mod context;
 

@@ -53,9 +53,12 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     };
     let nanos_time = Duration::from_nanos(nanos_time);
     let timeout_time = timer_utils::get_timeout_time(nanos_time);
-    //fixme 这里会导致CPU空循环，先跑通demo
-    //Scheduler::current().try_timed_schedule(nanos_time);
-    Scheduler::current().timed_schedule(nanos_time);
+    let _ = if cfg!(target_os = "macos") {
+        Scheduler::current().try_timed_schedule(nanos_time)
+    } else {
+        //fixme 这里会导致CPU空循环，先跑通demo
+        Scheduler::current().timed_schedule(nanos_time)
+    };
     // 可能schedule完还剩一些时间，此时本地队列没有任务可做
     // 后续考虑work-steal，需要在Scheduler增加timed_schedule实现
     let schedule_finished_time = timer_utils::now();
