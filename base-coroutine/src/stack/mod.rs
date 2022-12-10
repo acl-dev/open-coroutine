@@ -114,6 +114,8 @@ impl Stack {
         let page_size = sys::page_size();
         let min_stack_size = sys::min_stack_size();
         let max_stack_size = sys::max_stack_size(false);
+        //unix环境使用jemalloc后不需要mprotect，这里add其实不用左移
+        //为了兼容windows环境，此处不做修改
         let add = page_size << 1;
 
         if size < min_stack_size {
@@ -192,22 +194,18 @@ impl Drop for ProtectedFixedSizeStack {
 
 #[cfg(test)]
 mod tests {
-    use std::ptr::write_bytes;
-
     use super::*;
-    use sys;
 
     #[test]
     fn stack_size_too_small() {
         let stack = ProtectedFixedSizeStack::new(0).unwrap();
-        assert_eq!(stack.len(), sys::min_stack_size());
-
-        unsafe { write_bytes(stack.bottom() as *mut u8, 0x1d, stack.len()) };
+        assert_eq!(stack.len(), Stack::min_size());
+        unsafe { std::ptr::write_bytes(stack.bottom() as *mut u8, 0x1d, stack.len()) };
     }
 
     #[test]
     fn stack_size_too_large() {
-        let stack_size = sys::max_stack_size(true);
+        let stack_size = Stack::max_size();
 
         match ProtectedFixedSizeStack::new(stack_size) {
             Err(StackError::ExceedsMaximumSize(..)) => panic!(),
