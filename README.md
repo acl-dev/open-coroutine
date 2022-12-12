@@ -8,7 +8,14 @@ Still under development, please `do not` use this library in the `production` en
 
 Only support hook several `system calls`.
 
-Windows support is on the way, but the `priority is low`.
+### Features
+#### 0.1.0
+- [x] basic suspend/resume supported
+- [x] use jemalloc as memory pool
+- [x] higher level coroutine abstraction supported
+- [x] preemptive scheduling supported
+- [x] work stealing supported
+- [x] sleep system call hooks supported
 
 ### How to use this library ?
 
@@ -16,7 +23,8 @@ Windows support is on the way, but the `priority is low`.
 add dependency to your `Cargo.toml`
 ```toml
 [dependencies]
-open-coroutine = "0.0.7"
+# check https://crates.io/crates/open-coroutine
+open-coroutine = "x.y.z"
 ```
 
 #### step2 
