@@ -1,6 +1,6 @@
 [package]
 name = "open-coroutine"
-version = "0.0.7"
+version = "0.1.0"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
@@ -21,7 +21,7 @@ members = [
 
 [dependencies]
 libc = "0.2.119"
-base-coroutine = { version = "0.0.2", path = "base-coroutine" }
+base-coroutine = { version = "0.1.0", path = "base-coroutine" }
 
 [dev-dependencies]
 # benchmark

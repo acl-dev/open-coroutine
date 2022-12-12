@@ -9,8 +9,8 @@ license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
 libc = "0.2.119"
-base-coroutine = { version = "0.0.2", path = "../base-coroutine" }
-timer-utils = { version = "0.0.2", path = "../timer-utils" }
+base-coroutine = { version = "0.1.0", path = "../base-coroutine" }
+timer-utils = { version = "0.0.3", path = "../timer-utils" }
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.42.0", features = [
