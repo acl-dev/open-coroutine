@@ -51,7 +51,29 @@ impl Scheduler {
                     }
                 }
             }
-            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
+            #[cfg(any(
+                target_os = "macos",
+                target_os = "ios",
+                target_os = "tvos",
+                target_os = "watchos",
+                target_os = "freebsd",
+                target_os = "dragonfly",
+                target_os = "openbsd",
+                target_os = "netbsd"
+            ))]
+            let act = libc::sigaction {
+                sa_sigaction: sigurg_handler as libc::sighandler_t,
+                sa_mask: libc::SIGURG as libc::sigset_t,
+                sa_flags: libc::SA_RESTART,
+            };
+            #[cfg(target_os = "linux")]
+            let act = libc::sigaction {
+                sa_sigaction: sigurg_handler as libc::sighandler_t,
+                sa_mask: libc::SIGURG as libc::sigset_t,
+                sa_flags: libc::SA_RESTART,
+                sa_restorer: None,
+            };
+            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
         }
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
