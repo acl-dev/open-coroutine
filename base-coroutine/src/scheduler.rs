@@ -69,24 +69,9 @@ impl Scheduler {
             #[cfg(target_os = "linux")]
             let act = libc::sigaction {
                 sa_sigaction: sigurg_handler as libc::sighandler_t,
-                sa_mask: [
-                    libc::SIGURG as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                    0 as libc::c_ulong,
-                ] as libc::sigset_t,
+                sa_mask: libc::sigset_t {
+                    __val: [libc::SIGURG, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                },
                 sa_flags: libc::SA_RESTART,
                 sa_restorer: None,
             };
