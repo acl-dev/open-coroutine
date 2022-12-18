@@ -51,47 +51,10 @@ impl Scheduler {
                     }
                 }
             }
-            #[cfg(any(
-                target_os = "macos",
-                target_os = "ios",
-                target_os = "tvos",
-                target_os = "watchos",
-                target_os = "freebsd",
-                target_os = "dragonfly",
-                target_os = "openbsd",
-                target_os = "netbsd"
-            ))]
-            let act = libc::sigaction {
-                sa_sigaction: sigurg_handler as libc::sighandler_t,
-                sa_mask: libc::SIGURG as libc::sigset_t,
-                sa_flags: libc::SA_RESTART,
-            };
-            #[cfg(target_os = "linux")]
-            let act = libc::sigaction {
-                sa_sigaction: sigurg_handler as libc::sighandler_t,
-                sa_mask: libc::sigset_t {
-                    __val: [
-                        libc::SIGURG as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                    ],
-                },
-                sa_flags: libc::SA_RESTART,
-                sa_restorer: None,
-            };
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+            act.sa_flags = libc::SA_RESTART;
             libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
         }
         Scheduler {
