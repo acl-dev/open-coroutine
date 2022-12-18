@@ -37,7 +37,7 @@ pub fn schedule() -> bool {
 mod tests {
     use crate::{co, init, schedule, Yielder};
     use std::os::raw::c_void;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_link() {
@@ -67,10 +67,20 @@ mod tests {
         assert!(schedule());
     }
 
-    fn hook_test(secs: u64) {
+    fn now() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("1970-01-01 00:00:00 UTC was {} seconds ago!")
+            .as_nanos() as u64
+    }
+
+    fn hook_test(millis: u64) {
         assert!(co(f1, None, 4096));
         assert!(co(f2, None, 4096));
-        std::thread::sleep(Duration::from_millis(secs))
+        let start = now();
+        std::thread::sleep(Duration::from_millis(millis));
+        let end = now();
+        assert!(end - start >= millis);
     }
 
     #[test]

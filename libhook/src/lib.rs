@@ -3,7 +3,7 @@ mod common;
 
 pub use common::*;
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::not_unsafe_ptr_arg_deref)]
 #[cfg(unix)]
 mod unix;
 

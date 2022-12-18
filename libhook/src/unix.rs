@@ -1,5 +1,4 @@
 use base_coroutine::scheduler::Scheduler;
-use std::time::Duration;
 
 //sleep相关
 #[no_mangle]
@@ -37,50 +36,12 @@ static mut NANOSLEEP: Option<
     extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int,
 > = None;
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
-    let nanos_time = unsafe {
-        let tv_sec = (*rqtp).tv_sec;
-        let tv_nsec = (*rqtp).tv_nsec;
-        if tv_sec < 0 || tv_nsec < 0 {
-            return -1;
-        }
-        match (tv_sec as u64).checked_mul(1_000_000_000) {
-            Some(v) => v.checked_add(tv_nsec as u64).unwrap_or(u64::MAX),
-            None => u64::MAX,
-        }
-    };
-    let nanos_time = Duration::from_nanos(nanos_time);
-    let timeout_time = timer_utils::get_timeout_time(nanos_time);
-    let _ = if cfg!(target_os = "macos") {
-        Scheduler::current().try_timed_schedule(nanos_time)
-    } else {
-        //fixme 这里会导致CPU空循环，先跑通demo
-        Scheduler::current().timed_schedule(nanos_time)
-    };
-    // 可能schedule完还剩一些时间，此时本地队列没有任务可做
-    // 后续考虑work-steal，需要在Scheduler增加timed_schedule实现
-    let schedule_finished_time = timer_utils::now();
-    //处理溢出的情况
-    let left_time = match timeout_time.checked_sub(schedule_finished_time) {
-        Some(v) => v,
-        None => {
-            if !rmtp.is_null() {
-                unsafe {
-                    (*rmtp).tv_sec = 0;
-                    (*rmtp).tv_nsec = 0;
-                }
-            }
-            return 0;
-        }
-    } as i64;
-    let sec = left_time / 1_000_000_000;
-    let nsec = left_time % 1_000_000_000;
-    let rqtp = libc::timespec {
-        tv_sec: sec,
-        tv_nsec: nsec,
-    };
+    let mut rqtp = unsafe { *rqtp };
+    if rqtp.tv_sec < 0 || rqtp.tv_nsec < 0 {
+        return -1;
+    }
     //获取原始系统函数nanosleep
     let original = unsafe {
         match NANOSLEEP {
@@ -96,7 +57,36 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
             }
         }
     };
-    //fixme 这里在linux环境下调用真实系统函数会报错
-    //相当于libc::nanosleep(&rqtp, rmtp)
-    original(&rqtp, rmtp)
+    let nanos_time = match (rqtp.tv_sec as u64).checked_mul(1_000_000_000) {
+        Some(v) => v.checked_add(rqtp.tv_nsec as u64).unwrap_or(u64::MAX),
+        None => u64::MAX,
+    };
+    let timeout_time = timer_utils::add_timeout_time(nanos_time);
+    loop {
+        let _ = Scheduler::current().try_timeout_schedule(timeout_time);
+        // 可能schedule完还剩一些时间，此时本地队列没有任务可做
+        let schedule_finished_time = timer_utils::now();
+        let left_time = match timeout_time.checked_sub(schedule_finished_time) {
+            Some(v) => v,
+            None => {
+                if !rmtp.is_null() {
+                    unsafe {
+                        (*rmtp).tv_sec = 0;
+                        (*rmtp).tv_nsec = 0;
+                    }
+                }
+                return 0;
+            }
+        } as i64;
+        let sec = left_time / 1_000_000_000;
+        let nsec = left_time % 1_000_000_000;
+        rqtp = libc::timespec {
+            tv_sec: sec,
+            tv_nsec: nsec,
+        };
+        //相当于libc::nanosleep(&rqtp, rmtp)
+        if original(&rqtp, rmtp) == 0 {
+            return 0;
+        }
+    }
 }
