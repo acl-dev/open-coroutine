@@ -306,7 +306,10 @@ mod tests {
 
     #[test]
     fn test_current() {
-        extern "C" fn context_func(_yielder: &Yielder<usize, usize, usize>, _input: usize) -> usize {
+        extern "C" fn context_func(
+            _yielder: &Yielder<usize, usize, usize>,
+            _input: usize,
+        ) -> usize {
             assert!(OpenCoroutine::<usize, usize, usize>::current().is_some());
             1
         }
