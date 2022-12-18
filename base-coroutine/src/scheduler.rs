@@ -69,7 +69,24 @@ impl Scheduler {
             #[cfg(target_os = "linux")]
             let act = libc::sigaction {
                 sa_sigaction: sigurg_handler as libc::sighandler_t,
-                sa_mask: libc::SIGURG as libc::sigset_t,
+                sa_mask: [
+                    libc::SIGURG as libc::sigset_t,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
                 sa_flags: libc::SA_RESTART,
                 sa_restorer: None,
             };
