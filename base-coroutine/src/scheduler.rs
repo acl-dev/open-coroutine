@@ -25,16 +25,11 @@ type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 pub struct Scheduler {
     id: usize,
     ready: &'static mut WorkStealQueue,
-    //正在执行的协程id
-    running: Option<usize>,
     suspend: TimerList,
     //not support for now
-    #[allow(unused)]
     system_call: ObjectList,
     //not support for now
-    #[allow(unused)]
     copy_stack: ObjectList,
-    finished: ObjectList,
 }
 
 impl Scheduler {
@@ -60,11 +55,9 @@ impl Scheduler {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
             ready: get_queue(),
-            running: None,
             suspend: TimerList::new(),
             system_call: ObjectList::new(),
             copy_stack: ObjectList::new(),
-            finished: ObjectList::new(),
         }
     }
 
@@ -129,7 +122,11 @@ impl Scheduler {
     pub fn timed_schedule(&mut self, timeout: Duration) -> Result<ObjectMap<usize>, StackError> {
         let timeout_time = timer_utils::get_timeout_time(timeout);
         let mut scheduled = ObjectMap::new();
-        while !self.suspend.is_empty() || !self.ready.is_empty() {
+        while !self.ready.is_empty()
+            || !self.suspend.is_empty()
+            || !self.system_call.is_empty()
+            || !self.copy_stack.is_empty()
+        {
             if timeout_time <= timer_utils::now() {
                 break;
             }
@@ -187,10 +184,9 @@ impl Scheduler {
         self.check_ready();
         match self.ready.pop_front_raw() {
             Some(pointer) => {
-                let mut coroutine = unsafe {
+                let coroutine = unsafe {
                     &mut *(pointer as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                 };
-                self.running = Some(coroutine.id);
                 let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
                 #[cfg(unix)]
                 {
@@ -216,7 +212,6 @@ impl Scheduler {
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
                 };
-                self.running = None;
                 #[cfg(unix)]
                 {
                     //还没执行到10ms就主动yield了，此时需要清理signal
@@ -241,7 +236,7 @@ impl Scheduler {
                 if let Some(mut entry) = self.suspend.pop_front() {
                     for _ in 0..entry.len() {
                         if let Some(pointer) = entry.pop_front_raw() {
-                            let mut coroutine = unsafe {
+                            let coroutine = unsafe {
                                 &mut *(pointer
                                     as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                             };

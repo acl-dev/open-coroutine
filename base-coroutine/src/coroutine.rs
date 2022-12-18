@@ -46,6 +46,7 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
     /// [`Coroutine::resume`]. This function will then return once the
     /// [`Coroutine::resume`] function is called again.
     pub extern "C" fn suspend(&self, val: Yield) -> Param {
+        OpenCoroutine::<Param, Yield, Return>::clean_current();
         let yielder = OpenCoroutine::<Param, Yield, Return>::yielder();
         OpenCoroutine::<Param, Yield, Return>::clean_yielder();
         unsafe {
@@ -126,6 +127,7 @@ pub type UserFunc<'a, Param, Yield, Return> =
 pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
 
 thread_local! {
+    static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
 }
 
@@ -145,16 +147,19 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     extern "C" fn child_context_func(t: Transfer) {
         let coroutine =
-            t.data as *const c_void as *const _ as *const OpenCoroutine<'_, Param, Yield, Return>;
+            t.data as *mut c_void as *mut _ as *mut OpenCoroutine<'_, Param, Yield, Return>;
         let yielder = Yielder {
             sp: &t,
             marker: Default::default(),
         };
         OpenCoroutine::init_yielder(&yielder);
         unsafe {
+            (*coroutine).status = Status::Running;
             let proc = (*coroutine).proc;
             let param = std::ptr::read_unaligned(&(*coroutine).param);
             let result = proc(&yielder, param);
+            (*coroutine).status = Status::Finished;
+            OpenCoroutine::<Param, Yield, Return>::clean_current();
             OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             #[cfg(unix)]
             {
@@ -205,6 +210,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         self.status = Status::Ready;
         self.sp.data = self as *mut _ as usize;
         unsafe {
+            OpenCoroutine::init_current(self);
             let transfer = self.sp.context.resume(self.sp.data);
             //更新sp
             self.sp.context = transfer.context;
@@ -226,6 +232,33 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 
     fn clean_yielder() {
         YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
+    }
+
+    fn init_current(coroutine: &OpenCoroutine<'a, Param, Yield, Return>) {
+        COROUTINE.with(|boxed| {
+            *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
+        })
+    }
+
+    pub fn current<'c>() -> Option<&'a OpenCoroutine<'c, Param, Yield, Return>> {
+        COROUTINE.with(|boxed| {
+            let ptr = *boxed.borrow_mut();
+            if ptr.is_null() {
+                None
+            } else {
+                Some(unsafe { &*(ptr as *const OpenCoroutine<Param, Yield, Return>) })
+            }
+        })
+    }
+
+    fn clean_current() {
+        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
+    }
+}
+
+impl<'a, Param, Yield, Return> Drop for OpenCoroutine<'a, Param, Yield, Return> {
+    fn drop(&mut self) {
+        self.status = Status::Exited;
     }
 }
 
@@ -269,5 +302,17 @@ mod tests {
         assert_eq!(2, coroutine.resume_with(1).as_yield().unwrap());
         assert_eq!(4, coroutine.resume_with(3).as_yield().unwrap());
         assert_eq!(6, coroutine.resume_with(5).as_return().unwrap());
+    }
+
+    #[test]
+    fn test_current() {
+        extern "C" fn context_func(_yielder: &Yielder<usize, usize, usize>, _input: usize) -> usize {
+            assert!(OpenCoroutine::<usize, usize, usize>::current().is_some());
+            1
+        }
+        assert!(OpenCoroutine::<usize, usize, usize>::current().is_none());
+        let mut coroutine =
+            OpenCoroutine::new(context_func, 0, 2048).expect("create coroutine failed !");
+        coroutine.resume_with(0).as_return().unwrap();
     }
 }
