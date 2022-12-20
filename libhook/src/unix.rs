@@ -1,4 +1,5 @@
 use base_coroutine::scheduler::Scheduler;
+use once_cell::sync::Lazy;
 
 //sleep相关
 #[no_mangle]
@@ -32,9 +33,13 @@ pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
 }
 
 #[no_mangle]
-static mut NANOSLEEP: Option<
-    extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int,
-> = None;
+static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int> =
+    Lazy::new(|| unsafe {
+        std::mem::transmute::<
+            _,
+            extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int,
+        >(libc::dlsym(libc::RTLD_NEXT, "nanosleep".as_ptr() as _))
+    });
 
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
@@ -42,21 +47,6 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     if rqtp.tv_sec < 0 || rqtp.tv_nsec < 0 {
         return -1;
     }
-    //获取原始系统函数nanosleep
-    let original = unsafe {
-        match NANOSLEEP {
-            Some(original) => original,
-            None => {
-                let original =
-                    std::mem::transmute::<
-                        _,
-                        extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int,
-                    >(libc::dlsym(libc::RTLD_NEXT, "nanosleep".as_ptr() as _));
-                NANOSLEEP = Some(original);
-                original
-            }
-        }
-    };
     let nanos_time = match (rqtp.tv_sec as u64).checked_mul(1_000_000_000) {
         Some(v) => v.checked_add(rqtp.tv_nsec as u64).unwrap_or(u64::MAX),
         None => u64::MAX,
@@ -84,8 +74,9 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
             tv_sec: sec,
             tv_nsec: nsec,
         };
+        //注意这里获取的是原始系统函数nanosleep的指针
         //相当于libc::nanosleep(&rqtp, rmtp)
-        if original(&rqtp, rmtp) == 0 {
+        if (Lazy::force(&NANOSLEEP))(&rqtp, rmtp) == 0 {
             return 0;
         }
     }
