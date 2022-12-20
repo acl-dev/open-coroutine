@@ -66,6 +66,10 @@ where
         self.inner.insert(k, ptr as *mut _ as *mut c_void)
     }
 
+    pub fn insert_raw(&mut self, k: K, ptr: *mut c_void) -> Option<*mut c_void> {
+        self.inner.insert(k, ptr)
+    }
+
     pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<*mut c_void>
     where
         K: Borrow<Q>,

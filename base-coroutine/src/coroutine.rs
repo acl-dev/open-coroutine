@@ -127,7 +127,7 @@ pub type UserFunc<'a, Param, Yield, Return> =
 pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
 
 thread_local! {
-    static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
+    static COROUTINE: Box<RefCell<*mut c_void>> = Box::new(RefCell::new(std::ptr::null_mut()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
 }
 
@@ -234,25 +234,25 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
     }
 
-    fn init_current(coroutine: &OpenCoroutine<'a, Param, Yield, Return>) {
+    fn init_current(coroutine: &mut OpenCoroutine<'a, Param, Yield, Return>) {
         COROUTINE.with(|boxed| {
-            *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
+            *boxed.borrow_mut() = coroutine as *mut _ as *mut c_void;
         })
     }
 
-    pub fn current<'c>() -> Option<&'a OpenCoroutine<'c, Param, Yield, Return>> {
+    pub fn current<'c>() -> Option<&'a mut OpenCoroutine<'c, Param, Yield, Return>> {
         COROUTINE.with(|boxed| {
             let ptr = *boxed.borrow_mut();
             if ptr.is_null() {
                 None
             } else {
-                Some(unsafe { &*(ptr as *const OpenCoroutine<Param, Yield, Return>) })
+                Some(unsafe { &mut *(ptr as *mut OpenCoroutine<Param, Yield, Return>) })
             }
         })
     }
 
     fn clean_current() {
-        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
+        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
     }
 }
 
