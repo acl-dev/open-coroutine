@@ -22,7 +22,8 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: libhook
-          path: target/release/deps/libhook*
+          path: target/release/libhook.so
+          if-no-files-found: error
 
   macos:
     name: build libhook on macos
@@ -43,7 +44,8 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: libhook
-          path: target/release/deps/libhook*
+          path: target/release/libhook.dylib
+          if-no-files-found: error
 
   windows:
     name: build libhook on windows
@@ -64,8 +66,10 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: libhook
-          path: target/release/deps/hook.dll
+          path: target/release/hook.dll
+          if-no-files-found: error
       - uses: actions/upload-artifact@v2
         with:
           name: libhook
-          path: target/release/deps/hook.dll.lib
+          path: target/release/hook.dll.lib
+          if-no-files-found: error
