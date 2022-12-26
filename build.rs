@@ -17,7 +17,7 @@ fn main() {
         std::fs::copy(lib.join("libhook.so"), deps.join("libhook.so"))
             .expect("copy libhook.so failed!");
     } else if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "aarch_64") {
+        if cfg!(target_arch = "aarch64") {
             std::fs::copy(lib.join("libhook-m1.dylib"), deps.join("libhook.dylib"))
                 .expect("copy libhook-m1.dylib failed!");
         } else {
