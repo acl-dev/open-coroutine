@@ -8,6 +8,12 @@ Still under development, please `do not` use this library in the `production` en
 
 Only support hook several `system calls`.
 
+Windows support is on the way, but the `priority is low`.
+
+The dynamic library built by rust has some problem(`sometimes can't get the original function pointer`), see https://github.com/acl-dev/open-coroutine/pull/46 .
+
+So I change the dynamic library impl part from rust to `c++` which is works fine for me.
+
 ### Features
 #### 0.1.0
 - [x] basic suspend/resume supported

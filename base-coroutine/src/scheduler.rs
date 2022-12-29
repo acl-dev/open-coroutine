@@ -107,9 +107,9 @@ impl Scheduler {
         RESULTS.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
     }
 
-    pub fn submit(
+    pub fn submit<Yield: 'static>(
         &mut self,
-        f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
+        f: UserFunc<&'static mut c_void, Yield, &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
     ) -> Result<(), StackError> {
@@ -185,7 +185,7 @@ impl Scheduler {
         match self.ready.pop_front_raw() {
             Some(pointer) => {
                 let coroutine = unsafe {
-                    &mut *(pointer as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
+                    &mut *(pointer as *mut Coroutine<&'static mut c_void, (), &'static mut c_void>)
                 };
                 let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
                 #[cfg(unix)]
@@ -238,7 +238,7 @@ impl Scheduler {
                         if let Some(pointer) = entry.pop_front_raw() {
                             let coroutine = unsafe {
                                 &mut *(pointer
-                                    as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
+                                    as *mut Coroutine<&'static mut c_void, (), &'static mut c_void>)
                             };
                             coroutine.status = Status::Ready;
                             //优先执行到时间的协程

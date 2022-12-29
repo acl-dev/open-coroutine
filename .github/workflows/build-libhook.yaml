@@ -14,15 +14,29 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: cargo build --release -p libhook
+      - name: cargo build --release -p base-coroutine
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release -p libhook
+          args: --release -p base-coroutine
+      - name: Build libhook.so
+        run: |
+          cp ${{ github.workspace }}/target/release/libbase_coroutine.a ${{ github.workspace }}/lib/Linux/x86_64
+          cp ${{ github.workspace }}/target/release/libbase_coroutine.a ${{ github.workspace }}/lib/Linux/x86_64/linux_libbase_coroutine.a
+          cd ${{ github.workspace }}/libhookV2/build
+          cmake --version
+          cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/libhookV2 ../
+          make VERBOSE=1
+          ls
       - uses: actions/upload-artifact@v2
         with:
           name: libhook
-          path: target/release/libhook.so
+          path: lib/Linux/x86_64/linux_libbase_coroutine.a
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: libhookV2/build/libhook.so
           if-no-files-found: error
 
   macos:
@@ -36,40 +50,69 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: cargo build --release -p libhook
+      - name: cargo build --release -p base-coroutine
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release -p libhook
+          args: --release -p base-coroutine
+      - name: Build libhook.dylib
+        run: |
+          cp ${{ github.workspace }}/target/release/libbase_coroutine.a ${{ github.workspace }}/lib/Darwin/x86_64
+          cp ${{ github.workspace }}/target/release/libbase_coroutine.a ${{ github.workspace }}/lib/Darwin/x86_64/macos_libbase_coroutine.a
+          cd ${{ github.workspace }}/libhookV2/build
+          cmake --version
+          cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/libhookV2 ../
+          make VERBOSE=1
+          ls
       - uses: actions/upload-artifact@v2
         with:
           name: libhook
-          path: target/release/libhook.dylib
+          path: lib/Darwin/x86_64/macos_libbase_coroutine.a
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v2
+        with:
+          name: libhook
+          path: libhookV2/build/libhook.dylib
           if-no-files-found: error
 
-  windows:
-    name: build libhook on windows
-    runs-on: windows-2019
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - name: cargo +nightly build --release -p libhook
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release -p libhook
-      - uses: actions/upload-artifact@v2
-        with:
-          name: libhook
-          path: target/release/hook.dll
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v2
-        with:
-          name: libhook
-          path: target/release/hook.dll.lib
-          if-no-files-found: error
+#  windows:
+#    name: build libhook on windows
+#    runs-on: windows-2019
+#    steps:
+#      - uses: actions/checkout@v2
+#      - name: Install toolchain
+#        uses: actions-rs/toolchain@v1
+#        with:
+#          profile: minimal
+#          toolchain: stable
+#          override: true
+#      - name: cargo build --release -p base-coroutine
+#        uses: actions-rs/cargo@v1
+#        with:
+#          command: build
+#          args: --release -p base-coroutine
+#      - uses: actions/upload-artifact@v2
+#        with:
+#          name: libhook
+#          path: target/release/base_coroutine.lib
+#          if-no-files-found: error
+#      - name: Build hook.dll && hook.dll.lib
+#        run: |
+#          cd ${{ github.workspace }}/target/release
+#          ls
+#          cp ${{ github.workspace }}/target/release/base_coroutine.lib ${{ github.workspace }}/lib/Windows/AMD64
+#          cd ${{ github.workspace }}/libhookV2/build
+#          cmake --version
+#          cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/libhookV2 ../
+#          make VERBOSE=1
+#          ls
+#      - uses: actions/upload-artifact@v2
+#        with:
+#          name: libhook
+#          path: libhookV2/build/hook.dll
+#          if-no-files-found: error
+#      - uses: actions/upload-artifact@v2
+#        with:
+#          name: libhook
+#          path: libhookV2/build/hook.dll.lib
+#          if-no-files-found: error

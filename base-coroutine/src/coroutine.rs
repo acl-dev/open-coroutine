@@ -45,7 +45,7 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
     /// This function will switch control back to the original caller of
     /// [`Coroutine::resume`]. This function will then return once the
     /// [`Coroutine::resume`] function is called again.
-    pub extern "C" fn suspend(&self, val: Yield) -> Param {
+    pub fn suspend(&self, val: Yield) -> Param {
         OpenCoroutine::<Param, Yield, Return>::clean_current();
         let yielder = OpenCoroutine::<Param, Yield, Return>::yielder();
         OpenCoroutine::<Param, Yield, Return>::clean_yielder();
@@ -62,7 +62,7 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
         }
     }
 
-    pub extern "C" fn delay(&self, val: Yield, ms_time: u64) -> Param {
+    pub fn delay(&self, val: Yield, ms_time: u64) -> Param {
         self.delay_ns(
             val,
             match ms_time.checked_mul(1_000_000) {
@@ -72,7 +72,7 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
         )
     }
 
-    pub extern "C" fn delay_ns(&self, val: Yield, ns_time: u64) -> Param {
+    pub fn delay_ns(&self, val: Yield, ns_time: u64) -> Param {
         Yielder::<Param, Yield, Return>::init_delay_time(ns_time);
         self.suspend(val)
     }
@@ -124,7 +124,7 @@ pub type UserFunc<'a, Param, Yield, Return> =
     extern "C" fn(&'a Yielder<Param, Yield, Return>, Param) -> Return;
 
 /// 子协程
-pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
+pub type Coroutine<Input, Yield, Return> = OpenCoroutine<'static, Input, Yield, Return>;
 
 thread_local! {
     static COROUTINE: Box<RefCell<*mut c_void>> = Box::new(RefCell::new(std::ptr::null_mut()));

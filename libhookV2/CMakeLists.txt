@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.19)
+project(libhookV2)
+
+set(CMAKE_CXX_STANDARD 11)
+
+message("detect ${CMAKE_HOST_SYSTEM_NAME} ${CMAKE_HOST_SYSTEM_PROCESSOR}")
+
+if (CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
+    add_library(hook SHARED libhook.cpp libhook.h)
+    target_link_libraries(hook ${CMAKE_CURRENT_SOURCE_DIR}/../lib/${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}/libbase_coroutine.a)
+else ()
+    add_executable(libhookV2 main.cpp)
+    if (CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin" AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
+        add_library(hook-m1 SHARED libhook.cpp libhook.h)
+        target_link_libraries(hook-m1 ${CMAKE_CURRENT_SOURCE_DIR}/../lib/${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}/libbase_coroutine.a)
+        target_link_libraries(libhookV2 hook-m1)
+    else ()
+        add_library(hook SHARED libhook.cpp libhook.h)
+        target_link_libraries(hook ${CMAKE_CURRENT_SOURCE_DIR}/../lib/${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}/libbase_coroutine.a)
+        target_link_libraries(libhookV2 hook)
+    endif ()
+endif ()

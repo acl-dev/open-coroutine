@@ -15,8 +15,6 @@ members = [
     "object-collection",
     "timer-utils",
     "base-coroutine",
-    "detour2",
-    "libhook",
 ]
 
 [dependencies]

@@ -83,4 +83,12 @@ fn main() {
     }
 
     config.compile("libboost_context.a");
+
+    println!("cargo:rerun-if-changed=src/lib.rs");
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    cbindgen::Builder::new()
+        .with_crate(crate_dir)
+        .generate()
+        .expect("Unable to generate bindings")
+        .write_to_file("include/libcoroutine.h");
 }
