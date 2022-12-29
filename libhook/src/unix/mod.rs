@@ -32,13 +32,13 @@ pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
     nanosleep(&rqtp, &mut rmtp)
 }
 
-#[no_mangle]
 static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int> =
     Lazy::new(|| unsafe {
-        std::mem::transmute::<
-            _,
-            extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int,
-        >(libc::dlsym(libc::RTLD_NEXT, "nanosleep".as_ptr() as _))
+        let ptr = libc::dlsym(libc::RTLD_NEXT, "nanosleep".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system nanosleep not found !");
+        }
+        std::mem::transmute(ptr)
     });
 
 #[no_mangle]
@@ -80,4 +80,33 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
             return 0;
         }
     }
+}
+
+static mut NONBLOCKING: libc::c_int = true as libc::c_int;
+
+static CONNECT: Lazy<
+    extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, "connect".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system connect not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn connect(
+    socket: libc::c_int,
+    address: *const libc::sockaddr,
+    len: libc::socklen_t,
+) -> libc::c_int {
+    loop {
+        let _ = Scheduler::current().try_schedule();
+        unsafe {
+            if libc::ioctl(socket, libc::FIONBIO, &mut NONBLOCKING) == 0 {
+                break;
+            }
+        }
+    }
+    (Lazy::force(&CONNECT))(socket, address, len)
 }
