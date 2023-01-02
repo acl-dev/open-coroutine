@@ -34,7 +34,7 @@ pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
 
 static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int> =
     Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, "nanosleep".as_ptr() as _);
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"nanosleep\0".as_ptr() as _);
         if ptr.is_null() {
             panic!("system nanosleep not found !");
         }
@@ -82,12 +82,10 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     }
 }
 
-static mut NONBLOCKING: libc::c_int = true as libc::c_int;
-
 static CONNECT: Lazy<
     extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
 > = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, "connect".as_ptr() as _);
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"connect\0".as_ptr() as _);
     if ptr.is_null() {
         panic!("system connect not found !");
     }
@@ -100,13 +98,88 @@ pub extern "C" fn connect(
     address: *const libc::sockaddr,
     len: libc::socklen_t,
 ) -> libc::c_int {
-    loop {
-        let _ = Scheduler::current().try_schedule();
-        unsafe {
-            if libc::ioctl(socket, libc::FIONBIO, &mut NONBLOCKING) == 0 {
-                break;
-            }
-        }
-    }
+    let _ = Scheduler::current().try_schedule();
+    //todo 非阻塞实现
     (Lazy::force(&CONNECT))(socket, address, len)
+}
+
+static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"listen\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system listen not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
+    let _ = Scheduler::current().try_schedule();
+    //todo 非阻塞实现
+    (Lazy::force(&LISTEN))(socket, backlog)
+}
+
+static ACCEPT: Lazy<
+    extern "C" fn(libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"accept\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system accept not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn accept(
+    socket: libc::c_int,
+    address: *mut libc::sockaddr,
+    address_len: *mut libc::socklen_t,
+) -> libc::c_int {
+    let _ = Scheduler::current().try_schedule();
+    //todo 非阻塞实现
+    (Lazy::force(&ACCEPT))(socket, address, address_len)
+}
+
+static SEND: Lazy<
+    extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"send\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system send not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn send(
+    socket: libc::c_int,
+    buf: *const libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    let _ = Scheduler::current().try_schedule();
+    //todo 非阻塞实现
+    (Lazy::force(&SEND))(socket, buf, len, flags)
+}
+
+static RECV: Lazy<
+    extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"recv\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system recv not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn recv(
+    socket: libc::c_int,
+    buf: *mut libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    let _ = Scheduler::current().try_schedule();
+    //todo 非阻塞实现
+    (Lazy::force(&RECV))(socket, buf, len, flags)
 }
