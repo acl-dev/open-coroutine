@@ -17,13 +17,19 @@ timer-utils = { version = "0.0.3", path = "../timer-utils" }
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.42.0", features = [
     "Win32_Foundation",
+    "Win32_System",
+    "Win32_System_IO",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Threading",
-    "Win32_Security",
     "Win32_System_LibraryLoader",
     "Win32_System_SystemServices",
+    "Win32_System_WindowsProgramming",
+    "Win32_Security",
     "Win32_Storage",
-    "Win32_System_WindowsProgramming"
+    "Win32_Storage_DistributedFileSystem",
+    "Win32_Storage_FileSystem",
+    "Win32_Networking",
+    "Win32_Networking_WinSock"
 ] }
 detour2 = { version = "0.9.0", path = "../detour2" }
 
