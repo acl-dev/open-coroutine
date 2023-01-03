@@ -151,15 +151,6 @@ impl Selector {
     }
 }
 
-cfg_io_source! {
-    impl Selector {
-        #[cfg(debug_assertions)]
-        pub fn id(&self) -> usize {
-            self.id
-        }
-    }
-}
-
 impl AsRawFd for Selector {
     fn as_raw_fd(&self) -> RawFd {
         self.ep
