@@ -133,7 +133,7 @@ thread_local! {
 
 #[repr(C)]
 pub struct OpenCoroutine<'a, Param, Yield, Return> {
-    pub(crate) id: usize,
+    id: usize,
     sp: Transfer,
     stack: ProtectedFixedSizeStack,
     pub(crate) status: Status,
@@ -218,6 +218,14 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 transfer.data as *mut c_void as *mut _ as *mut CoroutineResult<Yield, Return>,
             )
         }
+    }
+
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
+
+    pub fn get_status(&self) -> Status {
+        self.status
     }
 
     fn init_yielder(yielder: &Yielder<Param, Yield, Return>) {

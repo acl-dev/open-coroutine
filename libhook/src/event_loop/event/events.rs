@@ -17,8 +17,6 @@ use std::fmt;
 ///
 /// # Examples
 ///
-#[cfg_attr(feature = "os-poll", doc = "```")]
-#[cfg_attr(not(feature = "os-poll"), doc = "```ignore")]
 /// # use std::error::Error;
 /// # fn main() -> Result<(), Box<dyn Error>> {
 /// use mio::{Events, Poll};
@@ -52,8 +50,6 @@ pub struct Events {
 ///
 /// # Examples
 ///
-#[cfg_attr(feature = "os-poll", doc = "```")]
-#[cfg_attr(not(feature = "os-poll"), doc = "```ignore")]
 /// # use std::error::Error;
 /// # fn main() -> Result<(), Box<dyn Error>> {
 /// use mio::{Events, Poll};
@@ -125,8 +121,6 @@ impl Events {
     ///
     /// # Examples
     ///
-    #[cfg_attr(feature = "os-poll", doc = "```")]
-    #[cfg_attr(not(feature = "os-poll"), doc = "```ignore")]
     /// # use std::error::Error;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Events, Poll};
@@ -161,8 +155,6 @@ impl Events {
     ///
     /// # Examples
     ///
-    #[cfg_attr(feature = "os-poll", doc = "```")]
-    #[cfg_attr(not(feature = "os-poll"), doc = "```ignore")]
     /// # use std::error::Error;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Events, Poll};

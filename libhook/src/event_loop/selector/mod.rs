@@ -80,6 +80,12 @@ mod kqueue;
 ))]
 pub(crate) use self::kqueue::{event, Event, Events, Selector};
 
+#[cfg(windows)]
+mod windows;
+
+#[cfg(windows)]
+pub(crate) use self::windows::{event, Event, Events, Selector};
+
 /// Lowest file descriptor used in `Selector::try_clone`.
 ///
 /// # Notes

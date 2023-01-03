@@ -252,15 +252,17 @@ impl Scheduler {
     /// 用户不应该使用此方法
     pub fn syscall(&mut self) {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            self.system_call.insert(co.id, co);
+            self.system_call.insert(co.get_id(), co);
             Coroutine::<&'static mut c_void, &'static mut c_void>::clean_current();
         }
     }
 
     /// 用户不应该使用此方法
     #[allow(clippy::missing_safety_doc)]
-    pub unsafe fn resume(&mut self, co: usize) {
-        self.ready.push_back_raw(co as *mut c_void)
+    pub unsafe fn resume(&mut self, co_id: usize) {
+        if let Some(co) = self.system_call.remove(&co_id) {
+            self.ready.push_back_raw(co)
+        }
     }
 }
 

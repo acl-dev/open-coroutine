@@ -51,7 +51,7 @@ impl<'a> EventLoop<'a> {
     pub fn add_read_event(&self, fd: libc::c_int) -> std::io::Result<()> {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
             self.selector
-                .register(fd, co as *mut _ as usize, Interest::READABLE)?;
+                .register(fd, co.get_id(), Interest::READABLE)?;
         }
         Ok(())
     }
@@ -59,7 +59,7 @@ impl<'a> EventLoop<'a> {
     pub fn add_write_event(&self, fd: libc::c_int) -> std::io::Result<()> {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
             self.selector
-                .register(fd, co as *mut _ as usize, Interest::WRITABLE)?;
+                .register(fd, co.get_id(), Interest::WRITABLE)?;
         }
         Ok(())
     }
