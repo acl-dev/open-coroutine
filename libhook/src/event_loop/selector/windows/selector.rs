@@ -368,33 +368,6 @@ impl Selector {
     }
 }
 
-use super::InternalState;
-
-impl Selector {
-    pub(super) fn register(
-        &self,
-        socket: RawSocket,
-        token: usize,
-        interests: Interest,
-    ) -> io::Result<InternalState> {
-        SelectorInner::register(&self.inner, socket, token, interests)
-    }
-
-    pub(super) fn reregister(
-        &self,
-        state: Pin<Arc<Mutex<SockState>>>,
-        token: usize,
-        interests: Interest,
-    ) -> io::Result<()> {
-        self.inner.reregister(state, token, interests)
-    }
-
-    #[cfg(debug_assertions)]
-    pub fn id(&self) -> usize {
-        self.id
-    }
-}
-
 #[derive(Debug)]
 pub struct SelectorInner {
     pub(super) cp: Arc<CompletionPort>,
