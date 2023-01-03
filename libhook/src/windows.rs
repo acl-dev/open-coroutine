@@ -65,5 +65,6 @@ fn get_module_symbol_address(module: &str, symbol: &str) -> Option<usize> {
 }
 
 fn sleep_detour(dw_milliseconds: u32) {
-    EventLoop::next_scheduler().timed_schedule(Duration::from_millis(dw_milliseconds as u64));
+    //todo 用EventLoop的Scheduler
+    Scheduler::current().timed_schedule(Duration::from_millis(dw_milliseconds as u64));
 }

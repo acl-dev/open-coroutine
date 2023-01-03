@@ -28,8 +28,8 @@ pub extern "C" fn epoll_wait(
         let _ = EventLoop::next_scheduler().try_schedule();
         -1
     } else {
-        let ns = (timeout as u64).checked_mul(1_000_000).unwrap_or(u64::MAX);
-        let timeout_time = timer_utils::add_timeout_time(ns);
+        let ns = timeout.checked_mul(1_000_000).unwrap_or(libc::c_int::MAX);
+        let timeout_time = timer_utils::add_timeout_time(ns as u64);
         let _ = EventLoop::next_scheduler().try_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         match timeout_time.checked_sub(timer_utils::now()) {
