@@ -33,9 +33,9 @@ pub extern "C" fn epoll_wait(
         let _ = EventLoop::next_scheduler().try_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         match timeout_time.checked_sub(timer_utils::now()) {
-            Some(v) => v / 1_000_000,
+            Some(v) => (v / 1_000_000) as libc::c_int,
             None => return 0,
         }
     };
-    (Lazy::force(&EPOLL_WAIT))(epfd, events, maxevents, timeout as libc::c_int)
+    (Lazy::force(&EPOLL_WAIT))(epfd, events, maxevents, timeout)
 }
