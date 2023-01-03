@@ -30,7 +30,11 @@ impl<'a> EventLoop<'a> {
     fn new() -> std::io::Result<EventLoop<'a>> {
         Ok(EventLoop {
             selector: Selector::new()?,
-            scheduler: Scheduler::current(),
+            // 由于EVENT_LOOPS的初始化是由单线程完成的
+            // 创建线程再获取Scheduler是为了拿到不同的Scheduler
+            scheduler: std::thread::spawn(Scheduler::current)
+                .join()
+                .expect("create scheduler failed !"),
         })
     }
 

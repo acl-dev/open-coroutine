@@ -9,6 +9,7 @@ use super::event::{
 use crate::event_loop::interest::Interest;
 
 use super::iocp::{CompletionPort, CompletionStatus};
+use super::InternalState;
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::io;
@@ -365,6 +366,29 @@ impl Selector {
 
     pub(super) fn clone_port(&self) -> Arc<CompletionPort> {
         self.inner.cp.clone()
+    }
+
+    pub fn register(
+        &self,
+        socket: RawSocket,
+        token: usize,
+        interests: Interest,
+    ) -> io::Result<InternalState> {
+        SelectorInner::register(&self.inner, socket, token, interests)
+    }
+
+    pub fn reregister(
+        &self,
+        state: Pin<Arc<Mutex<SockState>>>,
+        token: usize,
+        interests: Interest,
+    ) -> io::Result<()> {
+        self.inner.reregister(state, token, interests)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn id(&self) -> usize {
+        self.id
     }
 }
 
