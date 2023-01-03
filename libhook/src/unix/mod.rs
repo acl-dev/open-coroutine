@@ -17,6 +17,14 @@ mod common;
 ))]
 mod bsd;
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
+mod linux_like;
+
 //sleep相关
 #[no_mangle]
 pub extern "C" fn sleep(secs: libc::c_uint) -> libc::c_uint {
@@ -128,8 +136,8 @@ pub extern "C" fn connect(
             break;
         }
         unsafe {
-            let errno = *errno_location();
-            if errno == libc::EINPROGRESS {
+            let errno = std::io::Error::last_os_error().raw_os_error();
+            if errno == Some(libc::EINPROGRESS) {
                 //等待写事件
                 let event_loop = EventLoop::next();
                 if event_loop.add_write_event(socket).is_err() || event_loop.wait(None).is_err() {
@@ -156,7 +164,7 @@ pub extern "C" fn connect(
                 errno_location().write(err);
                 r = -1;
                 break;
-            } else if errno == libc::EINTR {
+            } else if errno == Some(libc::EINTR) {
                 r = -1;
                 break;
             }

@@ -72,6 +72,7 @@ impl<'a> EventLoop<'a> {
     pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
+        //默认1s超时
         self.selector
             .select(&mut events, Some(timeout.unwrap_or(Duration::from_secs(1))))?;
         for event in events.iter() {
