@@ -26,8 +26,7 @@ pub struct Scheduler {
     id: usize,
     ready: &'static mut WorkStealQueue,
     suspend: TimerList,
-    //not support for now
-    system_call: ObjectList,
+    system_call: ObjectMap<usize>,
     //not support for now
     copy_stack: ObjectList,
 }
@@ -56,7 +55,7 @@ impl Scheduler {
             id: IdGenerator::next_scheduler_id(),
             ready: get_queue(),
             suspend: TimerList::new(),
-            system_call: ObjectList::new(),
+            system_call: ObjectMap::new(),
             copy_stack: ObjectList::new(),
         }
     }
@@ -248,6 +247,20 @@ impl Scheduler {
                 }
             }
         }
+    }
+
+    /// 用户不应该使用此方法
+    pub fn syscall(&mut self) {
+        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
+            self.system_call.insert(co.id, co);
+            Coroutine::<&'static mut c_void, &'static mut c_void>::clean_current();
+        }
+    }
+
+    /// 用户不应该使用此方法
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe fn resume(&mut self, co: usize) {
+        self.ready.push_back_raw(co as *mut c_void)
     }
 }
 

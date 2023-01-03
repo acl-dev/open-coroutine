@@ -1,5 +1,21 @@
-use base_coroutine::scheduler::Scheduler;
+use crate::event_loop::EventLoop;
+use crate::unix::common::*;
 use once_cell::sync::Lazy;
+use std::ffi::c_void;
+
+mod common;
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "watchos",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd"
+))]
+mod bsd;
 
 //sleep相关
 #[no_mangle]
@@ -53,7 +69,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     };
     let timeout_time = timer_utils::add_timeout_time(nanos_time);
     loop {
-        let _ = Scheduler::current().try_timeout_schedule(timeout_time);
+        let _ = EventLoop::next_scheduler().try_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         let schedule_finished_time = timer_utils::now();
         let left_time = match timeout_time.checked_sub(schedule_finished_time) {
@@ -98,9 +114,56 @@ pub extern "C" fn connect(
     address: *const libc::sockaddr,
     len: libc::socklen_t,
 ) -> libc::c_int {
-    let _ = Scheduler::current().try_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&CONNECT))(socket, address, len)
+    let _ = EventLoop::next_scheduler().try_schedule();
+    if is_non_blocking(socket) {
+        //非阻塞，直接系统调用
+        return (Lazy::force(&CONNECT))(socket, address, len);
+    }
+    //阻塞，epoll_wait/kevent等待直到写事件
+    set_non_blocking(socket, true);
+    let mut r;
+    loop {
+        r = (Lazy::force(&CONNECT))(socket, address, len);
+        if r == 0 {
+            break;
+        }
+        unsafe {
+            let errno = *errno_location();
+            if errno == libc::EINPROGRESS {
+                //等待写事件
+                let event_loop = EventLoop::next();
+                if event_loop.add_write_event(socket).is_err() || event_loop.wait(None).is_err() {
+                    r = -1;
+                    break;
+                }
+
+                let mut len: libc::socklen_t = std::mem::zeroed();
+                let mut err: libc::c_int = 0;
+                r = libc::getsockopt(
+                    socket,
+                    libc::SOL_SOCKET,
+                    libc::SO_ERROR,
+                    &mut err as *mut _ as *mut c_void,
+                    &mut len,
+                );
+                if r != 0 {
+                    break;
+                }
+                if err == 0 {
+                    r = 0;
+                    break;
+                };
+                errno_location().write(err);
+                r = -1;
+                break;
+            } else if errno == libc::EINTR {
+                r = -1;
+                break;
+            }
+        }
+    }
+    set_non_blocking(socket, false);
+    r
 }
 
 static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
@@ -114,7 +177,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
-    let _ = Scheduler::current().try_schedule();
+    let _ = EventLoop::next_scheduler().try_schedule();
     //todo 非阻塞实现
     (Lazy::force(&LISTEN))(socket, backlog)
 }
@@ -135,7 +198,7 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = Scheduler::current().try_schedule();
+    let _ = EventLoop::next_scheduler().try_schedule();
     //todo 非阻塞实现
     (Lazy::force(&ACCEPT))(socket, address, address_len)
 }
@@ -157,7 +220,7 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = Scheduler::current().try_schedule();
+    let _ = EventLoop::next_scheduler().try_schedule();
     //todo 非阻塞实现
     (Lazy::force(&SEND))(socket, buf, len, flags)
 }
@@ -179,7 +242,7 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = Scheduler::current().try_schedule();
+    let _ = EventLoop::next_scheduler().try_schedule();
     //todo 非阻塞实现
     (Lazy::force(&RECV))(socket, buf, len, flags)
 }

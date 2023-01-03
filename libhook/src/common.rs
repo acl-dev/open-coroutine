@@ -1,5 +1,5 @@
+use crate::event_loop::EventLoop;
 use base_coroutine::coroutine::UserFunc;
-use base_coroutine::scheduler::Scheduler;
 use std::os::raw::c_void;
 use std::time::Duration;
 
@@ -16,7 +16,7 @@ pub extern "C" fn coroutine_crate(
     param: &'static mut c_void,
     stack_size: usize,
 ) -> libc::c_int {
-    match Scheduler::current().submit(f, param, stack_size) {
+    match EventLoop::next_scheduler().submit(f, param, stack_size) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -25,7 +25,7 @@ pub extern "C" fn coroutine_crate(
 ///轮询协程
 #[no_mangle]
 pub extern "C" fn try_timed_schedule(ns_time: u64) -> libc::c_int {
-    match Scheduler::current().try_timed_schedule(Duration::from_nanos(ns_time)) {
+    match EventLoop::next_scheduler().try_timed_schedule(Duration::from_nanos(ns_time)) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -33,7 +33,7 @@ pub extern "C" fn try_timed_schedule(ns_time: u64) -> libc::c_int {
 
 #[no_mangle]
 pub extern "C" fn timed_schedule(ns_time: u64) -> libc::c_int {
-    match Scheduler::current().timed_schedule(Duration::from_nanos(ns_time)) {
+    match EventLoop::next_scheduler().timed_schedule(Duration::from_nanos(ns_time)) {
         Ok(_) => 0,
         Err(_) => -1,
     }

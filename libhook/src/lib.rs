@@ -3,6 +3,9 @@ mod common;
 
 pub use common::*;
 
+#[allow(dead_code)]
+mod event_loop;
+
 #[allow(dead_code, clippy::not_unsafe_ptr_arg_deref)]
 #[cfg(unix)]
 mod unix;
