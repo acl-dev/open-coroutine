@@ -17,7 +17,7 @@ impl Event {
     pub(super) fn new(token: usize) -> Event {
         Event {
             flags: 0,
-            data: usize::from(token) as u64,
+            data: token as u64,
         }
     }
 

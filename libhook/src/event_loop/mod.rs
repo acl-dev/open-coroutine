@@ -56,7 +56,7 @@ impl<'a> EventLoop<'a> {
         EventLoop::next().scheduler
     }
 
-    pub fn add_read_event(&self, fd: libc::c_int) -> std::io::Result<()> {
+    pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
             self.selector
                 .register(fd, co.get_id(), Interest::READABLE)?;
@@ -64,7 +64,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    pub fn add_write_event(&self, fd: libc::c_int) -> std::io::Result<()> {
+    pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
             self.selector
                 .register(fd, co.get_id(), Interest::WRITABLE)?;
@@ -72,7 +72,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    pub fn del_event(&self, fd: libc::c_int) -> std::io::Result<()> {
+    pub fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         self.selector.deregister(fd)?;
         Ok(())
     }

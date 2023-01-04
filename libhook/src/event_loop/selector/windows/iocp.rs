@@ -1,7 +1,6 @@
 //! Bindings to IOCP, I/O Completion Ports
 
 use super::{Handle, Overlapped};
-use std::cmp;
 use std::fmt;
 use std::io;
 use std::mem;
@@ -192,7 +191,7 @@ impl CompletionStatus {
     /// A completion key is a per-handle key that is specified when it is added
     /// to an I/O completion port via `add_handle` or `add_socket`.
     pub fn token(&self) -> usize {
-        self.0.lpCompletionKey as usize
+        self.0.lpCompletionKey
     }
 
     /// Returns a pointer to the `Overlapped` structure that was specified when
@@ -214,12 +213,7 @@ fn duration_millis(dur: Option<Duration>) -> u32 {
         // as_millis() truncates, so round nonzero <1ms timeouts up to 1ms.  This avoids turning
         // submillisecond timeouts into immediate reutrns unless the caller explictly requests that
         // by specifiying a zero timeout.
-        let dur_ms = dur_ms
-            + if dur_ms == 0 && dur.subsec_nanos() != 0 {
-                1
-            } else {
-                0
-            };
+        let dur_ms = dur_ms + u128::from(dur_ms == 0 && dur.subsec_nanos() != 0);
         dur_ms.min(u32::MAX as u128) as u32
     } else {
         u32::MAX

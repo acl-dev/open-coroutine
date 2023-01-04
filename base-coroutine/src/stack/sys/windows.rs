@@ -41,7 +41,7 @@ pub unsafe fn protect_stack(stack: &Stack) -> io::Result<Stack> {
     let page_size = page_size();
     let mut old_prot = 0;
 
-    debug_assert!(stack.len() % page_size == 0 && stack.len() != 0);
+    debug_assert!(stack.len() % page_size == 0 && !stack.is_empty());
 
     let ret = VirtualProtect(stack.bottom(), page_size, TYPE, &mut old_prot);
 
