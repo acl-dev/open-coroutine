@@ -32,7 +32,9 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    fn new() -> Self {
+    /// 用户不应该使用此方法
+    /// 用Scheduler#current
+    pub fn new() -> Self {
         #[cfg(unix)]
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
