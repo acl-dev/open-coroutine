@@ -133,7 +133,7 @@ thread_local! {
 
 #[repr(C)]
 pub struct OpenCoroutine<'a, Param, Yield, Return> {
-    pub(crate) id: usize,
+    id: usize,
     sp: Transfer,
     stack: ProtectedFixedSizeStack,
     pub(crate) status: Status,
@@ -168,8 +168,10 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 Monitor::clean_task(Monitor::signal_time());
                 Monitor::clean_signal_time();
             }
-            //执行下一个子协程
-            Scheduler::current().do_schedule();
+            if let Some(scheduler) = Scheduler::current() {
+                //执行下一个子协程
+                scheduler.do_schedule();
+            }
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
             t.context.resume(&mut coroutine_result as *mut _ as usize);
             unreachable!("should not execute to here !")
@@ -220,6 +222,14 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         }
     }
 
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
+
+    pub fn get_status(&self) -> Status {
+        self.status
+    }
+
     fn init_yielder(yielder: &Yielder<Param, Yield, Return>) {
         YIELDER.with(|boxed| {
             *boxed.borrow_mut() = yielder as *const _ as *const c_void;
@@ -251,7 +261,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         })
     }
 
-    fn clean_current() {
+    pub(crate) fn clean_current() {
         COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
     }
 }
