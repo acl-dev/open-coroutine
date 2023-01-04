@@ -11,7 +11,7 @@ use std::time::Duration;
 use timer_utils::TimerList;
 
 thread_local! {
-    static SCHEDULER: Box<Scheduler> = Box::new(Scheduler::new());
+    static SCHEDULER: Box<RefCell<*mut Scheduler>> = Box::new(RefCell::new(std::ptr::null_mut()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static TIMEOUT_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
     static RESULTS: Box<RefCell<*mut ObjectMap<usize>>> = Box::new(RefCell::new(std::ptr::null_mut()));
@@ -32,8 +32,6 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    /// 用户不应该使用此方法
-    /// 用Scheduler#current
     pub fn new() -> Self {
         #[cfg(unix)]
         unsafe {
@@ -62,8 +60,21 @@ impl Scheduler {
         }
     }
 
-    pub fn current<'a>() -> &'a mut Scheduler {
-        SCHEDULER.with(|boxed| Box::leak(unsafe { std::ptr::read_unaligned(boxed) }))
+    fn init_current(scheduler: &mut Scheduler) {
+        SCHEDULER.with(|boxed| {
+            *boxed.borrow_mut() = scheduler;
+        });
+    }
+
+    pub fn current<'a>() -> Option<&'a mut Scheduler> {
+        SCHEDULER.with(|boxed| unsafe {
+            let mut ptr = boxed.borrow_mut();
+            if ptr.is_null() {
+                None
+            } else {
+                Some(&mut *(*ptr))
+            }
+        })
     }
 
     fn init_yielder(yielder: &Yielder<(), (), ()>) {
@@ -152,12 +163,15 @@ impl Scheduler {
         timeout_time: u64,
     ) -> Result<ObjectMap<usize>, StackError> {
         let mut result = ObjectMap::new();
+        Scheduler::init_current(self);
         Scheduler::init_results(&mut result);
         Scheduler::init_timeout_time(timeout_time);
         #[allow(improper_ctypes_definitions)]
         extern "C" fn main_context_func(yielder: &Yielder<(), (), ()>, _param: ()) {
             Scheduler::init_yielder(yielder);
-            Scheduler::current().do_schedule();
+            Scheduler::current()
+                .expect("current scheduler not inited !")
+                .do_schedule();
             unreachable!("should not execute to here !")
         }
         let mut main = MainCoroutine::new(main_context_func, (), Stack::default_size())?;
@@ -288,7 +302,7 @@ mod tests {
 
     #[test]
     fn simplest() {
-        let scheduler = Scheduler::current();
+        let mut scheduler = Scheduler::new();
         extern "C" fn f1(
             _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
@@ -310,7 +324,7 @@ mod tests {
 
     #[test]
     fn with_suspend() {
-        let scheduler = Scheduler::current();
+        let mut scheduler = Scheduler::new();
         extern "C" fn suspend1(
             yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
@@ -350,7 +364,7 @@ mod tests {
 
     #[test]
     fn with_delay() {
-        let scheduler = Scheduler::current();
+        let mut scheduler = Scheduler::new();
         scheduler
             .submit(delay, null(), 4096)
             .expect("submit failed !");
@@ -361,7 +375,7 @@ mod tests {
 
     #[test]
     fn timed_schedule() {
-        let scheduler = Scheduler::current();
+        let mut scheduler = Scheduler::new();
         scheduler
             .submit(delay, null(), 4096)
             .expect("submit failed !");
@@ -375,7 +389,7 @@ mod tests {
     fn preemptive_schedule() {
         static mut FLAG: bool = true;
         let handler = std::thread::spawn(|| {
-            let scheduler = Scheduler::current();
+            let mut scheduler = Scheduler::new();
             extern "C" fn f1(
                 _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
                 _input: &'static mut c_void,

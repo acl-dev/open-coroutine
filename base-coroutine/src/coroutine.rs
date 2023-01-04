@@ -168,8 +168,10 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 Monitor::clean_task(Monitor::signal_time());
                 Monitor::clean_signal_time();
             }
-            //执行下一个子协程
-            Scheduler::current().do_schedule();
+            if let Some(scheduler) = Scheduler::current() {
+                //执行下一个子协程
+                scheduler.do_schedule();
+            }
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
             t.context.resume(&mut coroutine_result as *mut _ as usize);
             unreachable!("should not execute to here !")
