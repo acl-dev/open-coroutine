@@ -1,6 +1,5 @@
 use crate::event_loop::EventLoop;
 use once_cell::sync::Lazy;
-use std::time::Duration;
 
 static EPOLL_WAIT: Lazy<
     extern "C" fn(libc::c_int, *mut libc::epoll_event, libc::c_int, libc::c_int) -> libc::c_int,

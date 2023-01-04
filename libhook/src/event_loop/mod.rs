@@ -17,7 +17,13 @@ static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
     (0..num_cpus::get())
-        .map(|_| EventLoop::new().expect("init event loop failed!"))
+        .map(|_| {
+            // 由于EVENT_LOOPS的初始化是由单线程完成的
+            // 创建线程再获取Scheduler是为了拿到不同的Scheduler
+            std::thread::spawn(|| EventLoop::new().expect("init event loop failed!"))
+                .join()
+                .expect("create scheduler failed !")
+        })
         .collect()
 });
 
@@ -26,15 +32,13 @@ pub struct EventLoop<'a> {
     scheduler: &'a mut Scheduler,
 }
 
+unsafe impl Send for EventLoop<'_> {}
+
 impl<'a> EventLoop<'a> {
     fn new() -> std::io::Result<EventLoop<'a>> {
         Ok(EventLoop {
             selector: Selector::new()?,
-            // 由于EVENT_LOOPS的初始化是由单线程完成的
-            // 创建线程再获取Scheduler是为了拿到不同的Scheduler
-            scheduler: std::thread::spawn(Scheduler::current)
-                .join()
-                .expect("create scheduler failed !"),
+            scheduler: Scheduler::current(),
         })
     }
 
