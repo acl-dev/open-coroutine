@@ -275,30 +275,6 @@ pub extern "C" fn recv(
     flags: libc::c_int,
 ) -> libc::ssize_t {
     let _ = EventLoop::round_robin_schedule();
-    if is_non_blocking(socket) {
-        //非阻塞，直接系统调用
-        return (Lazy::force(&RECV))(socket, buf, len, flags);
-    }
-    //阻塞，epoll_wait/kevent等待直到读事件
-    set_non_blocking(socket, true);
-    let mut r;
-    loop {
-        r = (Lazy::force(&RECV))(socket, buf, len, flags);
-        if r != -1 {
-            break;
-        }
-        let errno = std::io::Error::last_os_error().raw_os_error();
-        if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
-            //等待读事件
-            let event_loop = EventLoop::next();
-            if event_loop.add_read_event(socket).is_err() || event_loop.wait(socket, None).is_err()
-            {
-                break;
-            }
-        } else if errno == Some(libc::EINTR) {
-            break;
-        }
-    }
-    set_non_blocking(socket, false);
-    r
+    //todo 非阻塞实现
+    (Lazy::force(&RECV))(socket, buf, len, flags)
 }
