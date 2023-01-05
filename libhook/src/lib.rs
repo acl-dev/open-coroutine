@@ -9,6 +9,7 @@ pub use common::*;
     target_os = "android",
     target_os = "emscripten"
 ))]
+#[allow(non_snake_case, dead_code)]
 mod epoll;
 
 #[cfg(any(

@@ -1,3 +1,5 @@
+#[repr(C)]
+#[derive(Debug)]
 pub struct epoll_data {
     pub ptr: *mut libc::c_void,
     pub fd: libc::c_int,
@@ -5,6 +7,8 @@ pub struct epoll_data {
     pub u64: u64,
 }
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct epoll_event {
     pub events: u32,      /* Epoll events */
     pub data: epoll_data, /* User data variable */
