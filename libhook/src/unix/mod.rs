@@ -140,7 +140,9 @@ pub extern "C" fn connect(
             if errno == Some(libc::EINPROGRESS) {
                 //等待写事件
                 let event_loop = EventLoop::next();
-                if event_loop.add_write_event(socket).is_err() || event_loop.wait(None).is_err() {
+                if event_loop.add_write_event(socket).is_err()
+                    || event_loop.wait(socket, None).is_err()
+                {
                     r = -1;
                     break;
                 }

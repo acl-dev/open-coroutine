@@ -87,7 +87,7 @@ impl Selector {
         #[cfg(target_pointer_width = "32")]
         const MAX_SAFE_TIMEOUT: u128 = 1789569;
         #[cfg(not(target_pointer_width = "32"))]
-        const MAX_SAFE_TIMEOUT: u128 = libc::c_int::max_value() as u128;
+        const MAX_SAFE_TIMEOUT: u128 = libc::c_int::MAX as u128;
 
         let timeout = timeout
             .map(|to| {
@@ -204,6 +204,10 @@ pub mod event {
     use std::fmt;
 
     use super::Event;
+
+    pub fn fd(event: &Event) -> libc::c_int {
+        event.data.fd
+    }
 
     pub fn token(event: &Event) -> usize {
         event.data.ptr as usize

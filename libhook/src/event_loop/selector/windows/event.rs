@@ -9,6 +9,11 @@ pub struct Event {
     pub data: u64,
 }
 
+pub fn fd(_event: &Event) -> libc::c_int {
+    //not support for windows
+    -1
+}
+
 pub fn token(event: &Event) -> usize {
     event.data as usize
 }

@@ -90,7 +90,7 @@ impl Selector {
         timeout: Option<Duration>,
     ) -> io::Result<()> {
         let timeout = timeout.map(|to| libc::timespec {
-            tv_sec: to.as_secs().min(libc::time_t::max_value() as u64) as libc::time_t,
+            tv_sec: to.as_secs().min(libc::time_t::MAX as u64) as libc::time_t,
             // `Duration::subsec_nanos` is guaranteed to be less than one
             // billion (the number of nanoseconds in a second), making the
             // cast to i32 safe. The cast itself is needed for platforms
@@ -344,6 +344,10 @@ pub mod event {
     use std::fmt;
 
     use super::{Event, Filter, Flags};
+
+    pub fn fd(event: &Event) -> libc::c_int {
+        event.ident as libc::c_int
+    }
 
     pub fn token(event: &Event) -> usize {
         event.udata as usize
