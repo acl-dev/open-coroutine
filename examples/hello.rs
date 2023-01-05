@@ -21,6 +21,6 @@ extern "C" fn f2(
 fn main() {
     co(f1, None, 4096);
     co(f2, None, 4096);
-    std::thread::sleep(Duration::from_millis(10));
+    std::thread::sleep(Duration::from_millis(50));
     println!("scheduler finished successfully!");
 }
