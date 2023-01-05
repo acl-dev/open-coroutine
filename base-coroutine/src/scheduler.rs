@@ -5,6 +5,7 @@ use crate::monitor::Monitor;
 use crate::stack::{Stack, StackError};
 use crate::work_steal::{get_queue, WorkStealQueue};
 use object_collection::{ObjectList, ObjectMap};
+use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::time::Duration;
@@ -20,13 +21,15 @@ thread_local! {
 /// 主协程
 type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
 
+static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
+
+static mut SUSPEND_TABLE: Lazy<TimerList> = Lazy::new(TimerList::new);
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
     ready: &'static mut WorkStealQueue,
-    suspend: TimerList,
-    system_call: ObjectMap<usize>,
     //not support for now
     copy_stack: ObjectList,
 }
@@ -54,8 +57,6 @@ impl Scheduler {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
             ready: get_queue(),
-            suspend: TimerList::new(),
-            system_call: ObjectMap::new(),
             copy_stack: ObjectList::new(),
         }
     }
@@ -135,8 +136,7 @@ impl Scheduler {
         let timeout_time = timer_utils::get_timeout_time(timeout);
         let mut scheduled = ObjectMap::new();
         while !self.ready.is_empty()
-            || !self.suspend.is_empty()
-            || !self.system_call.is_empty()
+            || unsafe { !SUSPEND_TABLE.is_empty() || !SYSTEM_CALL_TABLE.is_empty() }
             || !self.copy_stack.is_empty()
         {
             if timeout_time <= timer_utils::now() {
@@ -215,10 +215,12 @@ impl Scheduler {
                         if delay_time > 0 {
                             //挂起协程到时间轮
                             coroutine.status = Status::Suspend;
-                            self.suspend.insert_raw(
-                                timer_utils::add_timeout_time(delay_time),
-                                coroutine as *mut _ as *mut c_void,
-                            );
+                            unsafe {
+                                SUSPEND_TABLE.insert_raw(
+                                    timer_utils::add_timeout_time(delay_time),
+                                    coroutine as *mut _ as *mut c_void,
+                                );
+                            }
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::clean_delay();
                         } else {
                             //直接切换到下一个协程执行
@@ -241,23 +243,23 @@ impl Scheduler {
     }
 
     fn check_ready(&mut self) {
-        for _ in 0..self.suspend.len() {
-            if let Some(entry) = self.suspend.front() {
-                let exec_time = entry.get_time();
-                if timer_utils::now() < exec_time {
-                    break;
-                }
-                //移动至"就绪"队列
-                if let Some(mut entry) = self.suspend.pop_front() {
-                    for _ in 0..entry.len() {
-                        if let Some(pointer) = entry.pop_front_raw() {
-                            let coroutine = unsafe {
-                                &mut *(pointer
-                                    as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
-                            };
-                            coroutine.status = Status::Ready;
-                            //优先执行到时间的协程
-                            self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+        unsafe {
+            for _ in 0..SUSPEND_TABLE.len() {
+                if let Some(entry) = SUSPEND_TABLE.front() {
+                    let exec_time = entry.get_time();
+                    if timer_utils::now() < exec_time {
+                        break;
+                    }
+                    //移动至"就绪"队列
+                    if let Some(mut entry) = SUSPEND_TABLE.pop_front() {
+                        for _ in 0..entry.len() {
+                            if let Some(pointer) = entry.pop_front_raw() {
+                                let coroutine = &mut *(pointer
+                                    as *mut Coroutine<&'static mut c_void, &'static mut c_void>);
+                                coroutine.status = Status::Ready;
+                                //优先执行到时间的协程
+                                self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                            }
                         }
                     }
                 }
@@ -268,7 +270,7 @@ impl Scheduler {
     /// 用户不应该使用此方法
     pub fn syscall(&mut self) {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            self.system_call.insert(co.get_id(), co);
+            unsafe { SYSTEM_CALL_TABLE.insert(co.get_id(), co) };
             Coroutine::<&'static mut c_void, &'static mut c_void>::clean_current();
         }
     }
@@ -276,7 +278,7 @@ impl Scheduler {
     /// 用户不应该使用此方法
     #[allow(clippy::missing_safety_doc)]
     pub unsafe fn resume(&mut self, co_id: usize) {
-        if let Some(co) = self.system_call.remove(&co_id) {
+        if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
             self.ready.push_back_raw(co)
         }
     }
