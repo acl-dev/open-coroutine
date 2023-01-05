@@ -1,4 +1,5 @@
 use crate::event_loop::interest::Interest;
+use crate::{epoll_ctl, epoll_data, epoll_event, epoll_wait};
 use libc::{EPOLLET, EPOLLIN, EPOLLOUT, EPOLLRDHUP};
 use std::os::unix::io::{AsRawFd, RawFd};
 #[cfg(debug_assertions)]
@@ -106,39 +107,56 @@ impl Selector {
 
         let events = events.sys();
         events.clear();
-        syscall!(epoll_wait(
-            self.ep,
-            events.as_mut_ptr(),
-            events.capacity() as i32,
-            timeout,
-        ))
-        .map(|n_events| {
-            // This is safe because `epoll_wait` ensures that `n_events` are
-            // assigned.
-            unsafe { events.set_len(n_events as usize) };
-        })
+        unsafe {
+            let res = epoll_wait(
+                self.ep,
+                events.as_mut_ptr(),
+                events.capacity() as i32,
+                timeout,
+            );
+            if res == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                // This is safe because `epoll_wait` ensures that
+                // `res`(n_events) are assigned.
+                events.set_len(res as usize);
+                Ok(())
+            }
+        }
     }
 
     pub fn register(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
-        let mut event = libc::epoll_event {
-            events: interests_to_epoll(interests),
-            u64: usize::from(token) as u64,
-            #[cfg(target_os = "redox")]
-            _pad: 0,
-        };
-
-        syscall!(epoll_ctl(self.ep, libc::EPOLL_CTL_ADD, fd, &mut event)).map(|_| ())
+        unsafe {
+            let mut event: epoll_event = std::mem::zeroed();
+            event.events = interests_to_epoll(interests);
+            let mut data: epoll_data = std::mem::zeroed();
+            data.fd = fd;
+            data.ptr = token as *mut libc::c_void;
+            event.data = data;
+            let res = epoll_ctl(self.ep, libc::EPOLL_CTL_ADD, fd, &mut event);
+            if res == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
     }
 
     pub fn reregister(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
-        let mut event = libc::epoll_event {
-            events: interests_to_epoll(interests),
-            u64: usize::from(token) as u64,
-            #[cfg(target_os = "redox")]
-            _pad: 0,
-        };
-
-        syscall!(epoll_ctl(self.ep, libc::EPOLL_CTL_MOD, fd, &mut event)).map(|_| ())
+        unsafe {
+            let mut event: epoll_event = std::mem::zeroed();
+            event.events = interests_to_epoll(interests);
+            let mut data: epoll_data = std::mem::zeroed();
+            data.fd = fd;
+            data.ptr = token as *mut libc::c_void;
+            event.data = data;
+            let res = epoll_ctl(self.ep, libc::EPOLL_CTL_MOD, fd, &mut event);
+            if res == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
     }
 
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
@@ -179,7 +197,7 @@ fn interests_to_epoll(interests: Interest) -> u32 {
     kind as u32
 }
 
-pub type Event = libc::epoll_event;
+pub type Event = epoll_event;
 pub type Events = Vec<Event>;
 
 pub mod event {
@@ -188,7 +206,7 @@ pub mod event {
     use super::Event;
 
     pub fn token(event: &Event) -> usize {
-        event.u64 as usize
+        event.data.ptr as usize
     }
 
     pub fn is_readable(event: &Event) -> bool {
@@ -265,10 +283,10 @@ pub mod event {
         );
 
         // Can't reference fields in packed structures.
-        let e_u64 = event.u64;
+        let data = &event.data;
         f.debug_struct("epoll_event")
             .field("events", &EventsDetails(event.events))
-            .field("u64", &e_u64)
+            .field("data", data)
             .finish()
     }
 }
