@@ -35,11 +35,6 @@ pub extern "C" fn epoll_wait(
     maxevents: libc::c_int,
     timeout: libc::c_int,
 ) -> libc::c_int {
-    //关注读事件
-    let event_loop = EventLoop::next();
-    if event_loop.add_read_event(epfd).is_err() {
-        return 0;
-    }
     let timeout = timeout_schedule(timeout);
     (Lazy::force(&EPOLL_WAIT))(epfd, events, maxevents, timeout)
 }
@@ -68,11 +63,33 @@ pub extern "C" fn epoll_pwait(
     timeout: libc::c_int,
     sigmask: *const libc::sigset_t,
 ) -> libc::c_int {
-    //关注读事件
-    let event_loop = EventLoop::next();
-    if event_loop.add_read_event(epfd).is_err() {
-        return 0;
-    }
     let timeout = timeout_schedule(timeout);
     (Lazy::force(&EPOLL_PWAIT))(epfd, events, maxevents, timeout, sigmask)
+}
+
+static ACCEPT4: Lazy<
+    extern "C" fn(
+        libc::c_int,
+        *mut libc::sockaddr,
+        *mut libc::socklen_t,
+        libc::c_int,
+    ) -> libc::c_int,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"accept4\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system accept4 not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn accept4(
+    fd: libc::c_int,
+    addr: *mut libc::sockaddr,
+    len: *mut libc::socklen_t,
+    flg: libc::c_int,
+) -> libc::c_int {
+    let _ = EventLoop::round_robin_schedule();
+    //todo 非阻塞实现
+    (Lazy::force(&ACCEPT))(fd, addr, len, flg)
 }
