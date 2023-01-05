@@ -28,11 +28,6 @@ pub extern "C" fn kevent(
     nevents: libc::c_int,
     timeout: *const libc::timespec,
 ) -> libc::c_int {
-    //关注读事件
-    let event_loop = EventLoop::next();
-    if event_loop.add_read_event(kq).is_err() {
-        return 0;
-    }
     let timeout = if timeout.is_null() {
         let _ = EventLoop::round_robin_schedule();
         None

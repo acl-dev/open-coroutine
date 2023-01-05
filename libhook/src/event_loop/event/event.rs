@@ -19,6 +19,11 @@ pub struct Event {
 }
 
 impl Event {
+    /// Returns the event's fd.
+    pub fn fd(&self) -> libc::c_int {
+        sys::event::fd(&self.inner)
+    }
+
     /// Returns the event's token.
     pub fn token(&self) -> usize {
         sys::event::token(&self.inner)
@@ -203,7 +208,8 @@ impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let alternate = f.alternate();
         let mut d = f.debug_struct("Event");
-        d.field("token", &self.token())
+        d.field("fd", &self.fd())
+            .field("token", &self.token())
             .field("readable", &self.is_readable())
             .field("writable", &self.is_writable())
             .field("error", &self.is_error())

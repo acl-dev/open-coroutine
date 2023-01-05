@@ -102,7 +102,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
+    pub fn wait(&mut self, _fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
         //默认1s超时

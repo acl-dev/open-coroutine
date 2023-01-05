@@ -3,6 +3,23 @@ mod common;
 
 pub use common::*;
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
+#[allow(non_snake_case, dead_code)]
+mod epoll;
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
+pub use epoll::*;
+
 #[allow(dead_code)]
 mod event_loop;
 

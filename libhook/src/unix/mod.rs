@@ -135,16 +135,16 @@ pub extern "C" fn connect(
         if r == 0 {
             break;
         }
-        unsafe {
-            let errno = std::io::Error::last_os_error().raw_os_error();
-            if errno == Some(libc::EINPROGRESS) {
-                //等待写事件
-                let event_loop = EventLoop::next();
-                if event_loop.add_write_event(socket).is_err() || event_loop.wait(None).is_err() {
-                    r = -1;
-                    break;
-                }
-
+        let errno = std::io::Error::last_os_error().raw_os_error();
+        if errno == Some(libc::EINPROGRESS) {
+            //等待写事件
+            let event_loop = EventLoop::next();
+            if event_loop.add_write_event(socket).is_err() || event_loop.wait(socket, None).is_err()
+            {
+                r = -1;
+                break;
+            }
+            unsafe {
                 let mut len: libc::socklen_t = std::mem::zeroed();
                 let mut err: libc::c_int = 0;
                 r = libc::getsockopt(
@@ -162,12 +162,12 @@ pub extern "C" fn connect(
                     break;
                 };
                 errno_location().write(err);
-                r = -1;
-                break;
-            } else if errno == Some(libc::EINTR) {
-                r = -1;
-                break;
             }
+            r = -1;
+            break;
+        } else if errno == Some(libc::EINTR) {
+            r = -1;
+            break;
         }
     }
     set_non_blocking(socket, false);
@@ -229,8 +229,32 @@ pub extern "C" fn send(
     flags: libc::c_int,
 ) -> libc::ssize_t {
     let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&SEND))(socket, buf, len, flags)
+    if is_non_blocking(socket) {
+        //非阻塞，直接系统调用
+        return (Lazy::force(&SEND))(socket, buf, len, flags);
+    }
+    //阻塞，epoll_wait/kevent等待直到写事件
+    set_non_blocking(socket, true);
+    let mut r;
+    loop {
+        r = (Lazy::force(&SEND))(socket, buf, len, flags);
+        if r != -1 {
+            break;
+        }
+        let errno = std::io::Error::last_os_error().raw_os_error();
+        if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
+            //等待写事件
+            let event_loop = EventLoop::next();
+            if event_loop.add_write_event(socket).is_err() || event_loop.wait(socket, None).is_err()
+            {
+                break;
+            }
+        } else if errno == Some(libc::EINTR) {
+            break;
+        }
+    }
+    set_non_blocking(socket, false);
+    r
 }
 
 static RECV: Lazy<
