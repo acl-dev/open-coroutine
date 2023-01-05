@@ -1,9 +1,7 @@
 use crate::event_loop::EventLoop;
-use base_coroutine::Scheduler;
 use detour2::static_detour;
 use std::error::Error;
 use std::os::raw::c_void;
-use std::time::Duration;
 use std::{ffi::CString, iter, mem};
 use windows_sys::Win32::Foundation::{BOOL, HINSTANCE};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
@@ -65,5 +63,6 @@ fn get_module_symbol_address(module: &str, symbol: &str) -> Option<usize> {
 }
 
 fn sleep_detour(dw_milliseconds: u32) {
-    EventLoop::next_scheduler().timed_schedule(Duration::from_millis(dw_milliseconds as u64));
+    let timeout_time = timer_utils::add_timeout_time((dw_milliseconds * 1_000_000) as u64);
+    let _ = EventLoop::round_robin_timed_schedule(timeout_time);
 }

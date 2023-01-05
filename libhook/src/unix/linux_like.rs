@@ -24,12 +24,12 @@ pub extern "C" fn epoll_wait(
         return 0;
     }
     let timeout = if timeout < 0 {
-        let _ = EventLoop::next_scheduler().try_schedule();
+        let _ = EventLoop::round_robin_schedule();
         -1
     } else {
         let ns = timeout.checked_mul(1_000_000).unwrap_or(libc::c_int::MAX);
         let timeout_time = timer_utils::add_timeout_time(ns as u64);
-        let _ = EventLoop::next_scheduler().try_timeout_schedule(timeout_time);
+        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         match timeout_time.checked_sub(timer_utils::now()) {
             Some(v) => (v / 1_000_000) as libc::c_int,

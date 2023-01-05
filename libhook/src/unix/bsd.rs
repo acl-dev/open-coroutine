@@ -34,7 +34,7 @@ pub extern "C" fn kevent(
         return 0;
     }
     let timeout = if timeout.is_null() {
-        let _ = EventLoop::next_scheduler().try_schedule();
+        let _ = EventLoop::round_robin_schedule();
         None
     } else {
         let ns = unsafe {
@@ -45,7 +45,7 @@ pub extern "C" fn kevent(
                 .unwrap_or(u64::MAX)
         };
         let timeout_time = timer_utils::add_timeout_time(ns);
-        let _ = EventLoop::next_scheduler().try_timeout_schedule(timeout_time);
+        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         match timeout_time.checked_sub(timer_utils::now()) {
             Some(v) => {

@@ -77,7 +77,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     };
     let timeout_time = timer_utils::add_timeout_time(nanos_time);
     loop {
-        let _ = EventLoop::next_scheduler().try_timeout_schedule(timeout_time);
+        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         let schedule_finished_time = timer_utils::now();
         let left_time = match timeout_time.checked_sub(schedule_finished_time) {
@@ -122,7 +122,7 @@ pub extern "C" fn connect(
     address: *const libc::sockaddr,
     len: libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::next_scheduler().try_schedule();
+    let _ = EventLoop::round_robin_schedule();
     if is_non_blocking(socket) {
         //非阻塞，直接系统调用
         return (Lazy::force(&CONNECT))(socket, address, len);
@@ -185,7 +185,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
-    let _ = EventLoop::next_scheduler().try_schedule();
+    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
     (Lazy::force(&LISTEN))(socket, backlog)
 }
@@ -206,7 +206,7 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::next_scheduler().try_schedule();
+    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
     (Lazy::force(&ACCEPT))(socket, address, address_len)
 }
@@ -228,7 +228,7 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = EventLoop::next_scheduler().try_schedule();
+    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
     (Lazy::force(&SEND))(socket, buf, len, flags)
 }
@@ -250,7 +250,7 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = EventLoop::next_scheduler().try_schedule();
+    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
     (Lazy::force(&RECV))(socket, buf, len, flags)
 }
