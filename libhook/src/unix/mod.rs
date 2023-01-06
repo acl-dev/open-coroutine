@@ -139,8 +139,7 @@ pub extern "C" fn connect(
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
             let event_loop = EventLoop::next();
-            if event_loop.add_write_event(socket).is_err() || event_loop.wait(socket, None).is_err()
-            {
+            if event_loop.wait_write_event(socket, None).is_err() {
                 r = -1;
                 break;
             }
@@ -186,7 +185,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
     let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
+    //unnecessary non blocking impl for listen
     (Lazy::force(&LISTEN))(socket, backlog)
 }
 
@@ -245,8 +244,7 @@ pub extern "C" fn send(
         if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
             //等待写事件
             let event_loop = EventLoop::next();
-            if event_loop.add_write_event(socket).is_err() || event_loop.wait(socket, None).is_err()
-            {
+            if event_loop.wait_write_event(socket, None).is_err() {
                 break;
             }
         } else if errno == Some(libc::EINTR) {
