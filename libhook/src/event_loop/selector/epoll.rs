@@ -135,7 +135,11 @@ impl Selector {
             event.data = data;
             let res = epoll_ctl(self.ep, libc::EPOLL_CTL_ADD, fd, &mut event);
             if res == -1 {
-                Err(std::io::Error::last_os_error())
+                let e = std::io::Error::last_os_error();
+                match e.kind() {
+                    std::io::ErrorKind::AlreadyExists => Ok(()),
+                    _ => Err(e),
+                }
             } else {
                 Ok(())
             }
@@ -152,7 +156,11 @@ impl Selector {
             event.data = data;
             let res = epoll_ctl(self.ep, libc::EPOLL_CTL_MOD, fd, &mut event);
             if res == -1 {
-                Err(std::io::Error::last_os_error())
+                let e = std::io::Error::last_os_error();
+                match e.kind() {
+                    std::io::ErrorKind::AlreadyExists => Ok(()),
+                    _ => Err(e),
+                }
             } else {
                 Ok(())
             }
@@ -160,7 +168,14 @@ impl Selector {
     }
 
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
-        syscall!(epoll_ctl(self.ep, libc::EPOLL_CTL_DEL, fd, ptr::null_mut())).map(|_| ())
+        unsafe {
+            let res = epoll_ctl(self.ep, libc::EPOLL_CTL_DEL, fd, ptr::null_mut());
+            if res == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
     }
 
     #[cfg(debug_assertions)]
