@@ -276,3 +276,18 @@ pub extern "C" fn recv(
     //todo 非阻塞实现
     (Lazy::force(&RECV))(socket, buf, len, flags)
 }
+
+static CLOSE: Lazy<extern "C" fn(libc::c_int) -> libc::c_int> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"close\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system close not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn close(fd: libc::c_int) -> libc::c_int {
+    let _ = EventLoop::round_robin_schedule();
+    EventLoop::round_robin_del_event(fd);
+    (Lazy::force(&CLOSE))(fd)
+}
