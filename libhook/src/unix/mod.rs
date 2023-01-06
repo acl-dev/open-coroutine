@@ -129,7 +129,6 @@ pub extern "C" fn connect(
     }
     //阻塞，epoll_wait/kevent等待直到写事件
     set_non_blocking(socket, true);
-    let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
@@ -139,6 +138,7 @@ pub extern "C" fn connect(
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
+            let event_loop = EventLoop::next();
             if event_loop.wait_write_event(socket, None).is_err() {
                 r = -1;
                 break;
@@ -234,7 +234,6 @@ pub extern "C" fn send(
     }
     //阻塞，epoll_wait/kevent等待直到写事件
     set_non_blocking(socket, true);
-    let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&SEND))(socket, buf, len, flags);
@@ -244,6 +243,7 @@ pub extern "C" fn send(
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
             //等待写事件
+            let event_loop = EventLoop::next();
             if event_loop.wait_write_event(socket, None).is_err() {
                 break;
             }
@@ -275,19 +275,4 @@ pub extern "C" fn recv(
     let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
     (Lazy::force(&RECV))(socket, buf, len, flags)
-}
-
-static CLOSE: Lazy<extern "C" fn(libc::c_int) -> libc::c_int> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"close\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system close not found !");
-    }
-    std::mem::transmute(ptr)
-});
-
-#[no_mangle]
-pub extern "C" fn close(fd: libc::c_int) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
-    EventLoop::round_robin_del_event(fd);
-    (Lazy::force(&CLOSE))(fd)
 }
