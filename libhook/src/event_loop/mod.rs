@@ -81,38 +81,64 @@ impl<'a> EventLoop<'a> {
         }
     }
 
-    pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            self.selector
-                .register(fd, co.get_id(), Interest::READABLE)?;
+    pub fn round_robin_del_event(fd: libc::c_int) {
+        for _i in 0..num_cpus::get() {
+            let _ = EventLoop::next().del_event(fd);
         }
-        Ok(())
     }
 
-    pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            self.selector
-                .register(fd, co.get_id(), Interest::WRITABLE)?;
-        }
-        Ok(())
-    }
-
-    pub fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+    fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         self.selector.deregister(fd)?;
         Ok(())
     }
 
-    pub fn wait(&mut self, _fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
+    fn build_token() -> usize {
+        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
+            co.get_id()
+        } else {
+            0
+        }
+    }
+
+    pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        let token = <EventLoop<'a>>::build_token();
+        self.selector.register(fd, token, Interest::READABLE)?;
+        Ok(())
+    }
+
+    pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        let token = <EventLoop<'a>>::build_token();
+        self.selector.register(fd, token, Interest::WRITABLE)?;
+        Ok(())
+    }
+
+    fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
-        //默认1s超时
-        self.selector
-            .select(&mut events, Some(timeout.unwrap_or(Duration::from_secs(1))))?;
+        self.selector.select(&mut events, timeout)?;
         for event in events.iter() {
             unsafe {
                 self.scheduler.resume(event.token());
             }
         }
         Ok(())
+    }
+
+    pub fn wait_read_event(
+        &mut self,
+        fd: libc::c_int,
+        timeout: Option<Duration>,
+    ) -> std::io::Result<()> {
+        self.add_read_event(fd)?;
+        self.wait(timeout)
+    }
+
+    pub fn wait_write_event(
+        &mut self,
+        fd: libc::c_int,
+        timeout: Option<Duration>,
+    ) -> std::io::Result<()> {
+        self.add_write_event(fd)?;
+        self.wait(timeout)
     }
 }

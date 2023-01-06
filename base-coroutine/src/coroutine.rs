@@ -51,6 +51,7 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
         OpenCoroutine::<Param, Yield, Return>::clean_yielder();
         unsafe {
             let mut coroutine_result = CoroutineResult::<Yield, Return>::Yield(val);
+            //see Scheduler.do_schedule
             let transfer = self
                 .sp
                 .context
@@ -59,6 +60,20 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
             let backed = transfer.data as *mut c_void as *mut _
                 as *mut OpenCoroutine<'_, Param, Yield, Return>;
             std::ptr::read_unaligned(&(*backed).param)
+        }
+    }
+
+    pub(crate) extern "C" fn syscall(&self) {
+        OpenCoroutine::<Param, Yield, Return>::clean_current();
+        let yielder = OpenCoroutine::<Param, Yield, Return>::yielder();
+        OpenCoroutine::<Param, Yield, Return>::clean_yielder();
+        unsafe {
+            let mut coroutine_result = CoroutineResult::<Yield, Return>::SystemCall;
+            //see Scheduler.do_schedule
+            self.sp
+                .context
+                .resume(&mut coroutine_result as *mut _ as usize);
+            OpenCoroutine::init_yielder(&*yielder);
         }
     }
 
@@ -100,6 +115,8 @@ pub enum CoroutineResult<Yield, Return> {
 
     /// Value returned by a coroutine returning from its main function.
     Return(Return),
+
+    SystemCall,
 }
 
 impl<Yield, Return> CoroutineResult<Yield, Return> {
@@ -108,6 +125,7 @@ impl<Yield, Return> CoroutineResult<Yield, Return> {
         match self {
             CoroutineResult::Yield(val) => Some(val),
             CoroutineResult::Return(_) => None,
+            CoroutineResult::SystemCall => None,
         }
     }
 
@@ -116,6 +134,7 @@ impl<Yield, Return> CoroutineResult<Yield, Return> {
         match self {
             CoroutineResult::Yield(_) => None,
             CoroutineResult::Return(val) => Some(val),
+            CoroutineResult::SystemCall => None,
         }
     }
 }

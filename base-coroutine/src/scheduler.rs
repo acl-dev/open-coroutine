@@ -39,13 +39,12 @@ impl Scheduler {
         #[cfg(unix)]
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                // invoke by Monitor::signal()
                 //挂起当前协程
                 let yielder: *const Yielder<&'static mut c_void, (), &'static mut c_void> =
                     OpenCoroutine::yielder();
                 if !yielder.is_null() {
-                    unsafe {
-                        (*yielder).suspend(());
-                    }
+                    unsafe { (*yielder).suspend(()) };
                 }
             }
             let mut act: libc::sigaction = std::mem::zeroed();
@@ -208,6 +207,7 @@ impl Scheduler {
                     Monitor::init_signal_time(_start);
                     Monitor::add_task(_start);
                 }
+                //see OpenCoroutine::child_context_func
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
                         let delay_time =
@@ -228,6 +228,10 @@ impl Scheduler {
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
+                    CoroutineResult::SystemCall => {
+                        coroutine.status = Status::SystemCall;
+                        unsafe { SYSTEM_CALL_TABLE.insert(coroutine.get_id(), coroutine) };
+                    }
                 };
                 #[cfg(unix)]
                 {
@@ -269,9 +273,11 @@ impl Scheduler {
 
     /// 用户不应该使用此方法
     pub fn syscall(&mut self) {
-        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            unsafe { SYSTEM_CALL_TABLE.insert(co.get_id(), co) };
-            Coroutine::<&'static mut c_void, &'static mut c_void>::clean_current();
+        //挂起当前协程
+        let yielder: *const Yielder<&'static mut c_void, (), &'static mut c_void> =
+            OpenCoroutine::yielder();
+        if !yielder.is_null() {
+            unsafe { (*yielder).syscall() };
         }
     }
 
