@@ -9,6 +9,7 @@ use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
 use base_coroutine::{Coroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
+use std::io::ErrorKind;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -115,11 +116,15 @@ impl<'a> EventLoop<'a> {
     fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
-        self.selector.select(&mut events, timeout)?;
-        for event in events.iter() {
-            unsafe {
-                self.scheduler.resume(event.token())?;
+        if let Err(e) = self.selector.select(&mut events, timeout) {
+            match e.kind() {
+                //maybe invoke by Monitor::signal(), just ignore this
+                ErrorKind::Interrupted => {}
+                _ => return Err(e),
             }
+        }
+        for event in events.iter() {
+            let _ = unsafe { self.scheduler.resume(event.token()) };
         }
         Ok(())
     }
