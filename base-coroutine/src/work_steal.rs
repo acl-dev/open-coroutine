@@ -1,5 +1,5 @@
 use crate::random::Rng;
-use concurrent_queue::ConcurrentQueue;
+use concurrent_queue::{ConcurrentQueue, PushError};
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
 use std::error::Error;
@@ -131,9 +131,20 @@ impl WorkStealQueue {
                 while !half.is_empty() {
                     let _ = GLOBAL_QUEUE.push(half.pop().unwrap());
                 }
-                GLOBAL_QUEUE.push(item).map_err(|_| {
-                    std::io::Error::new(ErrorKind::Other, "push to global queue failed")
-                })?;
+                loop {
+                    match GLOBAL_QUEUE.push(item) {
+                        Ok(_) => return Ok(()),
+                        Err(e) => match e {
+                            PushError::Full(_) => continue,
+                            PushError::Closed(_) => {
+                                return Err(std::io::Error::new(
+                                    ErrorKind::Other,
+                                    "global queue closed",
+                                ))
+                            }
+                        },
+                    }
+                }
             }
         }
         Ok(())
