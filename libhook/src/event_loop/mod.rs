@@ -7,7 +7,7 @@ mod selector;
 use crate::event_loop::event::Events;
 use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
-use base_coroutine::{Coroutine, Scheduler, StackError, UserFunc};
+use base_coroutine::{Coroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -55,22 +55,22 @@ impl<'a> EventLoop<'a> {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         param: &'static mut c_void,
         size: usize,
-    ) -> Result<(), StackError> {
+    ) -> std::io::Result<()> {
         EventLoop::next_scheduler().submit(f, param, size)
     }
 
-    pub fn round_robin_schedule() -> Result<(), StackError> {
+    pub fn round_robin_schedule() -> std::io::Result<()> {
         EventLoop::round_robin_timeout_schedule(u64::MAX)
     }
 
-    pub fn round_robin_timeout_schedule(timeout_time: u64) -> Result<(), StackError> {
+    pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
         for _i in 0..num_cpus::get() {
             EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
         }
         Ok(())
     }
 
-    pub fn round_robin_timed_schedule(timeout_time: u64) -> Result<(), StackError> {
+    pub fn round_robin_timed_schedule(timeout_time: u64) -> std::io::Result<()> {
         loop {
             if timeout_time <= timer_utils::now() {
                 return Ok(());
@@ -118,7 +118,7 @@ impl<'a> EventLoop<'a> {
         self.selector.select(&mut events, timeout)?;
         for event in events.iter() {
             unsafe {
-                self.scheduler.resume(event.token());
+                self.scheduler.resume(event.token())?;
             }
         }
         Ok(())
