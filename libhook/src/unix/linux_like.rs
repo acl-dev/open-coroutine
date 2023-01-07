@@ -4,22 +4,6 @@ use crate::unix::common::{is_blocking, reset_errno, set_non_blocking};
 use once_cell::sync::Lazy;
 use std::io::ErrorKind;
 
-fn timeout_schedule(timeout: libc::c_int) -> libc::c_int {
-    if timeout < 0 {
-        let _ = EventLoop::round_robin_schedule();
-        -1
-    } else {
-        let ns = timeout.checked_mul(1_000_000).unwrap_or(libc::c_int::MAX);
-        let timeout_time = timer_utils::add_timeout_time(ns as u64);
-        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
-        // 可能schedule完还剩一些时间，此时本地队列没有任务可做
-        match timeout_time.checked_sub(timer_utils::now()) {
-            Some(v) => (v / 1_000_000) as libc::c_int,
-            None => return 0,
-        }
-    }
-}
-
 static EPOLL_WAIT: Lazy<
     extern "C" fn(libc::c_int, *mut epoll_event, libc::c_int, libc::c_int) -> libc::c_int,
 > = Lazy::new(|| unsafe {
@@ -37,8 +21,28 @@ pub extern "C" fn epoll_wait(
     maxevents: libc::c_int,
     timeout: libc::c_int,
 ) -> libc::c_int {
-    let timeout = timeout_schedule(timeout);
-    (Lazy::force(&EPOLL_WAIT))(epfd, events, maxevents, timeout)
+    let nanos_time = if timeout < 0 {
+        u64::MAX
+    } else {
+        (timeout as u64).checked_mul(1_000_000).unwrap_or(u64::MAX)
+    };
+    let timeout_time = timer_utils::add_timeout_time(nanos_time);
+    let mut r;
+    loop {
+        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
+        // 可能schedule完还剩一些时间，此时本地队列没有任务可做
+        let schedule_finished_time = timer_utils::now();
+        let left_time = match timeout_time.checked_sub(schedule_finished_time) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let timeout = (left_time / 1_000_000) as libc::c_int;
+        r = (Lazy::force(&EPOLL_WAIT))(epfd, events, maxevents, timeout);
+        if r != -1 {
+            reset_errno();
+            return r;
+        }
+    }
 }
 
 static EPOLL_PWAIT: Lazy<
@@ -65,8 +69,28 @@ pub extern "C" fn epoll_pwait(
     timeout: libc::c_int,
     sigmask: *const libc::sigset_t,
 ) -> libc::c_int {
-    let timeout = timeout_schedule(timeout);
-    (Lazy::force(&EPOLL_PWAIT))(epfd, events, maxevents, timeout, sigmask)
+    let nanos_time = if timeout < 0 {
+        u64::MAX
+    } else {
+        (timeout as u64).checked_mul(1_000_000).unwrap_or(u64::MAX)
+    };
+    let timeout_time = timer_utils::add_timeout_time(nanos_time);
+    let mut r;
+    loop {
+        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
+        // 可能schedule完还剩一些时间，此时本地队列没有任务可做
+        let schedule_finished_time = timer_utils::now();
+        let left_time = match timeout_time.checked_sub(schedule_finished_time) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let timeout = (left_time / 1_000_000) as libc::c_int;
+        r = (Lazy::force(&EPOLL_PWAIT))(epfd, events, maxevents, timeout, sigmask);
+        if r != -1 {
+            reset_errno();
+            return r;
+        }
+    }
 }
 
 static ACCEPT4: Lazy<
