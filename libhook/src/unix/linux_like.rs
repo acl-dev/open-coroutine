@@ -1,6 +1,8 @@
 use crate::epoll_event;
 use crate::event_loop::EventLoop;
+use crate::unix::common::{is_blocking, reset_errno, set_non_blocking};
 use once_cell::sync::Lazy;
+use std::io::ErrorKind;
 
 fn timeout_schedule(timeout: libc::c_int) -> libc::c_int {
     if timeout < 0 {
@@ -89,7 +91,31 @@ pub extern "C" fn accept4(
     len: *mut libc::socklen_t,
     flg: libc::c_int,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&ACCEPT4))(fd, addr, len, flg)
+    let blocking = is_blocking(fd);
+    //阻塞，epoll_wait/kevent等待直到读事件
+    if blocking {
+        set_non_blocking(fd, true);
+    }
+    let event_loop = EventLoop::next();
+    let mut r;
+    loop {
+        r = (Lazy::force(&ACCEPT4))(fd, addr, len, flg);
+        if r != -1 {
+            reset_errno();
+            break;
+        }
+        let error_kind = std::io::Error::last_os_error().kind();
+        if error_kind == ErrorKind::WouldBlock {
+            //等待读事件
+            if event_loop.wait_read_event(fd, None).is_err() {
+                break;
+            }
+        } else if error_kind != ErrorKind::Interrupted {
+            break;
+        }
+    }
+    if blocking {
+        set_non_blocking(fd, false);
+    }
+    r
 }

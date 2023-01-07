@@ -210,9 +210,33 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&ACCEPT))(socket, address, address_len)
+    let blocking = is_blocking(socket);
+    //阻塞，epoll_wait/kevent等待直到读事件
+    if blocking {
+        set_non_blocking(socket, true);
+    }
+    let event_loop = EventLoop::next();
+    let mut r;
+    loop {
+        r = (Lazy::force(&ACCEPT))(socket, address, address_len);
+        if r != -1 {
+            reset_errno();
+            break;
+        }
+        let error_kind = std::io::Error::last_os_error().kind();
+        if error_kind == ErrorKind::WouldBlock {
+            //等待读事件
+            if event_loop.wait_read_event(socket, None).is_err() {
+                break;
+            }
+        } else if error_kind != ErrorKind::Interrupted {
+            break;
+        }
+    }
+    if blocking {
+        set_non_blocking(socket, false);
+    }
+    r
 }
 
 static SEND: Lazy<
@@ -305,4 +329,19 @@ pub extern "C" fn recv(
         set_non_blocking(socket, false);
     }
     r
+}
+
+static CLOSE: Lazy<extern "C" fn(libc::c_int) -> libc::c_int> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"close\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system close not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn close(fd: libc::c_int) -> libc::c_int {
+    let _ = EventLoop::round_robin_schedule();
+    //todo finish this
+    (Lazy::force(&CLOSE))(fd)
 }
