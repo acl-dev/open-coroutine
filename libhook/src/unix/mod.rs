@@ -129,6 +129,7 @@ pub extern "C" fn connect(
     }
     //阻塞，epoll_wait/kevent等待直到写事件
     set_non_blocking(socket, true);
+    let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
@@ -138,7 +139,6 @@ pub extern "C" fn connect(
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
-            let event_loop = EventLoop::next();
             if event_loop.wait_write_event(socket, None).is_err() {
                 r = -1;
                 break;
@@ -234,6 +234,7 @@ pub extern "C" fn send(
     }
     //阻塞，epoll_wait/kevent等待直到写事件
     set_non_blocking(socket, true);
+    let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&SEND))(socket, buf, len, flags);
@@ -243,7 +244,6 @@ pub extern "C" fn send(
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
             //等待写事件
-            let event_loop = EventLoop::next();
             if event_loop.wait_write_event(socket, None).is_err() {
                 break;
             }
