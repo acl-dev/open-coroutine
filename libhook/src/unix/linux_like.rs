@@ -91,7 +91,6 @@ pub extern "C" fn accept4(
     len: *mut libc::socklen_t,
     flg: libc::c_int,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
     let blocking = is_blocking(fd);
     //阻塞，epoll_wait/kevent等待直到读事件
     if blocking {

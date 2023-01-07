@@ -124,7 +124,6 @@ pub extern "C" fn connect(
     address: *const libc::sockaddr,
     len: libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
     let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到写事件
     if blocking {
@@ -211,7 +210,6 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
     let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到读事件
     if blocking {
@@ -258,7 +256,6 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = EventLoop::round_robin_schedule();
     let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到写事件
     if blocking {
@@ -305,7 +302,6 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = EventLoop::round_robin_schedule();
     let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到读事件
     if blocking {
