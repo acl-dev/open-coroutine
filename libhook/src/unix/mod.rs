@@ -102,6 +102,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
         //注意这里获取的是原始系统函数nanosleep的指针
         //相当于libc::nanosleep(&rqtp, rmtp)
         if (Lazy::force(&NANOSLEEP))(&rqtp, rmtp) == 0 {
+            reset_errno();
             return 0;
         }
     }
@@ -124,17 +125,17 @@ pub extern "C" fn connect(
     len: libc::socklen_t,
 ) -> libc::c_int {
     let _ = EventLoop::round_robin_schedule();
-    if is_non_blocking(socket) {
-        //非阻塞，直接系统调用
-        return (Lazy::force(&CONNECT))(socket, address, len);
-    }
+    let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到写事件
-    set_non_blocking(socket, true);
+    if blocking {
+        set_non_blocking(socket, true);
+    }
     let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
         if r == 0 {
+            reset_errno();
             break;
         }
         let error = std::io::Error::last_os_error();
@@ -160,9 +161,10 @@ pub extern "C" fn connect(
                 }
                 if err == 0 {
                     r = 0;
+                    reset_errno();
                     break;
                 };
-                errno_location().write(err);
+                set_errno(err);
             }
             r = -1;
             break;
@@ -171,7 +173,9 @@ pub extern "C" fn connect(
             break;
         }
     }
-    set_non_blocking(socket, false);
+    if blocking {
+        set_non_blocking(socket, false);
+    }
     r
 }
 
@@ -208,8 +212,33 @@ pub extern "C" fn accept(
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
     let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&ACCEPT))(socket, address, address_len)
+    let blocking = is_blocking(socket);
+    //阻塞，epoll_wait/kevent等待直到读事件
+    if blocking {
+        set_non_blocking(socket, true);
+    }
+    let event_loop = EventLoop::next();
+    let mut r;
+    loop {
+        r = (Lazy::force(&ACCEPT))(socket, address, address_len);
+        if r != -1 {
+            reset_errno();
+            break;
+        }
+        let error_kind = std::io::Error::last_os_error().kind();
+        if error_kind == ErrorKind::WouldBlock {
+            //等待读事件
+            if event_loop.wait_read_event(socket, None).is_err() {
+                break;
+            }
+        } else if error_kind != ErrorKind::Interrupted {
+            break;
+        }
+    }
+    if blocking {
+        set_non_blocking(socket, false);
+    }
+    r
 }
 
 static SEND: Lazy<
@@ -230,17 +259,17 @@ pub extern "C" fn send(
     flags: libc::c_int,
 ) -> libc::ssize_t {
     let _ = EventLoop::round_robin_schedule();
-    if is_non_blocking(socket) {
-        //非阻塞，直接系统调用
-        return (Lazy::force(&SEND))(socket, buf, len, flags);
-    }
+    let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到写事件
-    set_non_blocking(socket, true);
+    if blocking {
+        set_non_blocking(socket, true);
+    }
     let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&SEND))(socket, buf, len, flags);
         if r != -1 {
+            reset_errno();
             break;
         }
         let error_kind = std::io::Error::last_os_error().kind();
@@ -253,7 +282,9 @@ pub extern "C" fn send(
             break;
         }
     }
-    set_non_blocking(socket, false);
+    if blocking {
+        set_non_blocking(socket, false);
+    }
     r
 }
 
@@ -275,17 +306,17 @@ pub extern "C" fn recv(
     flags: libc::c_int,
 ) -> libc::ssize_t {
     let _ = EventLoop::round_robin_schedule();
-    if is_non_blocking(socket) {
-        //非阻塞，直接系统调用
-        return (Lazy::force(&RECV))(socket, buf, len, flags);
-    }
+    let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到读事件
-    set_non_blocking(socket, true);
+    if blocking {
+        set_non_blocking(socket, true);
+    }
     let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&RECV))(socket, buf, len, flags);
         if r != -1 {
+            reset_errno();
             break;
         }
         let error_kind = std::io::Error::last_os_error().kind();
@@ -298,6 +329,8 @@ pub extern "C" fn recv(
             break;
         }
     }
-    set_non_blocking(socket, false);
+    if blocking {
+        set_non_blocking(socket, false);
+    }
     r
 }

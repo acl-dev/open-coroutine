@@ -33,7 +33,15 @@ extern "C" {
         link_name = "__error"
     )]
     #[cfg_attr(target_os = "haiku", link_name = "_errnop")]
-    pub fn errno_location() -> *mut libc::c_int;
+    fn errno_location() -> *mut libc::c_int;
+}
+
+pub extern "C" fn reset_errno() {
+    set_errno(0)
+}
+
+pub extern "C" fn set_errno(errno: libc::c_int) {
+    unsafe { errno_location().write(errno) }
 }
 
 pub extern "C" fn set_non_blocking(socket: libc::c_int, on: bool) -> bool {
@@ -52,6 +60,10 @@ pub extern "C" fn set_non_blocking(socket: libc::c_int, on: bool) -> bool {
             },
         ) == 0
     }
+}
+
+pub extern "C" fn is_blocking(socket: libc::c_int) -> bool {
+    !is_non_blocking(socket)
 }
 
 pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
