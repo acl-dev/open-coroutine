@@ -109,45 +109,47 @@ mod tests {
         None
     }
 
-    unsafe fn crate_server() -> std::io::Result<()> {
+    unsafe fn crate_server() {
         //invoke by libc::listen
         assert!(co(fx, Some(&mut *(1usize as *mut c_void)), 4096));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
-        let listener = TcpListener::bind("127.0.0.1:9999")?;
+        let listener =
+            TcpListener::bind("127.0.0.1:9999").expect("bind to 127.0.0.1:9999 failed !");
         //invoke by libc::accept
         assert!(co(fx, Some(&mut *(2usize as *mut c_void)), 4096));
         for stream in listener.incoming() {
-            let mut stream = stream?;
+            let mut stream = stream.expect("accept new connection failed !");
             let mut buffer: [u8; 512] = [0; 512];
             loop {
                 //invoke by libc::recv
                 assert!(co(fx, Some(&mut *(6usize as *mut c_void)), 4096));
                 //从流里面读内容，读到buffer中
-                let bytes_read = stream.read(&mut buffer)?;
+                let bytes_read = stream.read(&mut buffer).expect("server read failed !");
                 if bytes_read == 0 {
                     //如果读到的为空，说明已经结束了
-                    return Ok(());
+                    return;
                 }
                 assert_eq!(data, buffer);
                 //invoke by libc::send
                 assert!(co(fx, Some(&mut *(7usize as *mut c_void)), 4096));
                 //回写
-                stream.write(&buffer[..bytes_read])?;
+                stream
+                    .write(&buffer[..bytes_read])
+                    .expect("server write failed !");
             }
         }
-        Ok(())
     }
 
-    unsafe fn crate_client() -> std::io::Result<()> {
+    unsafe fn crate_client() {
         //等服务端起来
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(3));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
         //invoke by libc::connect
         assert!(co(fx, Some(&mut *(3usize as *mut c_void)), 4096));
-        let mut stream = TcpStream::connect("127.0.0.1:9999")?;
+        let mut stream = TcpStream::connect("127.0.0.1:9999").expect("failed to 127.0.0.1:9999 !");
         for _ in 0..3 {
             //invoke by libc::send
             assert!(co(fx, Some(&mut *(4usize as *mut c_void)), 4096));
@@ -166,16 +168,14 @@ mod tests {
         }
         //发送终止符
         stream.write(&[]).expect("Failed to write!");
-        Ok(())
     }
 
     #[test]
-    fn hook_test_accept_and_connect() -> std::io::Result<()> {
+    fn hook_test_accept_and_connect() {
         unsafe {
             let handle = std::thread::spawn(|| crate_server());
-            crate_client()?;
-            handle.join().unwrap().expect("server has exception");
+            crate_client();
+            handle.join().expect("server has exception");
         }
-        Ok(())
     }
 }
