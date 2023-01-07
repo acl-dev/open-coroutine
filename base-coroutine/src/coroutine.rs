@@ -3,8 +3,10 @@ use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
-use crate::stack::{ProtectedFixedSizeStack, StackError};
+use crate::stack::ProtectedFixedSizeStack;
+use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::RefCell;
+use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
 use std::os::raw::c_void;
 
@@ -201,8 +203,16 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         proc: UserFunc<'a, Param, Yield, Return>,
         param: Param,
         size: usize,
-    ) -> Result<Self, StackError> {
-        let stack = ProtectedFixedSizeStack::new(size)?;
+    ) -> std::io::Result<Self> {
+        let stack = ProtectedFixedSizeStack::new(size).map_err(|e| match e {
+            ExceedsMaximumSize(size) => Error::new(
+                ErrorKind::Other,
+                "Requested more than max size of ".to_owned()
+                    + &size.to_string()
+                    + " bytes for a stack",
+            ),
+            IoError(e) => e,
+        })?;
         Ok(OpenCoroutine {
             id: IdGenerator::next_coroutine_id(),
             sp: Transfer::new(

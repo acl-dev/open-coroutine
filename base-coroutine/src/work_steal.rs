@@ -4,6 +4,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::io::ErrorKind;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -78,6 +79,7 @@ pub enum StealError {
     CanNotStealSelf,
     EmptySibling,
     NoMoreSpare,
+    StealSiblingFailed,
 }
 
 impl Display for StealError {
@@ -86,6 +88,7 @@ impl Display for StealError {
             StealError::CanNotStealSelf => write!(fmt, "can not steal self"),
             StealError::EmptySibling => write!(fmt, "the sibling is empty"),
             StealError::NoMoreSpare => write!(fmt, "self has no more spare"),
+            StealError::StealSiblingFailed => write!(fmt, "steal from another local queue failed"),
         }
     }
 }
@@ -111,12 +114,12 @@ impl WorkStealQueue {
         }
     }
 
-    pub fn push_back<T>(&mut self, element: T) {
+    pub fn push_back<T>(&mut self, element: T) -> std::io::Result<()> {
         let ptr = Box::leak(Box::new(element));
-        self.push_back_raw(ptr as *mut _ as *mut c_void);
+        self.push_back_raw(ptr as *mut _ as *mut c_void)
     }
 
-    pub fn push_back_raw(&mut self, ptr: *mut c_void) {
+    pub fn push_back_raw(&mut self, ptr: *mut c_void) -> std::io::Result<()> {
         if let Err(item) = self.queue.push(ptr) {
             unsafe {
                 //把本地队列的一半放到全局队列
@@ -124,19 +127,16 @@ impl WorkStealQueue {
                 //todo 这里实际上可以减少一次copy
                 let half = Worker::new(count);
                 let stealer = self.queue.stealer();
-                stealer
-                    .steal(&half, |_n| count)
-                    .expect("steal half to global failed !");
+                let _ = stealer.steal(&half, |_n| count);
                 while !half.is_empty() {
-                    GLOBAL_QUEUE
-                        .push(half.pop().unwrap())
-                        .expect("push half to global queue failed!");
+                    let _ = GLOBAL_QUEUE.push(half.pop().unwrap());
                 }
-                GLOBAL_QUEUE
-                    .push(item)
-                    .expect("push to global queue failed!")
+                GLOBAL_QUEUE.push(item).map_err(|_| {
+                    std::io::Error::new(ErrorKind::Other, "push to global queue failed")
+                })?;
             }
         }
+        Ok(())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -234,8 +234,8 @@ impl WorkStealQueue {
             .queue
             .stealer()
             .steal(&self.queue, |_n| count)
-            .expect("steal half from another local queue failed !");
-        Ok(())
+            .map_err(|_| StealError::StealSiblingFailed)
+            .map(|_| ())
     }
 
     pub(crate) fn try_global_lock() -> bool {

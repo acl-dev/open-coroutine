@@ -2,6 +2,7 @@ use crate::event_loop::EventLoop;
 use crate::unix::common::*;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
+use std::io::ErrorKind;
 
 mod common;
 
@@ -136,7 +137,8 @@ pub extern "C" fn connect(
         if r == 0 {
             break;
         }
-        let errno = std::io::Error::last_os_error().raw_os_error();
+        let error = std::io::Error::last_os_error();
+        let errno = error.raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
             if event_loop.wait_write_event(socket, None).is_err() {
@@ -164,7 +166,7 @@ pub extern "C" fn connect(
             }
             r = -1;
             break;
-        } else if errno == Some(libc::EINTR) {
+        } else if error.kind() != ErrorKind::Interrupted {
             r = -1;
             break;
         }
@@ -241,13 +243,13 @@ pub extern "C" fn send(
         if r != -1 {
             break;
         }
-        let errno = std::io::Error::last_os_error().raw_os_error();
-        if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
+        let error_kind = std::io::Error::last_os_error().kind();
+        if error_kind == ErrorKind::WouldBlock {
             //等待写事件
             if event_loop.wait_write_event(socket, None).is_err() {
                 break;
             }
-        } else if errno == Some(libc::EINTR) {
+        } else if error_kind != ErrorKind::Interrupted {
             break;
         }
     }
@@ -273,6 +275,29 @@ pub extern "C" fn recv(
     flags: libc::c_int,
 ) -> libc::ssize_t {
     let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&RECV))(socket, buf, len, flags)
+    if is_non_blocking(socket) {
+        //非阻塞，直接系统调用
+        return (Lazy::force(&RECV))(socket, buf, len, flags);
+    }
+    //阻塞，epoll_wait/kevent等待直到读事件
+    set_non_blocking(socket, true);
+    let event_loop = EventLoop::next();
+    let mut r;
+    loop {
+        r = (Lazy::force(&RECV))(socket, buf, len, flags);
+        if r != -1 {
+            break;
+        }
+        let error_kind = std::io::Error::last_os_error().kind();
+        if error_kind == ErrorKind::WouldBlock {
+            //等待读事件
+            if event_loop.wait_read_event(socket, None).is_err() {
+                break;
+            }
+        } else if error_kind != ErrorKind::Interrupted {
+            break;
+        }
+    }
+    set_non_blocking(socket, false);
+    r
 }

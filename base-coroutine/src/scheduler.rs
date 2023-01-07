@@ -2,7 +2,7 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 #[cfg(unix)]
 use crate::monitor::Monitor;
-use crate::stack::{Stack, StackError};
+use crate::stack::Stack;
 use crate::work_steal::{get_queue, WorkStealQueue};
 use object_collection::{ObjectList, ObjectMap};
 use once_cell::sync::Lazy;
@@ -124,14 +124,13 @@ impl Scheduler {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
-    ) -> Result<(), StackError> {
+    ) -> std::io::Result<()> {
         let mut coroutine = Coroutine::new(f, val, size)?;
         coroutine.status = Status::Ready;
-        self.ready.push_back(coroutine);
-        Ok(())
+        self.ready.push_back(coroutine)
     }
 
-    pub fn timed_schedule(&mut self, timeout: Duration) -> Result<ObjectMap<usize>, StackError> {
+    pub fn timed_schedule(&mut self, timeout: Duration) -> std::io::Result<ObjectMap<usize>> {
         let timeout_time = timer_utils::get_timeout_time(timeout);
         let mut scheduled = ObjectMap::new();
         while !self.ready.is_empty()
@@ -149,18 +148,15 @@ impl Scheduler {
         Ok(scheduled)
     }
 
-    pub fn try_schedule(&mut self) -> Result<ObjectMap<usize>, StackError> {
+    pub fn try_schedule(&mut self) -> std::io::Result<ObjectMap<usize>> {
         self.try_timeout_schedule(Duration::MAX.as_secs())
     }
 
-    pub fn try_timed_schedule(&mut self, time: Duration) -> Result<ObjectMap<usize>, StackError> {
+    pub fn try_timed_schedule(&mut self, time: Duration) -> std::io::Result<ObjectMap<usize>> {
         self.try_timeout_schedule(timer_utils::get_timeout_time(time))
     }
 
-    pub fn try_timeout_schedule(
-        &mut self,
-        timeout_time: u64,
-    ) -> Result<ObjectMap<usize>, StackError> {
+    pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<ObjectMap<usize>> {
         let mut result = ObjectMap::new();
         Scheduler::init_current(self);
         Scheduler::init_results(&mut result);
@@ -195,7 +191,7 @@ impl Scheduler {
         if Scheduler::timeout_time() <= timer_utils::now() {
             Scheduler::back_to_main()
         }
-        self.check_ready();
+        let _ = self.check_ready();
         match self.ready.pop_front_raw() {
             Some(pointer) => {
                 let coroutine = unsafe {
@@ -223,8 +219,8 @@ impl Scheduler {
                             }
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::clean_delay();
                         } else {
-                            //直接切换到下一个协程执行
-                            self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                            //放入就绪队列尾部
+                            let _ = self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
@@ -246,7 +242,7 @@ impl Scheduler {
         }
     }
 
-    fn check_ready(&mut self) {
+    fn check_ready(&mut self) -> std::io::Result<()> {
         unsafe {
             for _ in 0..SUSPEND_TABLE.len() {
                 if let Some(entry) = SUSPEND_TABLE.front() {
@@ -261,13 +257,15 @@ impl Scheduler {
                                 let coroutine = &mut *(pointer
                                     as *mut Coroutine<&'static mut c_void, &'static mut c_void>);
                                 coroutine.status = Status::Ready;
-                                //优先执行到时间的协程
-                                self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                                //把到时间的协程加入就绪队列
+                                self.ready
+                                    .push_back_raw(coroutine as *mut _ as *mut c_void)?
                             }
                         }
                     }
                 }
             }
+            Ok(())
         }
     }
 
@@ -283,10 +281,11 @@ impl Scheduler {
 
     /// 用户不应该使用此方法
     #[allow(clippy::missing_safety_doc)]
-    pub unsafe fn resume(&mut self, co_id: usize) {
+    pub unsafe fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-            self.ready.push_back_raw(co)
+            self.ready.push_back_raw(co)?;
         }
+        Ok(())
     }
 }
 
