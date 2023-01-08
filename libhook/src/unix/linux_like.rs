@@ -102,7 +102,7 @@ pub extern "C" fn accept4(
                     let fd = event.fd();
                     if (fd == socket || fd == -1) && event.is_readable() {
                         //当前socket有读事件发生
-                        return (Lazy::force(&ACCEPT4))(fd, addr, len, flag);
+                        return (Lazy::force(&ACCEPT4))(socket, addr, len, flag);
                     }
                 }
             }
@@ -110,7 +110,7 @@ pub extern "C" fn accept4(
     } else {
         let mut r;
         loop {
-            r = (Lazy::force(&ACCEPT4))(fd, addr, len, flag);
+            r = (Lazy::force(&ACCEPT4))(socket, addr, len, flag);
             if r != -1 {
                 reset_errno();
                 return r;
