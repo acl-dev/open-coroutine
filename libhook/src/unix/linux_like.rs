@@ -86,36 +86,42 @@ static ACCEPT4: Lazy<
 
 #[no_mangle]
 pub extern "C" fn accept4(
-    fd: libc::c_int,
+    socket: libc::c_int,
     addr: *mut libc::sockaddr,
     len: *mut libc::socklen_t,
-    flg: libc::c_int,
+    flag: libc::c_int,
 ) -> libc::c_int {
-    let blocking = is_blocking(fd);
+    let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到读事件
-    if blocking {
-        set_non_blocking(fd, true);
-    }
     let event_loop = EventLoop::next();
-    let mut r;
-    loop {
-        r = (Lazy::force(&ACCEPT4))(fd, addr, len, flg);
-        if r != -1 {
-            reset_errno();
-            break;
-        }
-        let error_kind = std::io::Error::last_os_error().kind();
-        if error_kind == ErrorKind::WouldBlock {
-            //等待读事件
-            if event_loop.wait_read_event(fd, None).is_err() {
-                break;
-            }
-        } else if error_kind != ErrorKind::Interrupted {
-            break;
-        }
-    }
     if blocking {
-        set_non_blocking(fd, false);
+        loop {
+            //等待读事件
+            if let Ok(events) = event_loop.wait_read_event(socket, None) {
+                for event in events.iter() {
+                    let fd = event.fd();
+                    if (fd == socket || fd == -1) && event.is_readable() {
+                        //当前socket有读事件发生
+                        return (Lazy::force(&ACCEPT4))(fd, addr, len, flag);
+                    }
+                }
+            }
+        }
+    } else {
+        let mut r;
+        loop {
+            r = (Lazy::force(&ACCEPT4))(fd, addr, len, flag);
+            if r != -1 {
+                reset_errno();
+                return r;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == ErrorKind::WouldBlock {
+                //等待读事件
+                let _ = event_loop.wait_read_event(socket, None);
+            } else if error_kind != ErrorKind::Interrupted {
+                return r;
+            }
+        }
     }
-    r
 }

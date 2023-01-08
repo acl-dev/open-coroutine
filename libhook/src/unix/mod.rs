@@ -212,31 +212,37 @@ pub extern "C" fn accept(
 ) -> libc::c_int {
     let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到读事件
-    if blocking {
-        set_non_blocking(socket, true);
-    }
     let event_loop = EventLoop::next();
-    let mut r;
-    loop {
-        r = (Lazy::force(&ACCEPT))(socket, address, address_len);
-        if r != -1 {
-            reset_errno();
-            break;
-        }
-        let error_kind = std::io::Error::last_os_error().kind();
-        if error_kind == ErrorKind::WouldBlock {
-            //等待读事件
-            if event_loop.wait_read_event(socket, None).is_err() {
-                break;
-            }
-        } else if error_kind != ErrorKind::Interrupted {
-            break;
-        }
-    }
     if blocking {
-        set_non_blocking(socket, false);
+        loop {
+            //等待读事件
+            if let Ok(events) = event_loop.wait_read_event(socket, None) {
+                for event in events.iter() {
+                    let fd = event.fd();
+                    if (fd == socket || fd == -1) && event.is_readable() {
+                        //当前socket有读事件发生
+                        return (Lazy::force(&ACCEPT))(socket, address, address_len);
+                    }
+                }
+            }
+        }
+    } else {
+        let mut r;
+        loop {
+            r = (Lazy::force(&ACCEPT))(socket, address, address_len);
+            if r != -1 {
+                reset_errno();
+                return r;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == ErrorKind::WouldBlock {
+                //等待读事件
+                let _ = event_loop.wait_read_event(socket, None);
+            } else if error_kind != ErrorKind::Interrupted {
+                return r;
+            }
+        }
     }
-    r
 }
 
 static SEND: Lazy<
