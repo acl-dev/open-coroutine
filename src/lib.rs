@@ -39,8 +39,6 @@ mod tests {
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::os::raw::c_void;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -111,14 +109,13 @@ mod tests {
         None
     }
 
-    unsafe fn crate_server(server_started: Arc<AtomicBool>) {
+    unsafe fn crate_server() {
         //invoke by libc::listen
         assert!(co(fx, Some(&mut *(1usize as *mut c_void)), 4096));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let listener =
             TcpListener::bind("127.0.0.1:9999").expect("bind to 127.0.0.1:9999 failed !");
-        server_started.store(true, Ordering::Release);
         //invoke by libc::accept
         assert!(co(fx, Some(&mut *(2usize as *mut c_void)), 4096));
         for stream in listener.incoming() {
@@ -144,9 +141,9 @@ mod tests {
         }
     }
 
-    unsafe fn crate_client(server_started: Arc<AtomicBool>) {
+    unsafe fn crate_client() {
         //等服务端起来
-        while !server_started.load(Ordering::Acquire) {}
+        std::thread::sleep(Duration::from_secs(3));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
@@ -175,11 +172,9 @@ mod tests {
 
     #[test]
     fn hook_test_accept_and_connect() {
-        let server_started = Arc::new(AtomicBool::new(false));
-        let cloned = Arc::clone(&server_started);
         unsafe {
-            let handle = std::thread::spawn(|| crate_server(cloned));
-            crate_client(server_started);
+            let handle = std::thread::spawn(|| crate_server());
+            crate_client();
             //fixme 这里有个系统调用被Monitor发送的signal打断了，不知道是哪个系统调用
             let _ = handle.join();
         }
