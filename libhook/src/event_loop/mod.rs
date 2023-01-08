@@ -113,7 +113,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
+    fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<Events> {
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
         if let Err(e) = self.selector.select(&mut events, timeout) {
@@ -126,14 +126,14 @@ impl<'a> EventLoop<'a> {
         for event in events.iter() {
             let _ = unsafe { self.scheduler.resume(event.token()) };
         }
-        Ok(())
+        Ok(events)
     }
 
     pub fn wait_read_event(
         &mut self,
         fd: libc::c_int,
         timeout: Option<Duration>,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<Events> {
         self.add_read_event(fd)?;
         self.wait(timeout)
     }
@@ -144,6 +144,7 @@ impl<'a> EventLoop<'a> {
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
         self.add_write_event(fd)?;
-        self.wait(timeout)
+        self.wait(timeout)?;
+        Ok(())
     }
 }
