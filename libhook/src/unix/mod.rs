@@ -6,30 +6,6 @@ use std::io::ErrorKind;
 
 /**
     todo
-read
-libc::recv() done
-libc::read()
-libc::readv()
-libc::pread()
-libc::preadv()
-libc::recvfrom()
-libc::recvmsg()
-
-write
-libc::send() done
-libc::write()
-libc::writev()
-libc::sendto()
-libc::sendmsg()
-libc::pwrite()
-libc::pwritev()
-
-other
-libc::connect() done
-libc::listen() done
-libc::accept() done
-libc::close()
-libc::shutdown()
 libc::poll()
 libc::select()
  */
@@ -241,9 +217,41 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
-    (Lazy::force(&ACCEPT))(socket, address, address_len)
+    impl_simple_hook!(
+        socket,
+        (Lazy::force(&ACCEPT))(socket, address, address_len),
+        None
+    )
+}
+
+static CLOSE: Lazy<extern "C" fn(libc::c_int) -> libc::c_int> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"close\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system close not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn close(fd: libc::c_int) -> libc::c_int {
+    //todo 取消对fd的监听?
+    impl_simple_hook!(fd, (Lazy::force(&CLOSE))(fd), None)
+}
+
+static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"shutdown\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system shutdown not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int {
+    //todo 取消对fd的监听
+    impl_simple_hook!(socket, (Lazy::force(&SHUTDOWN))(socket, how), None)
 }
 
 //write相关
@@ -267,6 +275,134 @@ pub extern "C" fn send(
     impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
 }
 
+static WRITE: Lazy<extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"write\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system write not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn write(
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&WRITE))(fd, buf, count), None)
+}
+
+static WRITEV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"writev\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system writev not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn writev(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&WRITEV))(fd, iov, iovcnt), None)
+}
+
+static SENDTO: Lazy<
+    extern "C" fn(
+        libc::c_int,
+        *const libc::c_void,
+        libc::size_t,
+        libc::c_int,
+        *const libc::sockaddr,
+        libc::socklen_t,
+    ) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"sendto\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system sendto not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn sendto(
+    socket: libc::c_int,
+    buf: *const libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+    addr: *const libc::sockaddr,
+    addrlen: libc::socklen_t,
+) -> libc::ssize_t {
+    impl_write_hook!(
+        socket,
+        (Lazy::force(&SENDTO))(socket, buf, len, flags, addr, addrlen),
+        None
+    )
+}
+
+static SENDMSG: Lazy<
+    extern "C" fn(libc::c_int, *const libc::msghdr, libc::c_int) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"sendmsg\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system sendmsg not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn sendmsg(
+    fd: libc::c_int,
+    msg: *const libc::msghdr,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&SENDMSG))(fd, msg, flags), None)
+}
+
+static PWRITE: Lazy<
+    extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pwrite\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system pwrite not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn pwrite(
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&PWRITE))(fd, buf, count, offset), None)
+}
+
+static PWRITEV: Lazy<
+    extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pwritev\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system pwritev not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn pwritev(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset), None)
+}
+
 //read相关
 static RECV: Lazy<
     extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
@@ -285,5 +421,139 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_read_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
+}
+
+static READ: Lazy<extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"read\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system read not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn read(
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&READ))(fd, buf, count), None)
+}
+
+static READV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"readv\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system readv not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn readv(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&READV))(fd, iov, iovcnt), None)
+}
+
+static PREAD: Lazy<
+    extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pread\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system pread not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn pread(
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&PREAD))(fd, buf, count, offset), None)
+}
+
+static PREADV: Lazy<
+    extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"preadv\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system preadv not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn preadv(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&PREADV))(fd, iov, iovcnt, offset), None)
+}
+
+static RECVFROM: Lazy<
+    extern "C" fn(
+        libc::c_int,
+        *mut libc::c_void,
+        libc::size_t,
+        libc::c_int,
+        *mut libc::sockaddr,
+        *mut libc::socklen_t,
+    ) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"recvfrom\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system recvfrom not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn recvfrom(
+    socket: libc::c_int,
+    buf: *mut libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut libc::socklen_t,
+) -> libc::ssize_t {
+    //todo 非阻塞实现
+    impl_simple_hook!(
+        socket,
+        (Lazy::force(&RECVFROM))(socket, buf, len, flags, addr, addrlen),
+        None
+    )
+}
+
+static RECVMSG: Lazy<extern "C" fn(libc::c_int, *mut libc::msghdr, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"recvmsg\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system recvmsg not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn recvmsg(
+    fd: libc::c_int,
+    msg: *mut libc::msghdr,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&RECVMSG))(fd, msg, flags), None)
 }
