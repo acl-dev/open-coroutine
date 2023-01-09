@@ -84,7 +84,7 @@ macro_rules! impl_read_hook {
         if blocking {
             $crate::unix::common::set_non_blocking(socket, true);
         }
-        let event_loop = $crate::event_loop::EventLoop::next();
+        let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
             r = $fn($($arg, )*);
@@ -95,8 +95,12 @@ macro_rules! impl_read_hook {
             let error_kind = std::io::Error::last_os_error().kind();
             if error_kind == std::io::ErrorKind::WouldBlock {
                 //等待读事件
-                if event_loop.wait_read_event(socket, $timeout).is_err() {
-                    break;
+                if let Err(e) = event_loop.wait_read_event(socket, $timeout) {
+                    match e.kind() {
+                        //maybe invoke by Monitor::signal(), just ignore this
+                        ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        _ => break,
+                    }
                 }
             } else if error_kind != std::io::ErrorKind::Interrupted {
                 break;
@@ -117,7 +121,7 @@ macro_rules! impl_write_hook {
         if blocking {
             $crate::unix::common::set_non_blocking(socket, true);
         }
-        let event_loop = $crate::event_loop::EventLoop::next();
+        let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
             r = $fn($($arg, )*);
@@ -128,8 +132,12 @@ macro_rules! impl_write_hook {
             let error_kind = std::io::Error::last_os_error().kind();
             if error_kind == std::io::ErrorKind::WouldBlock {
                 //等待写事件
-                if event_loop.wait_write_event(socket, $timeout).is_err() {
-                    break;
+                if let Err(e) = event_loop.wait_write_event(socket, $timeout) {
+                    match e.kind() {
+                        //maybe invoke by Monitor::signal(), just ignore this
+                        ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        _ => break,
+                    }
                 }
             } else if error_kind != std::io::ErrorKind::Interrupted {
                 break;

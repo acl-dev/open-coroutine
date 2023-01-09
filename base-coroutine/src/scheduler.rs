@@ -36,14 +36,22 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new() -> Self {
+        Scheduler {
+            id: IdGenerator::next_scheduler_id(),
+            ready: get_queue(),
+            copy_stack: ObjectList::new(),
+        }
+    }
+
+    fn init_current(scheduler: &mut Scheduler) {
         #[cfg(unix)]
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                //挂起当前协程
                 let yielder: *const Yielder<&'static mut c_void, (), &'static mut c_void> =
                     OpenCoroutine::yielder();
                 if !yielder.is_null() {
+                    //挂起当前协程
                     unsafe { (*yielder).suspend(()) };
                 }
             }
@@ -53,14 +61,6 @@ impl Scheduler {
             act.sa_flags = libc::SA_RESTART;
             libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
         }
-        Scheduler {
-            id: IdGenerator::next_scheduler_id(),
-            ready: get_queue(),
-            copy_stack: ObjectList::new(),
-        }
-    }
-
-    fn init_current(scheduler: &mut Scheduler) {
         SCHEDULER.with(|boxed| {
             *boxed.borrow_mut() = scheduler;
         });

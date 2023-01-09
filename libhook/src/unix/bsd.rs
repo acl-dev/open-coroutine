@@ -1,4 +1,4 @@
-use crate::event_loop::EventLoop;
+use base_coroutine::EventLoop;
 use once_cell::sync::Lazy;
 use std::time::Duration;
 

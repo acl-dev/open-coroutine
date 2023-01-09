@@ -33,7 +33,6 @@ impl Monitor {
                 while monitor.flag.load(Ordering::Acquire) {
                     monitor.signal();
                     monitor.balance();
-                    //fixme 这里在hook的情况下应该调用原始系统函数
                     std::thread::sleep(Duration::from_millis(1));
                 }
             })
@@ -165,18 +164,6 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn test() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg handled");
-        }
-        unsafe {
-            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-
-    #[test]
     fn test_clean() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg should not handle");
@@ -186,6 +173,18 @@ mod tests {
             let time = timer_utils::get_timeout_time(Duration::from_millis(10));
             Monitor::add_task(time);
             Monitor::clean_task(time);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn test() {
+        extern "C" fn sigurg_handler(_signal: libc::c_int) {
+            println!("sigurg handled");
+        }
+        unsafe {
+            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
+            Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
             std::thread::sleep(Duration::from_millis(20));
         }
     }

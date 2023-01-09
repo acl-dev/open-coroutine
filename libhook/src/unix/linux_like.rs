@@ -1,5 +1,4 @@
-use crate::epoll_event;
-use crate::event_loop::EventLoop;
+use base_coroutine::{epoll_event, EventLoop};
 use once_cell::sync::Lazy;
 
 fn timeout_schedule(timeout: libc::c_int) -> libc::c_int {
