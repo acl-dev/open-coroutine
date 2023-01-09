@@ -85,8 +85,9 @@ macro_rules! impl_read_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = $crate::event_loop::EventLoop::next();
-        let mut r;
-        loop {
+        let mut r = -1;
+        //先这样方便定位问题
+        for _ in 0..1000 {
             r = $fn($($arg, )*);
             if r != -1 {
                 $crate::unix::common::reset_errno();
