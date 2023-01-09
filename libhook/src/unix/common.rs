@@ -118,7 +118,7 @@ macro_rules! impl_write_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = $crate::event_loop::EventLoop::next();
-        let mut r;
+        let mut r = -1;
         //先这样方便定位问题
         for _ in 0..1000 {
             r = $fn($($arg, )*);
