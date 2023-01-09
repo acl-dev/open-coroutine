@@ -75,3 +75,69 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
         (flags & libc::O_NONBLOCK) != 0
     }
 }
+
+#[macro_export]
+macro_rules! impl_read_hook {
+    ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::common::is_blocking(socket);
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, true);
+        }
+        let event_loop = $crate::event_loop::EventLoop::next();
+        let mut r;
+        loop {
+            r = $fn($($arg, )*);
+            if r != -1 {
+                $crate::unix::common::reset_errno();
+                break;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //等待读事件
+                if event_loop.wait_read_event(socket, $timeout).is_err() {
+                    break;
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, false);
+        }
+        r
+    }};
+}
+
+#[macro_export]
+macro_rules! impl_write_hook {
+    ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr ) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::common::is_blocking(socket);
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, true);
+        }
+        let event_loop = $crate::event_loop::EventLoop::next();
+        let mut r;
+        loop {
+            r = $fn($($arg, )*);
+            if r != -1 {
+                $crate::unix::common::reset_errno();
+                break;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //等待写事件
+                if event_loop.wait_write_event(socket, $timeout).is_err() {
+                    break;
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, false);
+        }
+        r
+    }};
+}

@@ -4,6 +4,36 @@ use once_cell::sync::Lazy;
 use std::ffi::c_void;
 use std::io::ErrorKind;
 
+/**
+    todo
+read
+libc::recv() done
+libc::read()
+libc::readv()
+libc::pread()
+libc::preadv()
+libc::recvfrom()
+libc::recvmsg()
+
+write
+libc::send() done
+libc::write()
+libc::writev()
+libc::sendto()
+libc::sendmsg()
+libc::pwrite()
+libc::pwritev()
+
+other
+libc::connect() done
+libc::listen() done
+libc::accept() done
+libc::close()
+libc::shutdown()
+libc::poll()
+libc::select()
+ */
+#[macro_use]
 mod common;
 
 #[cfg(any(
@@ -232,33 +262,7 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let blocking = is_blocking(socket);
-    //阻塞，epoll_wait/kevent等待直到写事件
-    if blocking {
-        set_non_blocking(socket, true);
-    }
-    let event_loop = EventLoop::next();
-    let mut r;
-    loop {
-        r = (Lazy::force(&SEND))(socket, buf, len, flags);
-        if r != -1 {
-            reset_errno();
-            break;
-        }
-        let error_kind = std::io::Error::last_os_error().kind();
-        if error_kind == ErrorKind::WouldBlock {
-            //等待写事件
-            if event_loop.wait_write_event(socket, None).is_err() {
-                break;
-            }
-        } else if error_kind != ErrorKind::Interrupted {
-            break;
-        }
-    }
-    if blocking {
-        set_non_blocking(socket, false);
-    }
-    r
+    impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
 }
 
 static RECV: Lazy<
@@ -278,31 +282,5 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let blocking = is_blocking(socket);
-    //阻塞，epoll_wait/kevent等待直到读事件
-    if blocking {
-        set_non_blocking(socket, true);
-    }
-    let event_loop = EventLoop::next();
-    let mut r;
-    loop {
-        r = (Lazy::force(&RECV))(socket, buf, len, flags);
-        if r != -1 {
-            reset_errno();
-            break;
-        }
-        let error_kind = std::io::Error::last_os_error().kind();
-        if error_kind == ErrorKind::WouldBlock {
-            //等待读事件
-            if event_loop.wait_read_event(socket, None).is_err() {
-                break;
-            }
-        } else if error_kind != ErrorKind::Interrupted {
-            break;
-        }
-    }
-    if blocking {
-        set_non_blocking(socket, false);
-    }
-    r
+    impl_read_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
