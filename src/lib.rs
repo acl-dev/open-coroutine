@@ -174,9 +174,11 @@ mod tests {
     fn hook_test_accept_and_connect() {
         unsafe {
             let handle = std::thread::spawn(|| crate_server());
-            crate_client();
-            //fixme 这里有个系统调用被Monitor发送的signal打断了，不知道是哪个系统调用
-            let _ = handle.join();
+            std::thread::spawn(|| crate_client());
+            std::thread::sleep(Duration::from_secs(5));
+            if !handle.is_finished() {
+                panic!("The server does not stop within the specified time !")
+            }
         }
     }
 }
