@@ -46,6 +46,8 @@ jobs:
           - stable
           - nightly
     steps:
+      - name: show epoll_wait doc
+        run: man epoll_wait
       - name: Checkout sources
         uses: actions/checkout@v2
       - name: Install Rust (${{ matrix.rust }})
@@ -76,6 +78,8 @@ jobs:
           - stable
           - nightly
     steps:
+      - name: show kevent doc
+        run: man kevent
       - name: Checkout sources
         uses: actions/checkout@v2
       - name: Install Rust (${{ matrix.rust }})
