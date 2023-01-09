@@ -22,10 +22,22 @@ jemalloc-sys = { version = "0.5.2+5.3.0-patched", default-features = false }
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.42.0", features = [
-    "Win32_Foundation",
-    "Win32_System_Diagnostics_Debug",
     "Win32_System_Memory",
     "Win32_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_System",
+    "Win32_System_IO",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+    "Win32_System_WindowsProgramming",
+    "Win32_Security",
+    "Win32_Storage",
+    "Win32_Storage_DistributedFileSystem",
+    "Win32_Storage_FileSystem",
+    "Win32_Networking",
+    "Win32_Networking_WinSock"
 ] }
 
 [build-dependencies]
