@@ -1,13 +1,13 @@
-mod event;
+pub mod event;
 
-mod interest;
+pub mod interest;
 
 mod selector;
 
 use crate::event_loop::event::Events;
 use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
-use base_coroutine::{Coroutine, Scheduler, UserFunc};
+use crate::{Coroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
 use std::io::ErrorKind;
 use std::os::raw::c_void;

@@ -1,5 +1,5 @@
-use crate::event_loop::EventLoop;
 use crate::unix::common::*;
+use base_coroutine::EventLoop;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
 use std::io::ErrorKind;
@@ -138,6 +138,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     }
 }
 
+//socket相关
 static CONNECT: Lazy<
     extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
 > = Lazy::new(|| unsafe {
@@ -245,6 +246,7 @@ pub extern "C" fn accept(
     (Lazy::force(&ACCEPT))(socket, address, address_len)
 }
 
+//write相关
 static SEND: Lazy<
     extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
@@ -265,6 +267,7 @@ pub extern "C" fn send(
     impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
 }
 
+//read相关
 static RECV: Lazy<
     extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {

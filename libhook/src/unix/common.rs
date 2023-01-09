@@ -84,7 +84,7 @@ macro_rules! impl_read_hook {
         if blocking {
             $crate::unix::common::set_non_blocking(socket, true);
         }
-        let event_loop = $crate::event_loop::EventLoop::next();
+        let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
             r = $fn($($arg, )*);
@@ -117,7 +117,7 @@ macro_rules! impl_write_hook {
         if blocking {
             $crate::unix::common::set_non_blocking(socket, true);
         }
-        let event_loop = $crate::event_loop::EventLoop::next();
+        let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
             r = $fn($($arg, )*);

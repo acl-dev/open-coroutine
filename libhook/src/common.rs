@@ -1,5 +1,5 @@
-use crate::event_loop::EventLoop;
 use base_coroutine::coroutine::UserFunc;
+use base_coroutine::EventLoop;
 use std::os::raw::c_void;
 
 #[no_mangle]

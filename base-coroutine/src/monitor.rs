@@ -166,27 +166,45 @@ mod tests {
 
     #[test]
     fn test() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg handled");
-        }
-        unsafe {
-            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        std::thread::spawn(|| {
+            extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                println!("sigurg handled");
+            }
+            unsafe {
+                let mut act: libc::sigaction = std::mem::zeroed();
+                act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+                act.sa_flags = libc::SA_RESTART;
+                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+
+                Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        })
+        .join()
+        .unwrap();
     }
 
     #[test]
     fn test_clean() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
-        }
-        unsafe {
-            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            let time = timer_utils::get_timeout_time(Duration::from_millis(10));
-            Monitor::add_task(time);
-            Monitor::clean_task(time);
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        std::thread::spawn(|| {
+            extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                unreachable!("sigurg should not handle");
+            }
+            unsafe {
+                let mut act: libc::sigaction = std::mem::zeroed();
+                act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+                act.sa_flags = libc::SA_RESTART;
+                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+
+                let time = timer_utils::get_timeout_time(Duration::from_millis(10));
+                Monitor::add_task(time);
+                Monitor::clean_task(time);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        })
+        .join()
+        .unwrap();
     }
 }

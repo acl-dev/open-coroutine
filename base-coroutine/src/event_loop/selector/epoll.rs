@@ -1,11 +1,13 @@
-use crate::event_loop::interest::Interest;
-use crate::{epoll_ctl, epoll_data, epoll_event, epoll_wait};
-use libc::{EPOLLET, EPOLLIN, EPOLLOUT, EPOLLRDHUP};
 use std::os::unix::io::{AsRawFd, RawFd};
 #[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use std::{i32, io, ptr};
+
+use libc::{EPOLLET, EPOLLIN, EPOLLOUT, EPOLLRDHUP};
+
+use crate::epoll::{epoll_ctl, epoll_data, epoll_event, epoll_wait};
+use crate::event_loop::interest::Interest;
 
 /// Unique id for use as `SelectorId`.
 #[cfg(debug_assertions)]

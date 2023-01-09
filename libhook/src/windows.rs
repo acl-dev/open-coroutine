@@ -1,4 +1,4 @@
-use crate::event_loop::EventLoop;
+use base_coroutine::EventLoop;
 use detour2::static_detour;
 use std::error::Error;
 use std::os::raw::c_void;

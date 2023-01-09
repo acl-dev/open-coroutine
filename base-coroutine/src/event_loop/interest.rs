@@ -59,7 +59,7 @@ impl Interest {
     /// constant function.
     ///
     /// ```
-    /// use mio::Interest;
+    /// use base_coroutine::Interest;
     ///
     /// const INTERESTS: Interest = Interest::READABLE.add(Interest::WRITABLE);
     /// # fn silent_dead_code_warning(_: Interest) { }
@@ -75,7 +75,7 @@ impl Interest {
     /// Returns `None` if the set would be empty after removing `other`.
     ///
     /// ```
-    /// use mio::Interest;
+    /// use base_coroutine::Interest;
     ///
     /// const RW_INTERESTS: Interest = Interest::READABLE.add(Interest::WRITABLE);
     ///
