@@ -118,7 +118,8 @@ mod tests {
             TcpListener::bind("127.0.0.1:9999").expect("bind to 127.0.0.1:9999 failed !");
         //invoke by libc::accept
         assert!(co(fx, Some(&mut *(2usize as *mut c_void)), 4096));
-        for stream in listener.incoming() {
+        //only enable one connection
+        for stream in listener.incoming().take(1) {
             let mut stream = stream.expect("accept new connection failed !");
             let mut buffer: [u8; 512] = [0; 512];
             loop {
