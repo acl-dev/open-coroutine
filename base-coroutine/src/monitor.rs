@@ -33,7 +33,6 @@ impl Monitor {
                 while monitor.flag.load(Ordering::Acquire) {
                     monitor.signal();
                     monitor.balance();
-                    //fixme 这里在hook的情况下应该调用原始系统函数
                     std::thread::sleep(Duration::from_millis(1));
                 }
             })
@@ -162,31 +161,14 @@ impl Monitor {
 #[cfg(test)]
 mod tests {
     use crate::monitor::Monitor;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    #[test]
-    fn test() {
-        std::thread::spawn(|| {
-            extern "C" fn sigurg_handler(_signal: libc::c_int) {
-                println!("sigurg handled");
-            }
-            unsafe {
-                let mut act: libc::sigaction = std::mem::zeroed();
-                act.sa_sigaction = sigurg_handler as libc::sighandler_t;
-                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-                act.sa_flags = libc::SA_RESTART;
-                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
-
-                Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        })
-        .join()
-        .unwrap();
-    }
+    static CLEANED: AtomicBool = AtomicBool::new(false);
 
     #[test]
     fn test_clean() {
+        while CLEANED.load(Ordering::Acquire) {}
         std::thread::spawn(|| {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 unreachable!("sigurg should not handle");
@@ -196,11 +178,37 @@ mod tests {
                 act.sa_sigaction = sigurg_handler as libc::sighandler_t;
                 libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
                 act.sa_flags = libc::SA_RESTART;
-                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+                assert_eq!(0, libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut()));
 
                 let time = timer_utils::get_timeout_time(Duration::from_millis(10));
                 Monitor::add_task(time);
+                let timer_entry = Monitor::global().task.get_entry(time).unwrap();
+                assert!(!timer_entry.is_empty());
                 Monitor::clean_task(time);
+                assert!(timer_entry.is_empty());
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        })
+        .join()
+        .unwrap();
+        CLEANED.store(true, Ordering::Release);
+    }
+
+    #[test]
+    fn test() {
+        while !CLEANED.load(Ordering::Acquire) {}
+        std::thread::spawn(|| {
+            extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                println!("sigurg handled");
+            }
+            unsafe {
+                let mut act: libc::sigaction = std::mem::zeroed();
+                act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+                act.sa_flags = libc::SA_RESTART;
+                assert_eq!(0, libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut()));
+
+                Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
                 std::thread::sleep(Duration::from_millis(20));
             }
         })

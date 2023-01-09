@@ -2,6 +2,12 @@
 pub use scopeguard::*;
 
 pub use coroutine::*;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
 pub use epoll::*;
 pub use event_loop::event::*;
 pub use event_loop::interest::*;
@@ -38,5 +44,11 @@ mod monitor;
 #[allow(dead_code)]
 pub mod event_loop;
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
 #[allow(dead_code)]
 pub mod epoll;
