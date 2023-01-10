@@ -79,7 +79,7 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
 /// check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[macro_export]
 macro_rules! impl_simple_hook {
-    ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
+    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
         let ns_time = ($timeout as Option<std::time::Duration>).map(|d|d.as_nanos() as u64).unwrap_or(u64::MAX);
         let timeout_time = timer_utils::add_timeout_time(ns_time);
         let _ = base_coroutine::EventLoop::round_robin_timeout_schedule(timeout_time);
