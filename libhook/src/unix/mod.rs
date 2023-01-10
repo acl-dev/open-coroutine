@@ -463,6 +463,24 @@ static PREAD: Lazy<
     std::mem::transmute(ptr)
 });
 
+static READV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"readv\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system readv not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn readv(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    impl_read_hook!((Lazy::force(&READV))(fd, iov, iovcnt), None)
+}
+
 #[no_mangle]
 pub extern "C" fn pread(
     fd: libc::c_int,
