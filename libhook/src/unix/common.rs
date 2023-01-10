@@ -223,7 +223,7 @@ macro_rules! impl_write_hook {
         let mut r;
         loop {
             r = $fn($socket, $($arg, )*);
-            if r > 0 {
+            if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
             }
@@ -265,10 +265,10 @@ macro_rules! impl_expected_write_hook {
                 ($buffer as usize + sent) as *const libc::c_void,
                 $length - sent
             );
-            if r > 0 {
+            if r != -1 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
-                if sent == $length {
+                if sent == $length || r == 0 {
                     break;
                 }
             }
@@ -307,10 +307,10 @@ macro_rules! impl_expected_write_hook {
                 $length - sent,
                 $($arg, )*
             );
-            if r > 0 {
+            if r != -1 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
-                if sent == $length {
+                if sent == $length || r == 0 {
                     break;
                 }
             }
