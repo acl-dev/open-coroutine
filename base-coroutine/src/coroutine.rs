@@ -6,7 +6,6 @@ use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::RefCell;
-use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
 use std::os::raw::c_void;
 
@@ -205,8 +204,8 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         size: usize,
     ) -> std::io::Result<Self> {
         let stack = ProtectedFixedSizeStack::new(size).map_err(|e| match e {
-            ExceedsMaximumSize(size) => Error::new(
-                ErrorKind::Other,
+            ExceedsMaximumSize(size) => std::io::Error::new(
+                std::io::ErrorKind::Other,
                 "Requested more than max size of ".to_owned()
                     + &size.to_string()
                     + " bytes for a stack",

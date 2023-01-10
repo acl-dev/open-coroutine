@@ -77,6 +77,16 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
 }
 
 #[macro_export]
+macro_rules! impl_simple_hook {
+    ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
+        let ns_time = ($timeout as Option<std::time::Duration>).map(|d|d.as_nanos() as u64).unwrap_or(u64::MAX);
+        let timeout_time = timer_utils::add_timeout_time(ns_time);
+        let _ = base_coroutine::EventLoop::round_robin_timeout_schedule(timeout_time);
+        $fn($($arg, )*)
+    }};
+}
+
+#[macro_export]
 macro_rules! impl_read_hook {
     ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
         let socket = $socket;
@@ -98,7 +108,7 @@ macro_rules! impl_read_hook {
                 if let Err(e) = event_loop.wait_read_event(socket, $timeout) {
                     match e.kind() {
                         //maybe invoke by Monitor::signal(), just ignore this
-                        ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        std::io::ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
                         _ => break,
                     }
                 }
@@ -135,7 +145,7 @@ macro_rules! impl_write_hook {
                 if let Err(e) = event_loop.wait_write_event(socket, $timeout) {
                     match e.kind() {
                         //maybe invoke by Monitor::signal(), just ignore this
-                        ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        std::io::ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
                         _ => break,
                     }
                 }

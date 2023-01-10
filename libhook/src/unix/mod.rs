@@ -1,38 +1,7 @@
 use crate::unix::common::*;
-use base_coroutine::EventLoop;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
-use std::io::ErrorKind;
 
-/**
-    todo
-read
-libc::recv() done
-libc::read()
-libc::readv()
-libc::pread()
-libc::preadv()
-libc::recvfrom()
-libc::recvmsg()
-
-write
-libc::send() done
-libc::write()
-libc::writev()
-libc::sendto()
-libc::sendmsg()
-libc::pwrite()
-libc::pwritev()
-
-other
-libc::connect() done
-libc::listen() done
-libc::accept() done
-libc::close()
-libc::shutdown()
-libc::poll()
-libc::select()
- */
 #[macro_use]
 mod common;
 
@@ -108,7 +77,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     };
     let timeout_time = timer_utils::add_timeout_time(nanos_time);
     loop {
-        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
+        let _ = base_coroutine::EventLoop::round_robin_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         let schedule_finished_time = timer_utils::now();
         let left_time = match timeout_time.checked_sub(schedule_finished_time) {
@@ -138,7 +107,6 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     }
 }
 
-//socket相关
 static CONNECT: Lazy<
     extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
 > = Lazy::new(|| unsafe {
@@ -160,7 +128,7 @@ pub extern "C" fn connect(
     if blocking {
         set_non_blocking(socket, true);
     }
-    let event_loop = EventLoop::next();
+    let event_loop = base_coroutine::EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
@@ -168,13 +136,18 @@ pub extern "C" fn connect(
             reset_errno();
             break;
         }
-        let error = std::io::Error::last_os_error();
-        let errno = error.raw_os_error();
+        let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
-            if event_loop.wait_write_event(socket, None).is_err() {
-                r = -1;
-                break;
+            if let Err(e) = event_loop.wait_write_event(socket, None) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => reset_errno(),
+                    _ => {
+                        r = -1;
+                        break;
+                    }
+                }
             }
             unsafe {
                 let mut len: libc::socklen_t = std::mem::zeroed();
@@ -190,15 +163,15 @@ pub extern "C" fn connect(
                     break;
                 }
                 if err == 0 {
-                    r = 0;
                     reset_errno();
+                    r = 0;
                     break;
                 };
                 set_errno(err);
             }
             r = -1;
             break;
-        } else if error.kind() != ErrorKind::Interrupted {
+        } else if errno != Some(libc::EINTR) {
             r = -1;
             break;
         }
@@ -220,7 +193,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
+    let _ = base_coroutine::EventLoop::round_robin_schedule();
     //unnecessary non blocking impl for listen
     (Lazy::force(&LISTEN))(socket, backlog)
 }
@@ -241,12 +214,14 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
-    (Lazy::force(&ACCEPT))(socket, address, address_len)
+    impl_simple_hook!(
+        socket,
+        (Lazy::force(&ACCEPT))(socket, address, address_len),
+        None
+    )
 }
 
-//write相关
 static SEND: Lazy<
     extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
@@ -267,7 +242,6 @@ pub extern "C" fn send(
     impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
 }
 
-//read相关
 static RECV: Lazy<
     extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
@@ -285,5 +259,6 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_read_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
