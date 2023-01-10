@@ -216,11 +216,7 @@ pub extern "C" fn accept(
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
     //todo 非阻塞实现
-    impl_simple_hook!(
-        socket,
-        (Lazy::force(&ACCEPT))(socket, address, address_len),
-        None
-    )
+    impl_simple_hook!((Lazy::force(&ACCEPT))(socket, address, address_len), None)
 }
 
 static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
@@ -235,7 +231,7 @@ static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 #[no_mangle]
 pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int {
     //todo 取消对fd的监听
-    impl_simple_hook!(socket, (Lazy::force(&SHUTDOWN))(socket, how), None)
+    impl_simple_hook!((Lazy::force(&SHUTDOWN))(socket, how), None)
 }
 
 static POLL: Lazy<extern "C" fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int> =
@@ -254,7 +250,7 @@ pub extern "C" fn poll(
     timeout: libc::c_int,
 ) -> libc::c_int {
     //todo 完善实现
-    impl_simple_hook!(fds, (Lazy::force(&POLL))(fds, nfds, timeout), None)
+    impl_simple_hook!((Lazy::force(&POLL))(fds, nfds, timeout), None)
 }
 
 static SELECT: Lazy<
@@ -283,7 +279,6 @@ pub extern "C" fn select(
 ) -> libc::c_int {
     //todo 完善实现
     impl_simple_hook!(
-        nfds,
         (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, timeout),
         None
     )
