@@ -107,6 +107,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     }
 }
 
+//socket相关
 static CONNECT: Lazy<
     extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
 > = Lazy::new(|| unsafe {
@@ -222,6 +223,87 @@ pub extern "C" fn accept(
     )
 }
 
+static CLOSE: Lazy<extern "C" fn(libc::c_int) -> libc::c_int> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"close\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system close not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn close(fd: libc::c_int) -> libc::c_int {
+    //todo 取消对fd的监听?
+    impl_simple_hook!(fd, (Lazy::force(&CLOSE))(fd), None)
+}
+
+static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"shutdown\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system shutdown not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int {
+    //todo 取消对fd的监听
+    impl_simple_hook!(socket, (Lazy::force(&SHUTDOWN))(socket, how), None)
+}
+
+static POLL: Lazy<extern "C" fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"poll\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system poll not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn poll(
+    fds: *mut libc::pollfd,
+    nfds: libc::nfds_t,
+    timeout: libc::c_int,
+) -> libc::c_int {
+    //todo 完善实现
+    impl_simple_hook!(fds, (Lazy::force(&POLL))(fds, nfds, timeout), None)
+}
+
+static SELECT: Lazy<
+    extern "C" fn(
+        libc::c_int,
+        *mut libc::fd_set,
+        *mut libc::fd_set,
+        *mut libc::fd_set,
+        *mut libc::timeval,
+    ) -> libc::c_int,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"select\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system select not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn select(
+    nfds: libc::c_int,
+    readfds: *mut libc::fd_set,
+    writefds: *mut libc::fd_set,
+    errorfds: *mut libc::fd_set,
+    timeout: *mut libc::timeval,
+) -> libc::c_int {
+    //todo 完善实现
+    impl_simple_hook!(
+        nfds,
+        (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, timeout),
+        None
+    )
+}
+
+//write相关
 static SEND: Lazy<
     extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
