@@ -89,7 +89,7 @@ macro_rules! impl_simple_hook {
 
 #[macro_export]
 macro_rules! impl_read_hook {
-    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
+    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
         let socket = $socket;
         let blocking = $crate::unix::common::is_blocking(socket);
         if blocking {
