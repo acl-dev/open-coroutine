@@ -39,6 +39,7 @@ mod tests {
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::os::raw::c_void;
+    use std::sync::{Arc, Condvar, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -109,7 +110,7 @@ mod tests {
         None
     }
 
-    unsafe fn crate_server() {
+    unsafe fn crate_server(server_finished: Arc<(Mutex<bool>, Condvar)>) {
         //invoke by libc::listen
         assert!(co(fx, Some(&mut *(1usize as *mut c_void)), 4096));
         let mut data: [u8; 512] = std::mem::zeroed();
@@ -128,6 +129,10 @@ mod tests {
                 let bytes_read = stream.read(&mut buffer).expect("server read failed !");
                 if bytes_read == 0 {
                     //如果读到的为空，说明已经结束了
+                    let (lock, cvar) = &*server_finished;
+                    let mut pending = lock.lock().unwrap();
+                    *pending = false;
+                    cvar.notify_one();
                     return;
                 }
                 assert_eq!(data, buffer);
@@ -172,14 +177,23 @@ mod tests {
 
     #[test]
     fn hook_test_accept_and_connect() {
+        let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
-            let handle = std::thread::spawn(|| crate_server());
+            std::thread::spawn(|| crate_server(server_finished_pair));
             std::thread::spawn(|| crate_client());
-            std::thread::sleep(Duration::from_secs(30));
-            assert!(
-                handle.is_finished(),
-                "The service was not completed within the specified time"
-            );
+
+            let (lock, cvar) = &*server_finished;
+            let result = cvar
+                .wait_timeout_while(
+                    lock.lock().unwrap(),
+                    Duration::from_secs(30),
+                    |&mut pending| pending,
+                )
+                .unwrap();
+            if result.1.timed_out() {
+                panic!("The service was not completed within the specified time");
+            }
         }
     }
 }
