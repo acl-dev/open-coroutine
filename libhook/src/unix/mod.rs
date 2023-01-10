@@ -457,3 +457,39 @@ pub extern "C" fn recv(
 ) -> libc::ssize_t {
     impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
+
+static READ: Lazy<extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"read\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system read not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn read(
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    impl_expected_read_hook!((Lazy::force(&READ))(fd, buf, count), None)
+}
+
+static READV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"readv\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system readv not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn readv(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    impl_read_hook!((Lazy::force(&READV))(fd, iov, iovcnt), None)
+}
