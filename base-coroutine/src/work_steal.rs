@@ -79,7 +79,6 @@ pub enum StealError {
     CanNotStealSelf,
     EmptySibling,
     NoMoreSpare,
-    StealSiblingFailed,
 }
 
 impl Display for StealError {
@@ -88,7 +87,6 @@ impl Display for StealError {
             StealError::CanNotStealSelf => write!(fmt, "can not steal self"),
             StealError::EmptySibling => write!(fmt, "the sibling is empty"),
             StealError::NoMoreSpare => write!(fmt, "self has no more spare"),
-            StealError::StealSiblingFailed => write!(fmt, "steal from another local queue failed"),
         }
     }
 }
@@ -131,20 +129,14 @@ impl WorkStealQueue {
                 while !half.is_empty() {
                     let _ = GLOBAL_QUEUE.push(half.pop().unwrap());
                 }
-                loop {
-                    match GLOBAL_QUEUE.push(item) {
-                        Ok(_) => return Ok(()),
-                        Err(e) => match e {
-                            PushError::Full(_) => continue,
-                            PushError::Closed(_) => {
-                                return Err(std::io::Error::new(
-                                    ErrorKind::Other,
-                                    "global queue closed",
-                                ))
-                            }
-                        },
+                GLOBAL_QUEUE.push(item).map_err(|e| match e {
+                    PushError::Full(_) => {
+                        std::io::Error::new(ErrorKind::Other, "global queue is full")
                     }
-                }
+                    PushError::Closed(_) => {
+                        std::io::Error::new(ErrorKind::Other, "global queue closed")
+                    }
+                })?
             }
         }
         Ok(())
@@ -245,8 +237,8 @@ impl WorkStealQueue {
             .queue
             .stealer()
             .steal(&self.queue, |_n| count)
-            .map_err(|_| StealError::StealSiblingFailed)
-            .map(|_| ())
+            .expect("steal half from another local queue failed !");
+        Ok(())
     }
 
     pub(crate) fn try_global_lock() -> bool {

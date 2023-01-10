@@ -1,39 +1,8 @@
+use crate::event_loop::EventLoop;
 use crate::unix::common::*;
-use base_coroutine::EventLoop;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
-use std::io::ErrorKind;
 
-/**
-    todo
-read
-libc::recv() done
-libc::read()
-libc::readv()
-libc::pread()
-libc::preadv()
-libc::recvfrom()
-libc::recvmsg()
-
-write
-libc::send() done
-libc::write()
-libc::writev()
-libc::sendto()
-libc::sendmsg()
-libc::pwrite()
-libc::pwritev()
-
-other
-libc::connect() done
-libc::listen() done
-libc::accept() done
-libc::close()
-libc::shutdown()
-libc::poll()
-libc::select()
- */
-#[macro_use]
 mod common;
 
 #[cfg(any(
@@ -138,7 +107,6 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     }
 }
 
-//socket相关
 static CONNECT: Lazy<
     extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
 > = Lazy::new(|| unsafe {
@@ -168,13 +136,18 @@ pub extern "C" fn connect(
             reset_errno();
             break;
         }
-        let error = std::io::Error::last_os_error();
-        let errno = error.raw_os_error();
+        let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
-            if event_loop.wait_write_event(socket, None).is_err() {
-                r = -1;
-                break;
+            if let Err(e) = event_loop.wait_write_event(socket, None) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => reset_errno(),
+                    _ => {
+                        r = -1;
+                        break;
+                    }
+                }
             }
             unsafe {
                 let mut len: libc::socklen_t = std::mem::zeroed();
@@ -190,15 +163,15 @@ pub extern "C" fn connect(
                     break;
                 }
                 if err == 0 {
-                    r = 0;
                     reset_errno();
+                    r = 0;
                     break;
                 };
                 set_errno(err);
             }
             r = -1;
             break;
-        } else if error.kind() != ErrorKind::Interrupted {
+        } else if errno != Some(libc::EINTR) {
             r = -1;
             break;
         }
@@ -246,7 +219,6 @@ pub extern "C" fn accept(
     (Lazy::force(&ACCEPT))(socket, address, address_len)
 }
 
-//write相关
 static SEND: Lazy<
     extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
@@ -264,10 +236,39 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
+    let blocking = is_blocking(socket);
+    //阻塞，epoll_wait/kevent等待直到写事件
+    if blocking {
+        set_non_blocking(socket, true);
+    }
+    let event_loop = EventLoop::next();
+    let mut r;
+    loop {
+        r = (Lazy::force(&SEND))(socket, buf, len, flags);
+        if r != -1 {
+            reset_errno();
+            break;
+        }
+        let errno = std::io::Error::last_os_error().raw_os_error();
+        if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
+            //等待写事件
+            if let Err(e) = event_loop.wait_write_event(socket, None) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => reset_errno(),
+                    _ => break,
+                }
+            }
+        } else if errno != Some(libc::EINTR) {
+            break;
+        }
+    }
+    if blocking {
+        set_non_blocking(socket, false);
+    }
+    r
 }
 
-//read相关
 static RECV: Lazy<
     extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
@@ -285,5 +286,7 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_read_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
+    let _ = EventLoop::round_robin_schedule();
+    //todo 非阻塞实现
+    (Lazy::force(&RECV))(socket, buf, len, flags)
 }

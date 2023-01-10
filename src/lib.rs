@@ -143,7 +143,7 @@ mod tests {
 
     unsafe fn crate_client() {
         //等服务端起来
-        std::thread::sleep(Duration::from_secs(3));
+        std::thread::sleep(Duration::from_secs(1));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
@@ -175,8 +175,7 @@ mod tests {
         unsafe {
             let handle = std::thread::spawn(|| crate_server());
             crate_client();
-            //fixme 这里有个系统调用被Monitor发送的signal打断了，不知道是哪个系统调用
-            let _ = handle.join();
+            handle.join().expect("server has exception");
         }
     }
 }
