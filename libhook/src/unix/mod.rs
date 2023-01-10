@@ -456,6 +456,5 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    //todo 非阻塞实现
-    impl_simple_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
+    impl_read_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
