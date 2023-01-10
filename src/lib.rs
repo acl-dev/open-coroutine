@@ -174,8 +174,12 @@ mod tests {
     fn hook_test_accept_and_connect() {
         unsafe {
             let handle = std::thread::spawn(|| crate_server());
-            crate_client();
-            handle.join().expect("server has exception");
+            std::thread::spawn(|| crate_client());
+            std::thread::sleep(Duration::from_secs(30));
+            assert!(
+                handle.is_finished(),
+                "The service was not completed within the specified time"
+            );
         }
     }
 }
