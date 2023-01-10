@@ -1,9 +1,10 @@
 use crate::random::Rng;
-use concurrent_queue::ConcurrentQueue;
+use concurrent_queue::{ConcurrentQueue, PushError};
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::io::ErrorKind;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -111,12 +112,12 @@ impl WorkStealQueue {
         }
     }
 
-    pub fn push_back<T>(&mut self, element: T) {
+    pub fn push_back<T>(&mut self, element: T) -> std::io::Result<()> {
         let ptr = Box::leak(Box::new(element));
-        self.push_back_raw(ptr as *mut _ as *mut c_void);
+        self.push_back_raw(ptr as *mut _ as *mut c_void)
     }
 
-    pub fn push_back_raw(&mut self, ptr: *mut c_void) {
+    pub fn push_back_raw(&mut self, ptr: *mut c_void) -> std::io::Result<()> {
         if let Err(item) = self.queue.push(ptr) {
             unsafe {
                 //把本地队列的一半放到全局队列
@@ -124,19 +125,21 @@ impl WorkStealQueue {
                 //todo 这里实际上可以减少一次copy
                 let half = Worker::new(count);
                 let stealer = self.queue.stealer();
-                stealer
-                    .steal(&half, |_n| count)
-                    .expect("steal half to global failed !");
+                let _ = stealer.steal(&half, |_n| count);
                 while !half.is_empty() {
-                    GLOBAL_QUEUE
-                        .push(half.pop().unwrap())
-                        .expect("push half to global queue failed!");
+                    let _ = GLOBAL_QUEUE.push(half.pop().unwrap());
                 }
-                GLOBAL_QUEUE
-                    .push(item)
-                    .expect("push to global queue failed!")
+                GLOBAL_QUEUE.push(item).map_err(|e| match e {
+                    PushError::Full(_) => {
+                        std::io::Error::new(ErrorKind::Other, "global queue is full")
+                    }
+                    PushError::Closed(_) => {
+                        std::io::Error::new(ErrorKind::Other, "global queue closed")
+                    }
+                })?
             }
         }
+        Ok(())
     }
 
     pub fn is_empty(&self) -> bool {
