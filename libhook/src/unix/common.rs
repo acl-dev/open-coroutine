@@ -76,6 +76,7 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
     }
 }
 
+/// check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[macro_export]
 macro_rules! impl_simple_hook {
     ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
@@ -143,7 +144,7 @@ macro_rules! impl_expected_read_hook {
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
-                if r == 0 || received == $length {
+                if received == $length || r == 0 {
                     break;
                 }
             }
@@ -185,7 +186,7 @@ macro_rules! impl_expected_read_hook {
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
-                if r == 0 || received == $length {
+                if received == $length || r == 0 {
                     break;
                 }
             }
@@ -222,7 +223,7 @@ macro_rules! impl_write_hook {
         let mut r;
         loop {
             r = $fn($socket, $($arg, )*);
-            if r != -1 {
+            if r > 0 {
                 $crate::unix::common::reset_errno();
                 break;
             }
@@ -264,10 +265,10 @@ macro_rules! impl_expected_write_hook {
                 ($buffer as usize + sent) as *const libc::c_void,
                 $length - sent
             );
-            if r != -1 {
+            if r > 0 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
-                if r == 0 || sent == $length {
+                if sent == $length {
                     break;
                 }
             }
@@ -306,10 +307,10 @@ macro_rules! impl_expected_write_hook {
                 $length - sent,
                 $($arg, )*
             );
-            if r != -1 {
+            if r > 0 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
-                if r == 0 || sent == $length {
+                if sent == $length {
                     break;
                 }
             }
