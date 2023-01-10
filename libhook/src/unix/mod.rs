@@ -164,7 +164,7 @@ pub extern "C" fn connect(
             }
             r = -1;
             break;
-        } else if errno == Some(libc::EINTR) {
+        } else if errno != Some(libc::EINTR) {
             r = -1;
             break;
         }
@@ -247,7 +247,7 @@ pub extern "C" fn send(
             if event_loop.wait_write_event(socket, None).is_err() {
                 break;
             }
-        } else if errno == Some(libc::EINTR) {
+        } else if errno != Some(libc::EINTR) {
             break;
         }
     }
