@@ -452,3 +452,93 @@ pub extern "C" fn recv(
 ) -> libc::ssize_t {
     impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
+
+static PREAD: Lazy<
+    extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pread\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system pread not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn pread(
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    impl_expected_read_hook!((Lazy::force(&PREAD))(fd, buf, count, offset), None)
+}
+
+static PREADV: Lazy<
+    extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"preadv\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system preadv not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn preadv(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    impl_read_hook!((Lazy::force(&PREADV))(fd, iov, iovcnt, offset), None)
+}
+
+static RECVFROM: Lazy<
+    extern "C" fn(
+        libc::c_int,
+        *mut libc::c_void,
+        libc::size_t,
+        libc::c_int,
+        *mut libc::sockaddr,
+        *mut libc::socklen_t,
+    ) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"recvfrom\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system recvfrom not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn recvfrom(
+    socket: libc::c_int,
+    buf: *mut libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut libc::socklen_t,
+) -> libc::ssize_t {
+    impl_expected_read_hook!(
+        (Lazy::force(&RECVFROM))(socket, buf, len, flags, addr, addrlen),
+        None
+    )
+}
+
+static RECVMSG: Lazy<extern "C" fn(libc::c_int, *mut libc::msghdr, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"recvmsg\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system recvmsg not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn recvmsg(
+    fd: libc::c_int,
+    msg: *mut libc::msghdr,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    impl_read_hook!((Lazy::force(&RECVMSG))(fd, msg, flags), None)
+}
