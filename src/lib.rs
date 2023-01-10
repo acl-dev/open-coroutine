@@ -39,6 +39,7 @@ mod tests {
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::os::raw::c_void;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Condvar, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -110,6 +111,8 @@ mod tests {
         None
     }
 
+    static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
+
     unsafe fn crate_server(server_finished: Arc<(Mutex<bool>, Condvar)>) {
         //invoke by libc::listen
         assert!(co(fx, Some(&mut *(1usize as *mut c_void)), 4096));
@@ -117,6 +120,7 @@ mod tests {
         data[511] = b'\n';
         let listener =
             TcpListener::bind("127.0.0.1:9999").expect("bind to 127.0.0.1:9999 failed !");
+        SERVER_STARTED.store(true, Ordering::Release);
         //invoke by libc::accept
         assert!(co(fx, Some(&mut *(2usize as *mut c_void)), 4096));
         for stream in listener.incoming() {
@@ -148,7 +152,7 @@ mod tests {
 
     unsafe fn crate_client() {
         //等服务端起来
-        std::thread::sleep(Duration::from_secs(1));
+        while !SERVER_STARTED.load(Ordering::Acquire) {}
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
