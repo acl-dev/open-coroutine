@@ -76,6 +76,7 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
     }
 }
 
+/// check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[macro_export]
 macro_rules! impl_simple_hook {
     ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
@@ -88,7 +89,7 @@ macro_rules! impl_simple_hook {
 
 #[macro_export]
 macro_rules! impl_read_hook {
-    ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr) => {{
+    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
         let socket = $socket;
         let blocking = $crate::unix::common::is_blocking(socket);
         if blocking {
@@ -97,7 +98,7 @@ macro_rules! impl_read_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
-            r = $fn($($arg, )*);
+            r = $fn($socket ,$($arg, )*);
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
@@ -124,8 +125,95 @@ macro_rules! impl_read_hook {
 }
 
 #[macro_export]
+macro_rules! impl_expected_read_hook {
+    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr ), $timeout:expr) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::common::is_blocking(socket);
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, true);
+        }
+        let event_loop = base_coroutine::EventLoop::next();
+        let mut received = 0;
+        let mut r;
+        loop {
+            r = $fn(
+                $socket,
+                ($buffer as usize + received) as *mut libc::c_void,
+                $length - received
+            );
+            if r != -1 {
+                $crate::unix::common::reset_errno();
+                received += r as libc::size_t;
+                if received == $length || r == 0 {
+                    break;
+                }
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //等待读事件
+                if let Err(e) = event_loop.wait_read_event(socket, $timeout) {
+                    match e.kind() {
+                        //maybe invoke by Monitor::signal(), just ignore this
+                        std::io::ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        _ => break,
+                    }
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, false);
+        }
+        r
+    }};
+    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::common::is_blocking(socket);
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, true);
+        }
+        let event_loop = base_coroutine::EventLoop::next();
+        let mut received = 0;
+        let mut r;
+        loop {
+            r = $fn(
+                $socket,
+                ($buffer as usize + received) as *mut libc::c_void,
+                $length - received,
+                $($arg, )*
+            );
+            if r != -1 {
+                $crate::unix::common::reset_errno();
+                received += r as libc::size_t;
+                if received == $length || r == 0 {
+                    break;
+                }
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //等待读事件
+                if let Err(e) = event_loop.wait_read_event(socket, $timeout) {
+                    match e.kind() {
+                        //maybe invoke by Monitor::signal(), just ignore this
+                        std::io::ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        _ => break,
+                    }
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, false);
+        }
+        r
+    }};
+}
+
+#[macro_export]
 macro_rules! impl_write_hook {
-    ($socket:expr, ($fn: expr) ( $($arg: expr),* $(,)* ), $timeout:expr ) => {{
+    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* ), $timeout:expr ) => {{
         let socket = $socket;
         let blocking = $crate::unix::common::is_blocking(socket);
         if blocking {
@@ -134,10 +222,97 @@ macro_rules! impl_write_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
-            r = $fn($($arg, )*);
+            r = $fn($socket, $($arg, )*);
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //等待写事件
+                if let Err(e) = event_loop.wait_write_event(socket, $timeout) {
+                    match e.kind() {
+                        //maybe invoke by Monitor::signal(), just ignore this
+                        std::io::ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        _ => break,
+                    }
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, false);
+        }
+        r
+    }};
+}
+
+#[macro_export]
+macro_rules! impl_expected_write_hook {
+    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr), $timeout:expr) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::common::is_blocking(socket);
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, true);
+        }
+        let event_loop = base_coroutine::EventLoop::next();
+        let mut sent = 0;
+        let mut r;
+        loop {
+            r = $fn(
+                $socket,
+                ($buffer as usize + sent) as *const libc::c_void,
+                $length - sent
+            );
+            if r != -1 {
+                $crate::unix::common::reset_errno();
+                sent += r as libc::size_t;
+                if sent == $length || r == 0 {
+                    break;
+                }
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //等待写事件
+                if let Err(e) = event_loop.wait_write_event(socket, $timeout) {
+                    match e.kind() {
+                        //maybe invoke by Monitor::signal(), just ignore this
+                        std::io::ErrorKind::Interrupted => $crate::unix::common::reset_errno(),
+                        _ => break,
+                    }
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, false);
+        }
+        r
+    }};
+    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::common::is_blocking(socket);
+        if blocking {
+            $crate::unix::common::set_non_blocking(socket, true);
+        }
+        let event_loop = base_coroutine::EventLoop::next();
+        let mut sent = 0;
+        let mut r;
+        loop {
+            r = $fn(
+                $socket,
+                ($buffer as usize + sent) as *const libc::c_void,
+                $length - sent,
+                $($arg, )*
+            );
+            if r != -1 {
+                $crate::unix::common::reset_errno();
+                sent += r as libc::size_t;
+                if sent == $length || r == 0 {
+                    break;
+                }
             }
             let error_kind = std::io::Error::last_os_error().kind();
             if error_kind == std::io::ErrorKind::WouldBlock {
