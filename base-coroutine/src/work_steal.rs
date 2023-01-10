@@ -79,6 +79,7 @@ pub enum StealError {
     CanNotStealSelf,
     EmptySibling,
     NoMoreSpare,
+    StealSiblingFailed,
 }
 
 impl Display for StealError {
@@ -87,6 +88,7 @@ impl Display for StealError {
             StealError::CanNotStealSelf => write!(fmt, "can not steal self"),
             StealError::EmptySibling => write!(fmt, "the sibling is empty"),
             StealError::NoMoreSpare => write!(fmt, "self has no more spare"),
+            StealError::StealSiblingFailed => write!(fmt, "steal from another local queue failed"),
         }
     }
 }
@@ -237,8 +239,8 @@ impl WorkStealQueue {
             .queue
             .stealer()
             .steal(&self.queue, |_n| count)
-            .expect("steal half from another local queue failed !");
-        Ok(())
+            .map_err(|_| StealError::StealSiblingFailed)
+            .map(|_| ())
     }
 
     pub(crate) fn try_global_lock() -> bool {
