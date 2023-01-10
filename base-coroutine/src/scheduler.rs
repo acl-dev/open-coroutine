@@ -77,6 +77,10 @@ impl Scheduler {
         })
     }
 
+    fn clean_current() {
+        SCHEDULER.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
+    }
+
     fn init_yielder(yielder: &Yielder<(), (), ()>) {
         YIELDER.with(|boxed| {
             *boxed.borrow_mut() = yielder as *const _ as *const c_void;
@@ -171,6 +175,7 @@ impl Scheduler {
         }
         let mut main = MainCoroutine::new(main_context_func, (), Stack::default_size())?;
         main.resume();
+        Scheduler::clean_current();
         Scheduler::clean_results();
         Scheduler::clean_time();
         Ok(result)

@@ -289,7 +289,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         })
     }
 
-    pub(crate) fn clean_current() {
+    fn clean_current() {
         COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
     }
 }
