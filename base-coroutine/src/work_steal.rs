@@ -131,20 +131,14 @@ impl WorkStealQueue {
                 while !half.is_empty() {
                     let _ = GLOBAL_QUEUE.push(half.pop().unwrap());
                 }
-                loop {
-                    match GLOBAL_QUEUE.push(item) {
-                        Ok(_) => return Ok(()),
-                        Err(e) => match e {
-                            PushError::Full(_) => continue,
-                            PushError::Closed(_) => {
-                                return Err(std::io::Error::new(
-                                    ErrorKind::Other,
-                                    "global queue closed",
-                                ))
-                            }
-                        },
+                GLOBAL_QUEUE.push(item).map_err(|e| match e {
+                    PushError::Full(_) => {
+                        std::io::Error::new(ErrorKind::Other, "global queue is full")
                     }
-                }
+                    PushError::Closed(_) => {
+                        std::io::Error::new(ErrorKind::Other, "global queue closed")
+                    }
+                })?
             }
         }
         Ok(())
