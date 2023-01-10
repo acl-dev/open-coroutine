@@ -1,35 +1,34 @@
-extern crate cc;
-extern crate bindgen;
-
-use std::process::Command;
+use std::env;
+use std::path::PathBuf;
 
 fn main() {
-
-    // Tell cargo to invalidate the built crate whenever the wrapper changes
-    println!("cargo:rerun-if-changed=lib_fiber/c/include/fiber/libfiber.h");
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
-    bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
-        .header("lib_fiber/c/include/fiber/libfiber.h")
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // Finish the builder and generate the bindings.
-        .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings")
-        // Write the bindings to the src/bindings.rs file.
-        .write_to_file("src/libfiber.rs")
-        .expect("Couldn't write bindings!");
-
-    //if libfiber.a not exists, we need to build it before execute
-    Command::new("make")
-        .current_dir("lib_fiber/c")
-        .status()
-        .expect("process failed to execute");
-    println!("cargo:rustc-link-search=native=lib_fiber/lib");
-    println!("cargo:rustc-link-lib=dylib=fiber");
+    //copy dylib to deps
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let deps = out_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("deps");
+    let lib = env::current_dir().unwrap().join("lib");
+    if cfg!(target_os = "linux") {
+        std::fs::copy(lib.join("libhook.so"), deps.join("libhook.so"))
+            .expect("copy libhook.so failed!");
+    } else if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            std::fs::copy(lib.join("libhook-m1.dylib"), deps.join("libhook.dylib"))
+                .expect("copy libhook-m1.dylib failed!");
+        } else {
+            std::fs::copy(lib.join("libhook.dylib"), deps.join("libhook.dylib"))
+                .expect("copy libhook.dylib failed!");
+        }
+    } else if cfg!(target_os = "windows") {
+        std::fs::copy(lib.join("hook.dll"), deps.join("hook.dll")).expect("copy hook.dll failed!");
+        std::fs::copy(lib.join("hook.dll.lib"), deps.join("hook.lib"))
+            .expect("copy hook.lib failed!");
+    }
+    //link hook dylib
+    println!("cargo:rustc-link-lib=dylib=hook");
 }

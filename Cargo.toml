@@ -1,24 +1,31 @@
 [package]
-name = "libfiber"
+name = "open-coroutine"
 version = "0.1.0"
 edition = "2021"
-license-file = "LICENSE.txt"
+authors = ["zhangzicheng@apache.org"]
+description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
+repository = "https://github.com/acl-dev/open-coroutine"
+license = "LGPL-3.0 OR Apache-2.0"
+readme = "README.md"
+keywords = ["coroutine", "fiber", "stackful", "hook"]
+exclude = [".github"]
+
+[workspace]
+members = [
+    "object-collection",
+    "timer-utils",
+    "base-coroutine",
+    "detour2",
+    "libhook",
+]
 
 [dependencies]
 libc = "0.2.119"
-chrono = "0.4.19"
-threadpool = "1.8.1"
-num_cpus = "1.13.1"
-
-[build-dependencies]
-# 从c/c++头文件自动生成rust
-bindgen = "0.59.2"
-cc = "1.0.73"
-rustversion = "1.0.6"
+base-coroutine = { version = "0.1.0", path = "base-coroutine" }
 
 [dev-dependencies]
 # benchmark
-criterion = "0.3.5"
+criterion = "0.4.0"
 
 [[bench]]
 name = "benchmark"

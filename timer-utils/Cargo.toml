@@ -1,0 +1,11 @@
+[package]
+name = "timer-utils"
+version = "0.0.3"
+edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "The time utils."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/timer-utils"
+license = "LGPL-3.0 OR Apache-2.0"
+
+[dependencies]
+object-collection = { version = "0.0.3", path = "../object-collection" }

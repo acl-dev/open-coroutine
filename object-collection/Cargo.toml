@@ -1,0 +1,9 @@
+[package]
+name = "object-collection"
+version = "0.0.3"
+edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "A collection that can store multiple values of types."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/object-collection"
+license = "LGPL-3.0 OR Apache-2.0"
+keywords = ["object", "collection"]
