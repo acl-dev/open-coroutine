@@ -296,7 +296,8 @@ pub extern "C" fn write(
     buf: *const libc::c_void,
     count: libc::size_t,
 ) -> libc::ssize_t {
-    impl_write_hook!(fd, (Lazy::force(&WRITE))(fd, buf, count), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&WRITE))(fd, buf, count), None)
 }
 
 static WRITEV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
@@ -314,7 +315,8 @@ pub extern "C" fn writev(
     iov: *const libc::iovec,
     iovcnt: libc::c_int,
 ) -> libc::ssize_t {
-    impl_write_hook!(fd, (Lazy::force(&WRITEV))(fd, iov, iovcnt), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&WRITEV))(fd, iov, iovcnt), None)
 }
 
 static SENDTO: Lazy<
@@ -343,7 +345,8 @@ pub extern "C" fn sendto(
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
 ) -> libc::ssize_t {
-    impl_write_hook!(
+    //todo 非阻塞实现
+    impl_simple_hook!(
         socket,
         (Lazy::force(&SENDTO))(socket, buf, len, flags, addr, addrlen),
         None
@@ -366,7 +369,8 @@ pub extern "C" fn sendmsg(
     msg: *const libc::msghdr,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_write_hook!(fd, (Lazy::force(&SENDMSG))(fd, msg, flags), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&SENDMSG))(fd, msg, flags), None)
 }
 
 static PWRITE: Lazy<
@@ -386,7 +390,8 @@ pub extern "C" fn pwrite(
     count: libc::size_t,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    impl_write_hook!(fd, (Lazy::force(&PWRITE))(fd, buf, count, offset), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&PWRITE))(fd, buf, count, offset), None)
 }
 
 static PWRITEV: Lazy<
@@ -406,7 +411,8 @@ pub extern "C" fn pwritev(
     iovcnt: libc::c_int,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    impl_write_hook!(fd, (Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset), None)
+    //todo 非阻塞实现
+    impl_simple_hook!(fd, (Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset), None)
 }
 
 //read相关
