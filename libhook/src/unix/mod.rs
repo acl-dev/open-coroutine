@@ -310,6 +310,135 @@ pub extern "C" fn send(
     impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
 }
 
+static WRITE: Lazy<extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"write\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system write not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn write(
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&WRITE))(fd, buf, count), None)
+}
+
+static WRITEV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
+    Lazy::new(|| unsafe {
+        let ptr = libc::dlsym(libc::RTLD_NEXT, b"writev\0".as_ptr() as _);
+        if ptr.is_null() {
+            panic!("system writev not found !");
+        }
+        std::mem::transmute(ptr)
+    });
+
+#[no_mangle]
+pub extern "C" fn writev(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&WRITEV))(fd, iov, iovcnt), None)
+}
+
+static SENDTO: Lazy<
+    extern "C" fn(
+        libc::c_int,
+        *const libc::c_void,
+        libc::size_t,
+        libc::c_int,
+        *const libc::sockaddr,
+        libc::socklen_t,
+    ) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"sendto\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system sendto not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn sendto(
+    socket: libc::c_int,
+    buf: *const libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+    addr: *const libc::sockaddr,
+    addrlen: libc::socklen_t,
+) -> libc::ssize_t {
+    impl_write_hook!(
+        socket,
+        (Lazy::force(&SENDTO))(socket, buf, len, flags, addr, addrlen),
+        None
+    )
+}
+
+static SENDMSG: Lazy<
+    extern "C" fn(libc::c_int, *const libc::msghdr, libc::c_int) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"sendmsg\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system sendmsg not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn sendmsg(
+    fd: libc::c_int,
+    msg: *const libc::msghdr,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&SENDMSG))(fd, msg, flags), None)
+}
+
+static PWRITE: Lazy<
+    extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pwrite\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system pwrite not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn pwrite(
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&PWRITE))(fd, buf, count, offset), None)
+}
+
+static PWRITEV: Lazy<
+    extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t,
+> = Lazy::new(|| unsafe {
+    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pwritev\0".as_ptr() as _);
+    if ptr.is_null() {
+        panic!("system pwritev not found !");
+    }
+    std::mem::transmute(ptr)
+});
+
+#[no_mangle]
+pub extern "C" fn pwritev(
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    impl_write_hook!(fd, (Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset), None)
+}
+
+//read相关
 static RECV: Lazy<
     extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
 > = Lazy::new(|| unsafe {
