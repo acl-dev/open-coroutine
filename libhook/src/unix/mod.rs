@@ -146,7 +146,7 @@ pub extern "C" fn connect(
                     _ => {
                         r = -1;
                         break;
-                    },
+                    }
                 }
             }
             unsafe {
