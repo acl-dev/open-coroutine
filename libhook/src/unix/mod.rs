@@ -101,6 +101,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
         //注意这里获取的是原始系统函数nanosleep的指针
         //相当于libc::nanosleep(&rqtp, rmtp)
         if (Lazy::force(&NANOSLEEP))(&rqtp, rmtp) == 0 {
+            reset_errno();
             return 0;
         }
     }
@@ -122,26 +123,31 @@ pub extern "C" fn connect(
     address: *const libc::sockaddr,
     len: libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
-    if is_non_blocking(socket) {
-        //非阻塞，直接系统调用
-        return (Lazy::force(&CONNECT))(socket, address, len);
-    }
+    let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到写事件
-    set_non_blocking(socket, true);
+    if blocking {
+        set_non_blocking(socket, true);
+    }
     let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
         if r == 0 {
+            reset_errno();
             break;
         }
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
-            if event_loop.wait_write_event(socket, None).is_err() {
-                r = -1;
-                break;
+            if let Err(e) = event_loop.wait_write_event(socket, None) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => reset_errno(),
+                    _ => {
+                        r = -1;
+                        break;
+                    },
+                }
             }
             unsafe {
                 let mut len: libc::socklen_t = std::mem::zeroed();
@@ -157,10 +163,11 @@ pub extern "C" fn connect(
                     break;
                 }
                 if err == 0 {
+                    reset_errno();
                     r = 0;
                     break;
                 };
-                errno_location().write(err);
+                set_errno(err);
             }
             r = -1;
             break;
@@ -169,7 +176,9 @@ pub extern "C" fn connect(
             break;
         }
     }
-    set_non_blocking(socket, false);
+    if blocking {
+        set_non_blocking(socket, false);
+    }
     r
 }
 
@@ -227,31 +236,36 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = EventLoop::round_robin_schedule();
-    if is_non_blocking(socket) {
-        //非阻塞，直接系统调用
-        return (Lazy::force(&SEND))(socket, buf, len, flags);
-    }
+    let blocking = is_blocking(socket);
     //阻塞，epoll_wait/kevent等待直到写事件
-    set_non_blocking(socket, true);
+    if blocking {
+        set_non_blocking(socket, true);
+    }
     let event_loop = EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&SEND))(socket, buf, len, flags);
         if r != -1 {
+            reset_errno();
             break;
         }
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
             //等待写事件
-            if event_loop.wait_write_event(socket, None).is_err() {
-                break;
+            if let Err(e) = event_loop.wait_write_event(socket, None) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => reset_errno(),
+                    _ => break,
+                }
             }
         } else if errno != Some(libc::EINTR) {
             break;
         }
     }
-    set_non_blocking(socket, false);
+    if blocking {
+        set_non_blocking(socket, false);
+    }
     r
 }
 
