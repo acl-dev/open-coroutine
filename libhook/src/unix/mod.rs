@@ -1,8 +1,8 @@
-use crate::event_loop::EventLoop;
 use crate::unix::common::*;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
 
+#[macro_use]
 mod common;
 
 #[cfg(any(
@@ -77,7 +77,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
     };
     let timeout_time = timer_utils::add_timeout_time(nanos_time);
     loop {
-        let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
+        let _ = base_coroutine::EventLoop::round_robin_timeout_schedule(timeout_time);
         // 可能schedule完还剩一些时间，此时本地队列没有任务可做
         let schedule_finished_time = timer_utils::now();
         let left_time = match timeout_time.checked_sub(schedule_finished_time) {
@@ -128,7 +128,7 @@ pub extern "C" fn connect(
     if blocking {
         set_non_blocking(socket, true);
     }
-    let event_loop = EventLoop::next();
+    let event_loop = base_coroutine::EventLoop::next();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
@@ -193,7 +193,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
+    let _ = base_coroutine::EventLoop::round_robin_schedule();
     //unnecessary non blocking impl for listen
     (Lazy::force(&LISTEN))(socket, backlog)
 }
@@ -214,9 +214,12 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
-    (Lazy::force(&ACCEPT))(socket, address, address_len)
+    impl_simple_hook!(
+        socket,
+        (Lazy::force(&ACCEPT))(socket, address, address_len),
+        None
+    )
 }
 
 static SEND: Lazy<
@@ -236,37 +239,7 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let blocking = is_blocking(socket);
-    //阻塞，epoll_wait/kevent等待直到写事件
-    if blocking {
-        set_non_blocking(socket, true);
-    }
-    let event_loop = EventLoop::next();
-    let mut r;
-    loop {
-        r = (Lazy::force(&SEND))(socket, buf, len, flags);
-        if r != -1 {
-            reset_errno();
-            break;
-        }
-        let errno = std::io::Error::last_os_error().raw_os_error();
-        if errno == Some(libc::EWOULDBLOCK) || errno == Some(libc::EAGAIN) {
-            //等待写事件
-            if let Err(e) = event_loop.wait_write_event(socket, None) {
-                match e.kind() {
-                    //maybe invoke by Monitor::signal(), just ignore this
-                    std::io::ErrorKind::Interrupted => reset_errno(),
-                    _ => break,
-                }
-            }
-        } else if errno != Some(libc::EINTR) {
-            break;
-        }
-    }
-    if blocking {
-        set_non_blocking(socket, false);
-    }
-    r
+    impl_write_hook!(socket, (Lazy::force(&SEND))(socket, buf, len, flags), None)
 }
 
 static RECV: Lazy<
@@ -286,7 +259,6 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    let _ = EventLoop::round_robin_schedule();
     //todo 非阻塞实现
-    (Lazy::force(&RECV))(socket, buf, len, flags)
+    impl_simple_hook!(socket, (Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
