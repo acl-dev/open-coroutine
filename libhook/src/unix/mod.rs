@@ -223,20 +223,6 @@ pub extern "C" fn accept(
     )
 }
 
-static CLOSE: Lazy<extern "C" fn(libc::c_int) -> libc::c_int> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"close\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system close not found !");
-    }
-    std::mem::transmute(ptr)
-});
-
-#[no_mangle]
-pub extern "C" fn close(fd: libc::c_int) -> libc::c_int {
-    //todo 取消对fd的监听?
-    impl_simple_hook!(fd, (Lazy::force(&CLOSE))(fd), None)
-}
-
 static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
     Lazy::new(|| unsafe {
         let ptr = libc::dlsym(libc::RTLD_NEXT, b"shutdown\0".as_ptr() as _);
