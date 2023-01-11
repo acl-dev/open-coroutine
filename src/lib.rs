@@ -131,21 +131,26 @@ mod tests {
                 assert!(co(fx, Some(&mut *(6usize as *mut c_void)), 4096));
                 //从流里面读内容，读到buffer中
                 let bytes_read = stream.read(&mut buffer).expect("server read failed !");
-                if bytes_read == 0 {
+                if bytes_read == 1 && buffer[0] == b'e' {
                     //如果读到的为空，说明已经结束了
                     let (lock, cvar) = &*server_finished;
                     let mut pending = lock.lock().unwrap();
                     *pending = false;
                     cvar.notify_one();
+                    println!("server closed");
                     return;
                 }
+                assert_eq!(512, bytes_read);
                 assert_eq!(data, buffer);
                 //invoke by libc::send
                 assert!(co(fx, Some(&mut *(7usize as *mut c_void)), 4096));
                 //回写
-                stream
-                    .write(&buffer[..bytes_read])
-                    .expect("server write failed !");
+                assert_eq!(
+                    bytes_read,
+                    stream
+                        .write(&buffer[..bytes_read])
+                        .expect("server write failed !")
+                );
             }
         }
     }
@@ -163,20 +168,24 @@ mod tests {
             //invoke by libc::send
             assert!(co(fx, Some(&mut *(4usize as *mut c_void)), 4096));
             //写入stream流，如果写入失败，提示“写入失败”
-            stream.write(&data).expect("Failed to write!");
+            assert_eq!(512, stream.write(&data).expect("Failed to write!"));
 
             //invoke by libc::recv
             assert!(co(fx, Some(&mut *(5usize as *mut c_void)), 4096));
             let mut reader = BufReader::new(&stream);
             //一直读到换行为止（b'\n'中的b表示字节），读到buffer里面
-            reader
-                .read_until(b'\n', &mut buffer)
-                .expect("Failed to read into buffer");
+            assert_eq!(
+                512,
+                reader
+                    .read_until(b'\n', &mut buffer)
+                    .expect("Failed to read into buffer")
+            );
             assert_eq!(&data, &buffer as &[u8]);
             buffer.clear();
         }
         //发送终止符
-        stream.write(&[]).expect("Failed to write!");
+        assert_eq!(1, stream.write(&[b'e']).expect("Failed to write!"));
+        println!("client closed");
     }
 
     #[test]
