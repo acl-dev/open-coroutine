@@ -25,6 +25,11 @@ mod bsd;
 ))]
 mod linux_like;
 
+/**
+ do not impl close/read hook !!!!!
+ it will not pass linux CI !!!!!
+ */
+
 //sleep相关
 #[no_mangle]
 pub extern "C" fn sleep(secs: libc::c_uint) -> libc::c_uint {
