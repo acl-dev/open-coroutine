@@ -14,6 +14,10 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - name: cargo clean
+        uses: actions-rs/cargo@v1
+        with:
+          command: clean
       - name: cargo build --release -p libhook
         uses: actions-rs/cargo@v1
         with:
@@ -36,6 +40,10 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - name: cargo clean
+        uses: actions-rs/cargo@v1
+        with:
+          command: clean
       - name: cargo build --release -p libhook
         uses: actions-rs/cargo@v1
         with:
@@ -58,6 +66,10 @@ jobs:
           profile: minimal
           toolchain: nightly
           override: true
+      - name: cargo clean
+        uses: actions-rs/cargo@v1
+        with:
+          command: clean
       - name: cargo +nightly build --release -p libhook
         uses: actions-rs/cargo@v1
         with:
