@@ -54,6 +54,10 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+      - name: Run cargo clean
+        uses: actions-rs/cargo@v1
+        with:
+          command: clean
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
@@ -84,6 +88,10 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+      - name: Run cargo clean
+        uses: actions-rs/cargo@v1
+        with:
+          command: clean
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
@@ -114,6 +122,10 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+      - name: Run cargo clean
+        uses: actions-rs/cargo@v1
+        with:
+          command: clean
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
