@@ -57,13 +57,7 @@ pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
 }
 
 static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"nanosleep\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system nanosleep not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("nanosleep");
 
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
@@ -110,13 +104,7 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
 //socket相关
 static CONNECT: Lazy<
     extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"connect\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system connect not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("connect");
 
 #[no_mangle]
 pub extern "C" fn connect(
@@ -183,14 +171,7 @@ pub extern "C" fn connect(
     r
 }
 
-static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"listen\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system listen not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> = init_hook!("listen");
 
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
@@ -201,13 +182,7 @@ pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_i
 
 static ACCEPT: Lazy<
     extern "C" fn(libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"accept\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system accept not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("accept");
 
 #[no_mangle]
 pub extern "C" fn accept(
@@ -220,13 +195,7 @@ pub extern "C" fn accept(
 }
 
 static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"shutdown\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system shutdown not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("shutdown");
 
 #[no_mangle]
 pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int {
@@ -235,13 +204,7 @@ pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int
 }
 
 static POLL: Lazy<extern "C" fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"poll\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system poll not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("poll");
 
 #[no_mangle]
 pub extern "C" fn poll(
@@ -261,13 +224,7 @@ static SELECT: Lazy<
         *mut libc::fd_set,
         *mut libc::timeval,
     ) -> libc::c_int,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"select\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system select not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("select");
 
 #[no_mangle]
 pub extern "C" fn select(
@@ -287,13 +244,7 @@ pub extern "C" fn select(
 //write相关
 static SEND: Lazy<
     extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"send\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system send not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("send");
 
 #[no_mangle]
 pub extern "C" fn send(
@@ -306,13 +257,7 @@ pub extern "C" fn send(
 }
 
 static WRITE: Lazy<extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"write\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system write not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("write");
 
 #[no_mangle]
 pub extern "C" fn write(
@@ -324,13 +269,7 @@ pub extern "C" fn write(
 }
 
 static WRITEV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"writev\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system writev not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("writev");
 
 #[no_mangle]
 pub extern "C" fn writev(
@@ -350,13 +289,7 @@ static SENDTO: Lazy<
         *const libc::sockaddr,
         libc::socklen_t,
     ) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"sendto\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system sendto not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("sendto");
 
 #[no_mangle]
 pub extern "C" fn sendto(
@@ -375,13 +308,7 @@ pub extern "C" fn sendto(
 
 static SENDMSG: Lazy<
     extern "C" fn(libc::c_int, *const libc::msghdr, libc::c_int) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"sendmsg\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system sendmsg not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("sendmsg");
 
 #[no_mangle]
 pub extern "C" fn sendmsg(
@@ -394,13 +321,7 @@ pub extern "C" fn sendmsg(
 
 static PWRITE: Lazy<
     extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pwrite\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system pwrite not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("pwrite");
 
 #[no_mangle]
 pub extern "C" fn pwrite(
@@ -414,13 +335,7 @@ pub extern "C" fn pwrite(
 
 static PWRITEV: Lazy<
     extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pwritev\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system pwritev not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("pwritev");
 
 #[no_mangle]
 pub extern "C" fn pwritev(
@@ -435,13 +350,7 @@ pub extern "C" fn pwritev(
 //read相关
 static RECV: Lazy<
     extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"recv\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system recv not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("recv");
 
 #[no_mangle]
 pub extern "C" fn recv(
@@ -453,24 +362,8 @@ pub extern "C" fn recv(
     impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
 
-static PREAD: Lazy<
-    extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"pread\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system pread not found !");
-    }
-    std::mem::transmute(ptr)
-});
-
 static READV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"readv\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system readv not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("readv");
 
 #[no_mangle]
 pub extern "C" fn readv(
@@ -480,6 +373,10 @@ pub extern "C" fn readv(
 ) -> libc::ssize_t {
     impl_read_hook!((Lazy::force(&READV))(fd, iov, iovcnt), None)
 }
+
+static PREAD: Lazy<
+    extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t,
+> = init_hook!("pread");
 
 #[no_mangle]
 pub extern "C" fn pread(
@@ -493,13 +390,7 @@ pub extern "C" fn pread(
 
 static PREADV: Lazy<
     extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"preadv\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system preadv not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("preadv");
 
 #[no_mangle]
 pub extern "C" fn preadv(
@@ -520,13 +411,7 @@ static RECVFROM: Lazy<
         *mut libc::sockaddr,
         *mut libc::socklen_t,
     ) -> libc::ssize_t,
-> = Lazy::new(|| unsafe {
-    let ptr = libc::dlsym(libc::RTLD_NEXT, b"recvfrom\0".as_ptr() as _);
-    if ptr.is_null() {
-        panic!("system recvfrom not found !");
-    }
-    std::mem::transmute(ptr)
-});
+> = init_hook!("recvfrom");
 
 #[no_mangle]
 pub extern "C" fn recvfrom(
@@ -544,13 +429,7 @@ pub extern "C" fn recvfrom(
 }
 
 static RECVMSG: Lazy<extern "C" fn(libc::c_int, *mut libc::msghdr, libc::c_int) -> libc::ssize_t> =
-    Lazy::new(|| unsafe {
-        let ptr = libc::dlsym(libc::RTLD_NEXT, b"recvmsg\0".as_ptr() as _);
-        if ptr.is_null() {
-            panic!("system recvmsg not found !");
-        }
-        std::mem::transmute(ptr)
-    });
+    init_hook!("recvmsg");
 
 #[no_mangle]
 pub extern "C" fn recvmsg(

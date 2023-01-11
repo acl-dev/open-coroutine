@@ -78,6 +78,22 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
 
 /// check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[macro_export]
+macro_rules! init_hook {
+    ( $symbol:literal ) => {{
+        once_cell::sync::Lazy::new(|| unsafe {
+            let symbol = std::ffi::CString::new(String::from($symbol)).expect(&String::from(
+                "can not transfer \"".to_owned() + $symbol + "\" to CString",
+            ));
+            let ptr = libc::dlsym(libc::RTLD_NEXT, symbol.as_ptr());
+            if ptr.is_null() {
+                panic!("system {} not found !", $symbol);
+            }
+            std::mem::transmute(ptr)
+        })
+    }};
+}
+
+#[macro_export]
 macro_rules! impl_simple_hook {
     ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
         let ns_time = ($timeout as Option<std::time::Duration>).map(|d|d.as_nanos() as u64).unwrap_or(u64::MAX);
