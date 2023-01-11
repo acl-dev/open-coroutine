@@ -190,8 +190,7 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    //todo 非阻塞实现
-    impl_simple_hook!((Lazy::force(&ACCEPT))(socket, address, address_len), None)
+    impl_read_hook!((Lazy::force(&ACCEPT))(socket, address, address_len), None)
 }
 
 static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
