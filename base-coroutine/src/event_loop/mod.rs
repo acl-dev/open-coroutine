@@ -9,9 +9,18 @@ use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
 use crate::{Coroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
+use std::collections::{HashMap, HashSet};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+
+static mut READABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new);
+
+static mut READABLE_TOKEN_RECORDS: Lazy<HashMap<libc::c_int, usize>> = Lazy::new(HashMap::new);
+
+static mut WRITABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new);
+
+static mut WRITABLE_TOKEN_RECORDS: Lazy<HashMap<libc::c_int, usize>> = Lazy::new(HashMap::new);
 
 static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
@@ -89,6 +98,62 @@ impl<'a> EventLoop<'a> {
 
     fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         self.selector.deregister(fd)?;
+        unsafe {
+            READABLE_RECORDS.remove(&fd);
+            READABLE_TOKEN_RECORDS.remove(&fd);
+            WRITABLE_RECORDS.remove(&fd);
+            WRITABLE_TOKEN_RECORDS.remove(&fd);
+        }
+        Ok(())
+    }
+
+    pub fn round_robin_del_read_event(fd: libc::c_int) {
+        for _i in 0..num_cpus::get() {
+            let _ = EventLoop::next().del_read_event(fd);
+        }
+    }
+
+    fn del_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        unsafe {
+            if READABLE_RECORDS.contains(&fd) {
+                if WRITABLE_RECORDS.contains(&fd) {
+                    //写事件不能删
+                    self.selector.reregister(
+                        fd,
+                        WRITABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
+                        Interest::WRITABLE,
+                    )?;
+                } else {
+                    self.del_event(fd)?;
+                }
+                READABLE_RECORDS.remove(&fd);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn round_robin_del_write_event(fd: libc::c_int) {
+        for _i in 0..num_cpus::get() {
+            let _ = EventLoop::next().del_write_event(fd);
+        }
+    }
+
+    fn del_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        unsafe {
+            if WRITABLE_RECORDS.contains(&fd) {
+                if READABLE_RECORDS.contains(&fd) {
+                    //读事件不能删
+                    self.selector.reregister(
+                        fd,
+                        READABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
+                        Interest::READABLE,
+                    )?;
+                } else {
+                    self.del_event(fd)?;
+                }
+                WRITABLE_RECORDS.remove(&fd);
+            }
+        }
         Ok(())
     }
 
@@ -101,14 +166,32 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        unsafe {
+            if READABLE_RECORDS.contains(&fd) {
+                return Ok(());
+            }
+        }
         let token = <EventLoop<'a>>::build_token();
         self.selector.register(fd, token, Interest::READABLE)?;
+        unsafe {
+            READABLE_RECORDS.insert(fd);
+            READABLE_TOKEN_RECORDS.insert(fd, token);
+        }
         Ok(())
     }
 
     pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        unsafe {
+            if WRITABLE_RECORDS.contains(&fd) {
+                return Ok(());
+            }
+        }
         let token = <EventLoop<'a>>::build_token();
         self.selector.register(fd, token, Interest::WRITABLE)?;
+        unsafe {
+            WRITABLE_RECORDS.insert(fd);
+            WRITABLE_TOKEN_RECORDS.insert(fd, token);
+        }
         Ok(())
     }
 

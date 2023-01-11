@@ -198,8 +198,17 @@ static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 
 #[no_mangle]
 pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int {
-    //todo 取消对fd的监听
-    impl_simple_hook!((Lazy::force(&SHUTDOWN))(socket, how), None)
+    //取消对fd的监听
+    match how {
+        libc::SHUT_RD => base_coroutine::EventLoop::round_robin_del_read_event(socket),
+        libc::SHUT_WR => base_coroutine::EventLoop::round_robin_del_write_event(socket),
+        libc::SHUT_RDWR => base_coroutine::EventLoop::round_robin_del_event(socket),
+        _ => {
+            crate::unix::common::set_errno(libc::EINVAL);
+            return -1;
+        }
+    }
+    (Lazy::force(&SHUTDOWN))(socket, how)
 }
 
 static POLL: Lazy<extern "C" fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int> =
