@@ -361,6 +361,18 @@ pub extern "C" fn recv(
     impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags), None)
 }
 
+static READ: Lazy<extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t> =
+    init_hook!("read");
+
+#[no_mangle]
+pub extern "C" fn read(
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    impl_expected_read_hook!((Lazy::force(&READ))(fd, buf, count), None)
+}
+
 static READV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
     init_hook!("readv");
 
