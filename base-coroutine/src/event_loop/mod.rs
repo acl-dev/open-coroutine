@@ -123,10 +123,10 @@ impl<'a> EventLoop<'a> {
                         WRITABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
                         Interest::WRITABLE,
                     )?;
+                    READABLE_RECORDS.remove(&fd);
                 } else {
                     self.del_event(fd)?;
                 }
-                READABLE_RECORDS.remove(&fd);
             }
         }
         Ok(())
@@ -148,10 +148,10 @@ impl<'a> EventLoop<'a> {
                         READABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
                         Interest::READABLE,
                     )?;
+                    WRITABLE_RECORDS.remove(&fd);
                 } else {
                     self.del_event(fd)?;
                 }
-                WRITABLE_RECORDS.remove(&fd);
             }
         }
         Ok(())
