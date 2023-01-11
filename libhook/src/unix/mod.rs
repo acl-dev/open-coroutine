@@ -1,3 +1,7 @@
+/**
+do not impl close/read hook !!!!!
+it will not pass linux CI !!!!!
+ */
 use crate::unix::common::*;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
@@ -24,11 +28,6 @@ mod bsd;
     target_os = "emscripten"
 ))]
 mod linux_like;
-
-/**
- do not impl close/read hook !!!!!
- it will not pass linux CI !!!!!
- */
 
 //sleep相关
 #[no_mangle]
