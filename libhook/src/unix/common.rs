@@ -153,11 +153,18 @@ macro_rules! impl_expected_read_hook {
         let mut received = 0;
         let mut r = 0;
         while received < $length {
-            r = $fn(
-                $socket,
-                ($buffer as usize + received) as *mut libc::c_void,
-                $length - received
-            );
+            unsafe {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigaddset(&mut set, libc::SIGURG);
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
+                r = $fn(
+                    $socket,
+                    ($buffer as usize + received) as *mut libc::c_void,
+                    $length - received
+                );
+                libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            }
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
@@ -198,12 +205,19 @@ macro_rules! impl_expected_read_hook {
         let mut received = 0;
         let mut r = 0;
         while received < $length {
-            r = $fn(
-                $socket,
-                ($buffer as usize + received) as *mut libc::c_void,
-                $length - received,
-                $($arg, )*
-            );
+            unsafe {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigaddset(&mut set, libc::SIGURG);
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
+                r = $fn(
+                    $socket,
+                    ($buffer as usize + received) as *mut libc::c_void,
+                    $length - received,
+                    $($arg, )*
+                );
+                libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            }
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
@@ -286,11 +300,18 @@ macro_rules! impl_expected_write_hook {
         let mut sent = 0;
         let mut r = 0;
         while sent < $length {
-            r = $fn(
-                $socket,
-                ($buffer as usize + sent) as *const libc::c_void,
-                $length - sent
-            );
+            unsafe {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigaddset(&mut set, libc::SIGURG);
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
+                r = $fn(
+                    $socket,
+                    ($buffer as usize + sent) as *const libc::c_void,
+                    $length - sent
+                );
+                libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            }
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
@@ -331,12 +352,19 @@ macro_rules! impl_expected_write_hook {
         let mut sent = 0;
         let mut r = 0;
         while sent < $length {
-            r = $fn(
-                $socket,
-                ($buffer as usize + sent) as *const libc::c_void,
-                $length - sent,
-                $($arg, )*
-            );
+            unsafe {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigaddset(&mut set, libc::SIGURG);
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
+                r = $fn(
+                    $socket,
+                    ($buffer as usize + sent) as *const libc::c_void,
+                    $length - sent,
+                    $($arg, )*
+                );
+                libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            }
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
