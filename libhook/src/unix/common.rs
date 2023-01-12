@@ -151,7 +151,7 @@ macro_rules! impl_expected_read_hook {
         }
         let event_loop = base_coroutine::EventLoop::next();
         let mut received = 0;
-        let mut r;
+        let mut r = 0;
         while received < $length {
             r = $fn(
                 $socket,
@@ -162,7 +162,7 @@ macro_rules! impl_expected_read_hook {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
                 if received >= $length {
-                    r = received;
+                    r = received as libc::ssize_t;
                     break;
                 }
                 if r == 0 {
@@ -196,7 +196,7 @@ macro_rules! impl_expected_read_hook {
         }
         let event_loop = base_coroutine::EventLoop::next();
         let mut received = 0;
-        let mut r;
+        let mut r = 0;
         while received < $length {
             r = $fn(
                 $socket,
@@ -208,7 +208,7 @@ macro_rules! impl_expected_read_hook {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
                 if received >= $length {
-                    r = received;
+                    r = received as libc::ssize_t;
                     break;
                 }
                 if r == 0 {
@@ -284,7 +284,7 @@ macro_rules! impl_expected_write_hook {
         }
         let event_loop = base_coroutine::EventLoop::next();
         let mut sent = 0;
-        let mut r;
+        let mut r = 0;
         while sent < $length {
             r = $fn(
                 $socket,
@@ -295,7 +295,7 @@ macro_rules! impl_expected_write_hook {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
                 if sent >= $length {
-                    r = sent;
+                    r = sent as libc::ssize_t;
                     break;
                 }
                 if r == 0 {
@@ -329,7 +329,7 @@ macro_rules! impl_expected_write_hook {
         }
         let event_loop = base_coroutine::EventLoop::next();
         let mut sent = 0;
-        let mut r;
+        let mut r = 0;
         while sent < $length {
             r = $fn(
                 $socket,
@@ -341,7 +341,7 @@ macro_rules! impl_expected_write_hook {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
                 if sent >= $length {
-                    r = sent;
+                    r = sent as libc::ssize_t;
                     break;
                 }
                 if r == 0 {
