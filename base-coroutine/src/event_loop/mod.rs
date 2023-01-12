@@ -166,6 +166,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        unsafe {
+            if READABLE_RECORDS.contains(&fd) {
+                return Ok(());
+            }
+        }
         let token = <EventLoop<'a>>::build_token();
         self.selector.register(fd, token, Interest::READABLE)?;
         unsafe {
@@ -176,6 +181,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
+        unsafe {
+            if WRITABLE_RECORDS.contains(&fd) {
+                return Ok(());
+            }
+        }
         let token = <EventLoop<'a>>::build_token();
         self.selector.register(fd, token, Interest::WRITABLE)?;
         unsafe {
@@ -190,7 +200,19 @@ impl<'a> EventLoop<'a> {
         let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout)?;
         for event in events.iter() {
-            let _ = unsafe { self.scheduler.resume(event.token()) };
+            let fd = event.fd();
+            let token = event.token();
+            unsafe {
+                let _ = self.scheduler.resume(token);
+                if event.is_readable() {
+                    READABLE_RECORDS.remove(&fd);
+                    READABLE_TOKEN_RECORDS.remove(&fd);
+                }
+                if event.is_writable() {
+                    WRITABLE_RECORDS.remove(&fd);
+                    WRITABLE_TOKEN_RECORDS.remove(&fd);
+                }
+            }
         }
         Ok(())
     }
