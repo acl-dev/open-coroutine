@@ -15,9 +15,9 @@ jobs:
           toolchain: stable
           override: true
       - name: cargo clean
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
+        run: |
+          cd ${{ github.workspace }}
+          /home/runner/.cargo/bin/cargo clean
       - name: cargo build --release -p libhook
         uses: actions-rs/cargo@v1
         with:
@@ -41,9 +41,9 @@ jobs:
           toolchain: stable
           override: true
       - name: cargo clean
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
+        run: |
+          cd ${{ github.workspace }}
+          /Users/runner/.cargo/bin/cargo clean
       - name: cargo build --release -p libhook
         uses: actions-rs/cargo@v1
         with:
@@ -67,9 +67,9 @@ jobs:
           toolchain: nightly
           override: true
       - name: cargo clean
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
+        run: |
+          cd ${{ github.workspace }}
+          C://Users//runneradmin//.cargo//bin//cargo.exe clean
       - name: cargo +nightly build --release -p libhook
         uses: actions-rs/cargo@v1
         with:

@@ -55,9 +55,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
       - name: Run cargo clean
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
+        run: |
+          cd ${{ github.workspace }}
+          /home/runner/.cargo/bin/cargo clean
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
@@ -89,9 +89,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
       - name: Run cargo clean
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
+        run: |
+          cd ${{ github.workspace }}
+          /Users/runner/.cargo/bin/cargo clean
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
@@ -123,9 +123,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
       - name: Run cargo clean
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
+        run: |
+          cd ${{ github.workspace }}
+          C://Users//runneradmin//.cargo//bin//cargo.exe clean
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
