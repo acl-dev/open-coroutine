@@ -103,6 +103,7 @@ macro_rules! impl_simple_hook {
     }};
 }
 
+//todo try to replace with impl_expected_read_hook
 #[macro_export]
 macro_rules! impl_read_hook {
     ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* ), $timeout:expr) => {{
@@ -151,7 +152,7 @@ macro_rules! impl_expected_read_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut received = 0;
         let mut r;
-        loop {
+        while received < $length {
             r = $fn(
                 $socket,
                 ($buffer as usize + received) as *mut libc::c_void,
@@ -160,7 +161,11 @@ macro_rules! impl_expected_read_hook {
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
-                if received == $length || r == 0 {
+                if received >= $length {
+                    r = received;
+                    break;
+                }
+                if r == 0 {
                     break;
                 }
             }
@@ -192,7 +197,7 @@ macro_rules! impl_expected_read_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut received = 0;
         let mut r;
-        loop {
+        while received < $length {
             r = $fn(
                 $socket,
                 ($buffer as usize + received) as *mut libc::c_void,
@@ -202,7 +207,11 @@ macro_rules! impl_expected_read_hook {
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 received += r as libc::size_t;
-                if received == $length || r == 0 {
+                if received >= $length {
+                    r = received;
+                    break;
+                }
+                if r == 0 {
                     break;
                 }
             }
@@ -227,6 +236,7 @@ macro_rules! impl_expected_read_hook {
     }};
 }
 
+//todo try to replace with impl_expected_write_hook
 #[macro_export]
 macro_rules! impl_write_hook {
     ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* ), $timeout:expr ) => {{
@@ -275,7 +285,7 @@ macro_rules! impl_expected_write_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut sent = 0;
         let mut r;
-        loop {
+        while sent < $length {
             r = $fn(
                 $socket,
                 ($buffer as usize + sent) as *const libc::c_void,
@@ -284,7 +294,11 @@ macro_rules! impl_expected_write_hook {
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
-                if sent == $length || r == 0 {
+                if sent >= $length {
+                    r = sent;
+                    break;
+                }
+                if r == 0 {
                     break;
                 }
             }
@@ -316,7 +330,7 @@ macro_rules! impl_expected_write_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut sent = 0;
         let mut r;
-        loop {
+        while sent < $length {
             r = $fn(
                 $socket,
                 ($buffer as usize + sent) as *const libc::c_void,
@@ -326,7 +340,11 @@ macro_rules! impl_expected_write_hook {
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 sent += r as libc::size_t;
-                if sent == $length || r == 0 {
+                if sent >= $length {
+                    r = sent;
+                    break;
+                }
+                if r == 0 {
                     break;
                 }
             }
