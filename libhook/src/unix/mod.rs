@@ -5,7 +5,6 @@ it will not pass linux CI !!!!!
 use crate::unix::common::*;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
-use std::ops::Mul;
 
 #[macro_use]
 mod common;
@@ -230,7 +229,7 @@ pub extern "C" fn poll(
         libc::c_int::MAX
     } else {
         timeout
-    } as libc::c_uint;
+    };
     let mut x = 1;
     let mut r;
     // just check select every x ms
@@ -238,15 +237,15 @@ pub extern "C" fn poll(
         unsafe {
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigaddset(&mut set, libc::SIGURG);
-            let mut oldset: libc::sigset_t = std::mem::zeroed();
+            let oldset: libc::sigset_t = std::mem::zeroed();
             r = (Lazy::force(&POLL))(fds, nfds, 0);
             libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
         }
         if r != 0 || t == 0 {
             break;
         }
-        usleep(t.min(x) * 1000);
-        if t != -1 {
+        usleep((t.min(x) * 1000) as libc::c_uint);
+        if t != libc::c_int::MAX {
             t = if t > x { t - x } else { 0 };
         }
         if x < 16 {
@@ -277,7 +276,7 @@ pub extern "C" fn select(
     let mut t = if timeout.is_null() {
         libc::c_uint::MAX
     } else {
-        timeout.tv_sec * 1_000_000 + timeout.tv_usec
+        unsafe { ((*timeout).tv_sec as libc::c_uint) * 1_000_000 + (*timeout).tv_usec as libc::c_uint}
     };
     let mut o = libc::timeval {
         tv_sec: 0,
@@ -302,7 +301,7 @@ pub extern "C" fn select(
         unsafe {
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigaddset(&mut set, libc::SIGURG);
-            let mut oldset: libc::sigset_t = std::mem::zeroed();
+            let oldset: libc::sigset_t = std::mem::zeroed();
             r = (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, &mut o);
             libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
         }
@@ -310,7 +309,7 @@ pub extern "C" fn select(
             break;
         }
         usleep(t.min(x) * 1000);
-        if t != -1 {
+        if t != libc::c_uint::MAX {
             t = if t > x { t - x } else { 0 };
         }
         if x < 16 {
