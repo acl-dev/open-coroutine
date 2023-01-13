@@ -276,7 +276,9 @@ pub extern "C" fn select(
     let mut t = if timeout.is_null() {
         libc::c_uint::MAX
     } else {
-        unsafe { ((*timeout).tv_sec as libc::c_uint) * 1_000_000 + (*timeout).tv_usec as libc::c_uint}
+        unsafe {
+            ((*timeout).tv_sec as libc::c_uint) * 1_000_000 + (*timeout).tv_usec as libc::c_uint
+        }
     };
     let mut o = libc::timeval {
         tv_sec: 0,
