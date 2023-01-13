@@ -161,31 +161,61 @@ impl Monitor {
 #[cfg(test)]
 mod tests {
     use crate::monitor::Monitor;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    #[test]
-    fn test_clean() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
-        }
+    static CLEAN: AtomicBool = AtomicBool::new(false);
+
+    static NORMAL: AtomicBool = AtomicBool::new(false);
+
+    fn register_handler(sigurg_handler: libc::sighandler_t) {
         unsafe {
-            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            let time = timer_utils::get_timeout_time(Duration::from_millis(10));
-            Monitor::add_task(time);
-            Monitor::clean_task(time);
-            std::thread::sleep(Duration::from_millis(20));
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_sigaction = sigurg_handler;
+            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+            act.sa_flags = libc::SA_RESTART;
+            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
         }
     }
 
     #[test]
+    fn test_clean() {
+        extern "C" fn sigurg_handler(_signal: libc::c_int) {
+            unreachable!("sigurg should not handle");
+        }
+        register_handler(sigurg_handler as libc::sighandler_t);
+        let time = timer_utils::get_timeout_time(Duration::from_millis(10));
+        Monitor::add_task(time);
+        Monitor::clean_task(time);
+        std::thread::sleep(Duration::from_millis(20));
+        CLEAN.store(true, Ordering::Release);
+    }
+
+    #[test]
     fn test() {
+        while !CLEAN.load(Ordering::Acquire) {}
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg handled");
         }
-        unsafe {
-            libc::signal(libc::SIGURG, sigurg_handler as libc::sighandler_t);
-            Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
-            std::thread::sleep(Duration::from_millis(20));
+        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
+        std::thread::sleep(Duration::from_millis(20));
+        NORMAL.store(true, Ordering::Release);
+    }
+
+    #[test]
+    fn test_sigmask() {
+        while !NORMAL.load(Ordering::Acquire) {}
+        extern "C" fn sigurg_handler(_signal: libc::c_int) {
+            unreachable!("sigurg should not handle");
         }
+        register_handler(sigurg_handler as libc::sighandler_t);
+        unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigaddset(&mut set, libc::SIGURG);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+        }
+        Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
+        std::thread::sleep(Duration::from_millis(20));
     }
 }
