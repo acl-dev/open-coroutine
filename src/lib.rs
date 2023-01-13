@@ -2,6 +2,8 @@ use std::os::raw::c_void;
 
 pub use base_coroutine::*;
 
+pub use open_coroutine_macros::*;
+
 #[allow(dead_code)]
 extern "C" {
     fn init_hook();
@@ -18,7 +20,8 @@ extern "C" {
 }
 
 pub fn init() {
-    unsafe { init_hook() }
+    unsafe { init_hook() };
+    println!("open-coroutine inited !");
 }
 
 pub fn co(

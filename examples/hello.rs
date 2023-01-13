@@ -18,6 +18,7 @@ extern "C" fn f2(
     None
 }
 
+#[open_coroutine::main]
 fn main() {
     co(f1, None, 4096);
     co(f2, None, 4096);
