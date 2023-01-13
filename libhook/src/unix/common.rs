@@ -103,6 +103,7 @@ macro_rules! impl_simple_hook {
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigaddset(&mut set, libc::SIGURG);
             let mut oldset: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
             let r = $fn($socket ,$($arg, )*);
             libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
             r
@@ -125,7 +126,8 @@ macro_rules! impl_read_hook {
             unsafe {
                 let mut set: libc::sigset_t = std::mem::zeroed();
                 libc::sigaddset(&mut set, libc::SIGURG);
-                let oldset: libc::sigset_t = std::mem::zeroed();
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
                 r = $fn($socket ,$($arg, )*);
                 libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
             }
@@ -278,7 +280,8 @@ macro_rules! impl_write_hook {
             unsafe {
                 let mut set: libc::sigset_t = std::mem::zeroed();
                 libc::sigaddset(&mut set, libc::SIGURG);
-                let oldset: libc::sigset_t = std::mem::zeroed();
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
                 r = $fn($socket, $($arg, )*);
                 libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
             }

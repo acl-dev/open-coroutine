@@ -237,7 +237,8 @@ pub extern "C" fn poll(
         unsafe {
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigaddset(&mut set, libc::SIGURG);
-            let oldset: libc::sigset_t = std::mem::zeroed();
+            let mut oldset: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
             r = (Lazy::force(&POLL))(fds, nfds, 0);
             libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
         }
@@ -303,7 +304,8 @@ pub extern "C" fn select(
         unsafe {
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigaddset(&mut set, libc::SIGURG);
-            let oldset: libc::sigset_t = std::mem::zeroed();
+            let mut oldset: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
             r = (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, &mut o);
             libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
         }
