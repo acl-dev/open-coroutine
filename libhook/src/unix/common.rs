@@ -99,7 +99,14 @@ macro_rules! impl_simple_hook {
         let ns_time = ($timeout as Option<std::time::Duration>).map(|d|d.as_nanos() as u64).unwrap_or(u64::MAX);
         let timeout_time = timer_utils::add_timeout_time(ns_time);
         let _ = base_coroutine::EventLoop::round_robin_timeout_schedule(timeout_time);
-        $fn($socket ,$($arg, )*)
+        unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigaddset(&mut set, libc::SIGURG);
+            let mut oldset: libc::sigset_t = std::mem::zeroed();
+            let r = $fn($socket ,$($arg, )*);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            r
+        }
     }};
 }
 
@@ -115,7 +122,13 @@ macro_rules! impl_read_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
-            r = $fn($socket ,$($arg, )*);
+            unsafe {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigaddset(&mut set, libc::SIGURG);
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                r = $fn($socket ,$($arg, )*);
+                libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            }
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
@@ -262,7 +275,13 @@ macro_rules! impl_write_hook {
         let event_loop = base_coroutine::EventLoop::next();
         let mut r;
         loop {
-            r = $fn($socket, $($arg, )*);
+            unsafe {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigaddset(&mut set, libc::SIGURG);
+                let mut oldset: libc::sigset_t = std::mem::zeroed();
+                r = $fn($socket, $($arg, )*);
+                libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+            }
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
