@@ -188,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn hook_test_accept_and_connect() {
+    fn hook_test_accept_and_connect() -> std::io::Result<()> {
         let port = "9999";
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
@@ -209,13 +209,18 @@ mod tests {
                 )
                 .unwrap();
             if result.1.timed_out() {
-                panic!("The service was not completed within the specified time");
+                Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    "The service was not completed within the specified time",
+                ))
+            } else {
+                Ok(())
             }
         }
     }
 
     #[test]
-    fn hook_test_poll() {
+    fn hook_test_poll() -> std::io::Result<()> {
         let port = "8888";
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
@@ -237,7 +242,12 @@ mod tests {
                 )
                 .unwrap();
             if result.1.timed_out() {
-                panic!("The service was not completed within the specified time");
+                Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    "The service was not completed within the specified time",
+                ))
+            } else {
+                Ok(())
             }
         }
     }
