@@ -210,7 +210,7 @@ mod tests {
                 .unwrap();
             if result.1.timed_out() {
                 Err(std::io::Error::new(
-                    ErrorKind::Other,
+                    std::io::ErrorKind::Other,
                     "The service was not completed within the specified time",
                 ))
             } else {
@@ -243,7 +243,7 @@ mod tests {
                 .unwrap();
             if result.1.timed_out() {
                 Err(std::io::Error::new(
-                    ErrorKind::Other,
+                    std::io::ErrorKind::Other,
                     "The service was not completed within the specified time",
                 ))
             } else {
