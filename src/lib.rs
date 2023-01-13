@@ -116,13 +116,13 @@ mod tests {
 
     static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 
-    unsafe fn crate_server(port: &str, server_finished: Arc<(Mutex<bool>, Condvar)>) {
+    unsafe fn crate_server(port: u16, server_finished: Arc<(Mutex<bool>, Condvar)>) {
         //invoke by libc::listen
         assert!(co(fx, Some(&mut *(1usize as *mut c_void)), 4096));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
-        let listener = TcpListener::bind("127.0.0.1:".to_owned() + port)
-            .expect(&*("bind to 127.0.0.1:".to_owned() + port + " failed !"));
+        let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
+            .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
         SERVER_STARTED.store(true, Ordering::Release);
         //invoke by libc::accept
         assert!(co(fx, Some(&mut *(2usize as *mut c_void)), 4096));
@@ -159,13 +159,9 @@ mod tests {
     }
 
     unsafe fn client_main(mut stream: TcpStream) {
-        //等服务端起来
-        while !SERVER_STARTED.load(Ordering::Acquire) {}
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
-        //invoke by libc::connect
-        assert!(co(fx, Some(&mut *(3usize as *mut c_void)), 4096));
         for _ in 0..3 {
             //invoke by libc::send
             assert!(co(fx, Some(&mut *(4usize as *mut c_void)), 4096));
@@ -191,48 +187,21 @@ mod tests {
     }
 
     #[test]
-    fn hook_test_accept_and_connect() -> std::io::Result<()> {
-        let port = "9999";
+    fn hook_test_connect_and_poll_and_accept() -> std::io::Result<()> {
+        let port = 8888;
+        let clone = port.clone();
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
-            std::thread::spawn(|| crate_server(port, server_finished_pair));
-            std::thread::spawn(|| {
-                let stream = TcpStream::connect("127.0.0.1:".to_owned() + port)
-                    .expect(&*("failed to 127.0.0.1:".to_owned() + port + " !"));
-                client_main(stream)
-            });
-
-            let (lock, cvar) = &*server_finished;
-            let result = cvar
-                .wait_timeout_while(
-                    lock.lock().unwrap(),
-                    Duration::from_secs(30),
-                    |&mut pending| pending,
-                )
-                .unwrap();
-            if result.1.timed_out() {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "The service was not completed within the specified time",
-                ))
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    #[test]
-    fn hook_test_poll() -> std::io::Result<()> {
-        let port = "8888";
-        let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
-        let server_finished = Arc::clone(&server_finished_pair);
-        unsafe {
-            std::thread::spawn(|| crate_server(port, server_finished_pair));
-            std::thread::spawn(|| {
-                let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8888);
+            std::thread::spawn(move || crate_server(clone, server_finished_pair));
+            std::thread::spawn(move || {
+                //等服务端起来
+                while !SERVER_STARTED.load(Ordering::Acquire) {}
+                //invoke by libc::connect
+                assert!(co(fx, Some(&mut *(3usize as *mut c_void)), 4096));
+                let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
                 let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-                    .expect(&*("failed to 127.0.0.1:8888 !"));
+                    .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
                 client_main(stream)
             });
 
