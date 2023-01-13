@@ -225,8 +225,34 @@ pub extern "C" fn poll(
     nfds: libc::nfds_t,
     timeout: libc::c_int,
 ) -> libc::c_int {
-    //todo 完善实现
-    impl_simple_hook!((Lazy::force(&POLL))(fds, nfds, timeout), None)
+    let mut t = if timeout < 0 {
+        libc::c_int::MAX
+    } else {
+        timeout
+    };
+    let mut x = 1;
+    let mut r;
+    // just check select every x ms
+    loop {
+        unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigaddset(&mut set, libc::SIGURG);
+            let oldset: libc::sigset_t = std::mem::zeroed();
+            r = (Lazy::force(&POLL))(fds, nfds, 0);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+        }
+        if r != 0 || t == 0 {
+            break;
+        }
+        usleep((t.min(x) * 1000) as libc::c_uint);
+        if t != libc::c_int::MAX {
+            t = if t > x { t - x } else { 0 };
+        }
+        if x < 16 {
+            x <<= 1;
+        }
+    }
+    r
 }
 
 static SELECT: Lazy<
@@ -247,11 +273,65 @@ pub extern "C" fn select(
     errorfds: *mut libc::fd_set,
     timeout: *mut libc::timeval,
 ) -> libc::c_int {
-    //todo 完善实现
-    impl_simple_hook!(
-        (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, timeout),
-        None
-    )
+    let mut t = if timeout.is_null() {
+        libc::c_uint::MAX
+    } else {
+        unsafe {
+            ((*timeout).tv_sec as libc::c_uint) * 1_000_000 + (*timeout).tv_usec as libc::c_uint
+        }
+    };
+    let mut o = libc::timeval {
+        tv_sec: 0,
+        tv_usec: 0,
+    };
+    let mut s: [libc::fd_set; 3] = unsafe { std::mem::zeroed() };
+    unsafe {
+        if !readfds.is_null() {
+            s[0] = *readfds;
+        }
+        if !writefds.is_null() {
+            s[1] = *writefds;
+        }
+        if !errorfds.is_null() {
+            s[2] = *errorfds;
+        }
+    }
+    let mut x = 1;
+    let mut r;
+    // just check poll every x ms
+    loop {
+        unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigaddset(&mut set, libc::SIGURG);
+            let oldset: libc::sigset_t = std::mem::zeroed();
+            r = (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, &mut o);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
+        }
+        if r != 0 || t == 0 {
+            break;
+        }
+        usleep(t.min(x) * 1000);
+        if t != libc::c_uint::MAX {
+            t = if t > x { t - x } else { 0 };
+        }
+        if x < 16 {
+            x <<= 1;
+        }
+        unsafe {
+            if !readfds.is_null() {
+                *readfds = s[0];
+            }
+            if !writefds.is_null() {
+                *writefds = s[1];
+            }
+            if !errorfds.is_null() {
+                *errorfds = s[2];
+            }
+        }
+        o.tv_sec = 0;
+        o.tv_usec = 0;
+    }
+    r
 }
 
 //write相关

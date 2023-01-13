@@ -88,7 +88,5 @@ pub extern "C" fn accept4(
     len: *mut libc::socklen_t,
     flg: libc::c_int,
 ) -> libc::c_int {
-    let _ = EventLoop::round_robin_schedule();
-    //todo 非阻塞实现
-    (Lazy::force(&ACCEPT4))(fd, addr, len, flg)
+    impl_read_hook!((Lazy::force(&ACCEPT4))(fd, addr, len, flg), None)
 }
