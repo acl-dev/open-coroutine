@@ -17,11 +17,13 @@ members = [
     "base-coroutine",
     "detour2",
     "libhook",
+    "open-coroutine-macros",
 ]
 
 [dependencies]
 libc = "0.2.119"
 base-coroutine = { version = "0.1.0", path = "base-coroutine" }
+open-coroutine-macros = { version = "0.1.0", path = "open-coroutine-macros" }
 
 [dev-dependencies]
 # benchmark
