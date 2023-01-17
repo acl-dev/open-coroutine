@@ -109,20 +109,6 @@ impl Scheduler {
         TIMEOUT_TIME.with(|boxed| *boxed.borrow_mut() = 0)
     }
 
-    fn init_results(result: &mut ObjectMap<usize>) {
-        RESULTS.with(|boxed| {
-            *boxed.borrow_mut() = result;
-        });
-    }
-
-    fn results() -> *mut ObjectMap<usize> {
-        RESULTS.with(|boxed| *boxed.borrow_mut())
-    }
-
-    fn clean_results() {
-        RESULTS.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
-    }
-
     pub fn submit(
         &mut self,
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
@@ -134,9 +120,8 @@ impl Scheduler {
         self.ready.push_back(coroutine)
     }
 
-    pub fn timed_schedule(&mut self, timeout: Duration) -> std::io::Result<ObjectMap<usize>> {
+    pub fn timed_schedule(&mut self, timeout: Duration) -> std::io::Result<()> {
         let timeout_time = timer_utils::get_timeout_time(timeout);
-        let mut scheduled = ObjectMap::new();
         while !self.ready.is_empty()
             || unsafe { !SUSPEND_TABLE.is_empty() || !SYSTEM_CALL_TABLE.is_empty() }
             || !self.copy_stack.is_empty()
@@ -144,26 +129,21 @@ impl Scheduler {
             if timeout_time <= timer_utils::now() {
                 break;
             }
-            let temp = self.try_timeout_schedule(timeout_time)?;
-            for (k, v) in temp {
-                scheduled.insert(k, v);
-            }
+            self.try_timeout_schedule(timeout_time)?;
         }
-        Ok(scheduled)
+        Ok(())
     }
 
-    pub fn try_schedule(&mut self) -> std::io::Result<ObjectMap<usize>> {
+    pub fn try_schedule(&mut self) -> std::io::Result<()> {
         self.try_timeout_schedule(Duration::MAX.as_secs())
     }
 
-    pub fn try_timed_schedule(&mut self, time: Duration) -> std::io::Result<ObjectMap<usize>> {
+    pub fn try_timed_schedule(&mut self, time: Duration) -> std::io::Result<()> {
         self.try_timeout_schedule(timer_utils::get_timeout_time(time))
     }
 
-    pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<ObjectMap<usize>> {
-        let mut result = ObjectMap::new();
+    pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<()> {
         Scheduler::init_current(self);
-        Scheduler::init_results(&mut result);
         Scheduler::init_timeout_time(timeout_time);
         #[allow(improper_ctypes_definitions)]
         extern "C" fn main_context_func(yielder: &Yielder<(), (), ()>, _param: ()) {
@@ -176,9 +156,8 @@ impl Scheduler {
         let mut main = MainCoroutine::new(main_context_func, (), Stack::default_size())?;
         main.resume();
         Scheduler::clean_current();
-        Scheduler::clean_results();
         Scheduler::clean_time();
-        Ok(result)
+        Ok(())
     }
 
     fn back_to_main() {
