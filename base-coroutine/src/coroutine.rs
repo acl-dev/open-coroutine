@@ -7,6 +7,7 @@ use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::RefCell;
 use std::marker::PhantomData;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::os::raw::c_void;
 
 #[repr(C)]
@@ -162,6 +163,7 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     marker: PhantomData<&'a extern "C" fn(Param) -> CoroutineResult<Yield, Return>>,
     //调用用户函数的参数
     param: Param,
+    result: MaybeUninit<ManuallyDrop<Return>>,
 }
 
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
@@ -189,12 +191,14 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 Monitor::clean_signal_time();
             }
             if let Some(scheduler) = Scheduler::current() {
+                (*coroutine).result = MaybeUninit::new(ManuallyDrop::new(result));
                 //执行下一个子协程
                 scheduler.do_schedule();
+            } else {
+                let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
+                t.context.resume(&mut coroutine_result as *mut _ as usize);
+                unreachable!("should not execute to here !")
             }
-            let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
-            t.context.resume(&mut coroutine_result as *mut _ as usize);
-            unreachable!("should not execute to here !")
         }
     }
 
@@ -228,6 +232,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             proc,
             marker: Default::default(),
             param,
+            result: MaybeUninit::uninit(),
         })
     }
 
@@ -256,6 +261,17 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 
     pub fn get_status(&self) -> Status {
         self.status
+    }
+
+    pub fn get_result(&self) -> Option<Return> {
+        if self.get_status() == Status::Finished {
+            unsafe {
+                let mut m = self.result.assume_init_read();
+                Some(ManuallyDrop::take(&mut m))
+            }
+        } else {
+            None
+        }
     }
 
     fn init_yielder(yielder: &Yielder<Param, Yield, Return>) {

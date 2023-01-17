@@ -114,10 +114,12 @@ impl Scheduler {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<&'static Coroutine<&'static mut c_void, &'static mut c_void>> {
         let mut coroutine = Coroutine::new(f, val, size)?;
         coroutine.status = Status::Ready;
-        self.ready.push_back(coroutine)
+        let ptr = Box::leak(Box::new(coroutine));
+        self.ready.push_back_raw(ptr as *mut _ as *mut c_void)?;
+        Ok(ptr)
     }
 
     pub fn timed_schedule(&mut self, timeout: Duration) -> std::io::Result<()> {

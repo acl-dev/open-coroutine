@@ -65,7 +65,8 @@ impl<'a> EventLoop<'a> {
         param: &'static mut c_void,
         size: usize,
     ) -> std::io::Result<()> {
-        EventLoop::next_scheduler().submit(f, param, size)
+        EventLoop::next_scheduler().submit(f, param, size)?;
+        Ok(())
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {
