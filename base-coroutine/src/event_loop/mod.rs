@@ -14,6 +14,67 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+#[repr(C)]
+pub struct JoinHandle(pub &'static c_void);
+
+impl JoinHandle {
+    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<usize>> {
+        if self.0 as *const c_void as usize == 0 {
+            return Ok(Some(0));
+        }
+        let timeout_time = timer_utils::get_timeout_time(dur);
+        let result = unsafe {
+            &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
+        };
+        while result.get_result().is_none() {
+            if timeout_time <= timer_utils::now() {
+                //timeout
+                return Ok(None);
+            }
+            EventLoop::round_robin_timeout_schedule(timeout_time)?;
+            if result.get_result().is_some() {
+                break;
+            }
+            //等待事件到来
+            if let Err(e) = EventLoop::next().wait(Some(dur)) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => continue,
+                    _ => return Err(e),
+                }
+            }
+        }
+        Ok(result.get_result().map(|ptr| ptr as *mut c_void as usize))
+    }
+
+    pub fn join(self) -> std::io::Result<usize> {
+        if self.0 as *const c_void as usize == 0 {
+            return Ok(0);
+        }
+        let result = unsafe {
+            &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
+        };
+        while result.get_result().is_none() {
+            EventLoop::round_robin_schedule()?;
+            if result.get_result().is_some() {
+                break;
+            }
+            //等待事件到来
+            if let Err(e) = EventLoop::next().wait(None) {
+                match e.kind() {
+                    //maybe invoke by Monitor::signal(), just ignore this
+                    std::io::ErrorKind::Interrupted => continue,
+                    _ => return Err(e),
+                }
+            }
+        }
+        Ok(result
+            .get_result()
+            .map(|co| co as *mut c_void as usize)
+            .unwrap())
+    }
+}
+
 static mut READABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new);
 
 static mut READABLE_TOKEN_RECORDS: Lazy<HashMap<libc::c_int, usize>> = Lazy::new(HashMap::new);
@@ -64,9 +125,10 @@ impl<'a> EventLoop<'a> {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         param: &'static mut c_void,
         size: usize,
-    ) -> std::io::Result<()> {
-        EventLoop::next_scheduler().submit(f, param, size)?;
-        Ok(())
+    ) -> std::io::Result<JoinHandle> {
+        EventLoop::next_scheduler()
+            .submit(f, param, size)
+            .map(|co| JoinHandle(unsafe { std::mem::transmute(co) }))
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {
@@ -222,5 +284,64 @@ impl<'a> EventLoop<'a> {
     ) -> std::io::Result<()> {
         self.add_write_event(fd)?;
         self.wait(timeout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{EventLoop, Yielder};
+    use std::os::raw::c_void;
+
+    fn val(val: usize) -> &'static mut c_void {
+        unsafe { std::mem::transmute(val) }
+    }
+
+    extern "C" fn f1(
+        _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+        input: &'static mut c_void,
+    ) -> &'static mut c_void {
+        println!("[coroutine1] launched");
+        input
+    }
+
+    extern "C" fn f2(
+        _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+        input: &'static mut c_void,
+    ) -> &'static mut c_void {
+        println!("[coroutine2] launched");
+        input
+    }
+
+    #[test]
+    fn join_test() {
+        let handle1 = EventLoop::submit(f1, val(1), 4096).expect("submit failed !");
+        let handle2 = EventLoop::submit(f2, val(2), 4096).expect("submit failed !");
+        assert_eq!(handle1.join().unwrap(), 1);
+        assert_eq!(handle2.join().unwrap(), 2);
+    }
+
+    extern "C" fn f3(
+        _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+        input: &'static mut c_void,
+    ) -> &'static mut c_void {
+        println!("[coroutine3] launched");
+        input
+    }
+
+    #[test]
+    fn timed_join_test() {
+        let handle = EventLoop::submit(f3, val(3), 4096).expect("submit failed !");
+        assert_eq!(
+            handle
+                .timeout_join(std::time::Duration::from_nanos(0))
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            handle
+                .timeout_join(std::time::Duration::from_secs(1))
+                .unwrap(),
+            Some(3)
+        );
     }
 }
