@@ -12,7 +12,11 @@ extern "C" {
         f: UserFunc<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
         param: Option<&'static mut c_void>,
         stack_size: usize,
-    ) -> libc::c_int;
+    ) -> JoinHandle;
+
+    fn coroutine_join(handle: JoinHandle) -> libc::c_long;
+
+    fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long;
 
     fn try_timed_schedule(ns_time: u64) -> libc::c_int;
 
@@ -28,8 +32,16 @@ pub fn co(
     f: UserFunc<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
     param: Option<&'static mut c_void>,
     stack_size: usize,
-) -> bool {
-    unsafe { coroutine_crate(f, param, stack_size) == 0 }
+) -> JoinHandle {
+    unsafe { coroutine_crate(f, param, stack_size) }
+}
+
+pub fn join(handle: JoinHandle) -> libc::c_long {
+    unsafe { coroutine_join(handle) }
+}
+
+pub fn timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long {
+    unsafe { coroutine_timeout_join(handle, ns_time) }
 }
 
 pub fn schedule() -> bool {
@@ -53,10 +65,10 @@ mod tests {
 
     extern "C" fn f1(
         _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
-        _input: Option<&'static mut c_void>,
+        input: Option<&'static mut c_void>,
     ) -> Option<&'static mut c_void> {
         println!("[coroutine1] launched");
-        None
+        input
     }
 
     extern "C" fn f2(
@@ -69,9 +81,15 @@ mod tests {
 
     #[test]
     fn simplest() {
-        assert!(co(f1, None, 4096));
-        assert!(co(f2, None, 4096));
+        let _ = co(f1, None, 4096);
+        let _ = co(f2, None, 4096);
         assert!(schedule());
+    }
+
+    #[test]
+    fn test_join() {
+        let handle = co(f1, Some(unsafe { std::mem::transmute(1usize) }), 4096);
+        assert_eq!(handle.join().unwrap(), 1);
     }
 
     fn now() -> u64 {
@@ -82,8 +100,8 @@ mod tests {
     }
 
     fn hook_test(millis: u64) {
-        assert!(co(f1, None, 4096));
-        assert!(co(f2, None, 4096));
+        let _ = co(f1, None, 4096);
+        let _ = co(f2, None, 4096);
         let start = now();
         std::thread::sleep(Duration::from_millis(millis));
         let end = now();
@@ -118,20 +136,20 @@ mod tests {
 
     unsafe fn crate_server(port: u16, server_finished: Arc<(Mutex<bool>, Condvar)>) {
         //invoke by libc::listen
-        assert!(co(fx, Some(&mut *(1usize as *mut c_void)), 4096));
+        let _ = co(fx, Some(&mut *(1usize as *mut c_void)), 4096);
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
             .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
         SERVER_STARTED.store(true, Ordering::Release);
         //invoke by libc::accept
-        assert!(co(fx, Some(&mut *(2usize as *mut c_void)), 4096));
+        let _ = co(fx, Some(&mut *(2usize as *mut c_void)), 4096);
         for stream in listener.incoming() {
             let mut stream = stream.expect("accept new connection failed !");
             let mut buffer: [u8; 512] = [0; 512];
             loop {
                 //invoke by libc::recv
-                assert!(co(fx, Some(&mut *(6usize as *mut c_void)), 4096));
+                let _ = co(fx, Some(&mut *(6usize as *mut c_void)), 4096);
                 //从流里面读内容，读到buffer中
                 let bytes_read = stream.read(&mut buffer).expect("server read failed !");
                 if bytes_read == 1 && buffer[0] == b'e' {
@@ -146,7 +164,7 @@ mod tests {
                 assert_eq!(512, bytes_read);
                 assert_eq!(data, buffer);
                 //invoke by libc::send
-                assert!(co(fx, Some(&mut *(7usize as *mut c_void)), 4096));
+                let _ = co(fx, Some(&mut *(7usize as *mut c_void)), 4096);
                 //回写
                 assert_eq!(
                     bytes_read,
@@ -164,12 +182,12 @@ mod tests {
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
         for _ in 0..3 {
             //invoke by libc::send
-            assert!(co(fx, Some(&mut *(4usize as *mut c_void)), 4096));
+            let _ = co(fx, Some(&mut *(4usize as *mut c_void)), 4096);
             //写入stream流，如果写入失败，提示“写入失败”
             assert_eq!(512, stream.write(&data).expect("Failed to write!"));
 
             //invoke by libc::recv
-            assert!(co(fx, Some(&mut *(5usize as *mut c_void)), 4096));
+            let _ = co(fx, Some(&mut *(5usize as *mut c_void)), 4096);
             let mut reader = BufReader::new(&stream);
             //一直读到换行为止（b'\n'中的b表示字节），读到buffer里面
             assert_eq!(
@@ -198,7 +216,7 @@ mod tests {
                 //等服务端起来
                 while !SERVER_STARTED.load(Ordering::Acquire) {}
                 //invoke by libc::connect
-                assert!(co(fx, Some(&mut *(3usize as *mut c_void)), 4096));
+                let _ = co(fx, Some(&mut *(3usize as *mut c_void)), 4096);
                 let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
                 let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
                     .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));

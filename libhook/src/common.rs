@@ -1,5 +1,5 @@
 use base_coroutine::coroutine::UserFunc;
-use base_coroutine::EventLoop;
+use base_coroutine::{EventLoop, JoinHandle};
 use std::os::raw::c_void;
 
 #[no_mangle]
@@ -14,9 +14,37 @@ pub extern "C" fn coroutine_crate(
     f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
     param: &'static mut c_void,
     stack_size: usize,
-) -> libc::c_int {
+) -> JoinHandle {
     match EventLoop::submit(f, param, stack_size) {
-        Ok(_) => 0,
+        Ok(handle) => handle,
+        Err(_) => {
+            //we had handled NULL in JoinHandle
+            #[allow(invalid_value)]
+            JoinHandle(unsafe { std::mem::transmute(0usize) })
+        }
+    }
+}
+
+///等待协程完成
+#[no_mangle]
+pub extern "C" fn coroutine_join(handle: JoinHandle) -> libc::c_long {
+    match handle.join() {
+        Ok(ptr) => ptr as libc::c_long,
+        Err(_) => -1,
+    }
+}
+
+///等待协程完成
+#[no_mangle]
+pub extern "C" fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long {
+    match handle.timeout_join(std::time::Duration::from_nanos(ns_time)) {
+        Ok(option) => {
+            if let Some(ptr) = option {
+                ptr as libc::c_long
+            } else {
+                -2
+            }
+        }
         Err(_) => -1,
     }
 }
