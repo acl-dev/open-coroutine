@@ -28,7 +28,7 @@ impl JoinHandle {
             &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
         };
         while result.get_result().is_none() {
-            let left_time = timeout_time.checked_sub(timer_utils::now()).unwrap_or(0);
+            let left_time = timeout_time.saturating_sub(timer_utils::now());
             if left_time == 0 {
                 //timeout
                 return Ok(None);
