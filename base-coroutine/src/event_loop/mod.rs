@@ -28,7 +28,8 @@ impl JoinHandle {
             &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
         };
         while result.get_result().is_none() {
-            if timeout_time <= timer_utils::now() {
+            let left_time = timeout_time.saturating_sub(timer_utils::now());
+            if left_time == 0 {
                 //timeout
                 return Ok(None);
             }
@@ -37,7 +38,7 @@ impl JoinHandle {
                 break;
             }
             //等待事件到来
-            if let Err(e) = EventLoop::next().wait(Some(dur)) {
+            if let Err(e) = EventLoop::next().wait(Some(Duration::from_nanos(left_time))) {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
                     std::io::ErrorKind::Interrupted => continue,
@@ -61,7 +62,7 @@ impl JoinHandle {
                 break;
             }
             //等待事件到来
-            if let Err(e) = EventLoop::next().wait(None) {
+            if let Err(e) = EventLoop::next().wait(Some(Duration::from_secs(1))) {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
                     std::io::ErrorKind::Interrupted => continue,
