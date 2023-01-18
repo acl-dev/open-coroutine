@@ -9,6 +9,7 @@ use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
 use crate::{Coroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -135,30 +136,30 @@ impl<'a> EventLoop<'a> {
         EventLoop::round_robin_timeout_schedule(u64::MAX)
     }
 
-    pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
-        //todo 多线程并行跑
-        for _i in 0..num_cpus::get() {
-            EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
-        }
-        Ok(())
-    }
-
     pub fn round_robin_timed_schedule(timeout_time: u64) -> std::io::Result<()> {
         loop {
             if timeout_time <= timer_utils::now() {
                 return Ok(());
             }
-            //todo 多线程并行跑
-            for _i in 0..num_cpus::get() {
-                EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
-            }
+            EventLoop::round_robin_timeout_schedule(timeout_time)?;
         }
     }
 
-    pub fn round_robin_del_event(fd: libc::c_int) {
-        for _i in 0..num_cpus::get() {
-            let _ = EventLoop::next().del_event(fd);
+    pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
+        let results: Vec<std::io::Result<()>> = (0..num_cpus::get())
+            .into_par_iter()
+            .map(|_| EventLoop::next_scheduler().try_timeout_schedule(timeout_time))
+            .collect();
+        for result in results {
+            result?;
         }
+        Ok(())
+    }
+
+    pub fn round_robin_del_event(fd: libc::c_int) {
+        (0..num_cpus::get()).into_par_iter().for_each(|_| {
+            let _ = EventLoop::next().del_event(fd);
+        });
     }
 
     fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
@@ -173,9 +174,9 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_read_event(fd: libc::c_int) {
-        for _i in 0..num_cpus::get() {
+        (0..num_cpus::get()).into_par_iter().for_each(|_| {
             let _ = EventLoop::next().del_read_event(fd);
-        }
+        });
     }
 
     fn del_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
@@ -198,9 +199,9 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_write_event(fd: libc::c_int) {
-        for _i in 0..num_cpus::get() {
+        (0..num_cpus::get()).into_par_iter().for_each(|_| {
             let _ = EventLoop::next().del_write_event(fd);
-        }
+        });
     }
 
     fn del_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
