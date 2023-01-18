@@ -30,9 +30,9 @@ open-coroutine = "x.y.z"
 #### step2 
 enable hooks
 ```rust
+//step2 enable hooks
+#[open_coroutine::main]
 fn main() {
-    //step2 enable hooks
-    open_coroutine::init();
     //......
 }
 ```
@@ -42,33 +42,29 @@ enjoy the performance improvement brought by `open-coroutine` !
 
 ### simplest example below
 ```rust
-use open_coroutine::{co, Yielder};
+use open_coroutine::co;
 use std::os::raw::c_void;
 use std::time::Duration;
 
-extern "C" fn f1(
-    _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
-    _input: Option<&'static mut c_void>,
-) -> Option<&'static mut c_void> {
-    println!("[coroutine1] launched");
-    None
-}
-
-extern "C" fn f2(
-    _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
-    _input: Option<&'static mut c_void>,
-) -> Option<&'static mut c_void> {
-    println!("[coroutine2] launched");
-    None
-}
-
+#[open_coroutine::main]
 fn main() {
-    // because we used open_coroutine::co()
-    // we don't need to call open_coroutine::init()
-    // otherwise, don't forget open_coroutine::init()
-    co(f1, None, 4096);
-    co(f2, None, 4096);
-    std::thread::sleep(Duration::from_millis(1));
+    co(
+        |_yielder, input: Option<&'static mut c_void>| {
+            println!("[coroutine1] launched");
+            input
+        },
+        None,
+        4096,
+    );
+    co(
+        |_yielder, input: Option<&'static mut c_void>| {
+            println!("[coroutine2] launched");
+            input
+        },
+        None,
+        4096,
+    );
+    std::thread::sleep(Duration::from_millis(50));
     println!("scheduler finished successfully!");
 }
 ```
