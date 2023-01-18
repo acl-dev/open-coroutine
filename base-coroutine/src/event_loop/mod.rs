@@ -136,6 +136,7 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
+        //todo 多线程并行跑
         for _i in 0..num_cpus::get() {
             EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
         }
@@ -147,6 +148,7 @@ impl<'a> EventLoop<'a> {
             if timeout_time <= timer_utils::now() {
                 return Ok(());
             }
+            //todo 多线程并行跑
             for _i in 0..num_cpus::get() {
                 EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
             }

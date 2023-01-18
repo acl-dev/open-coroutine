@@ -12,14 +12,12 @@ use std::time::Duration;
 use timer_utils::TimerList;
 
 thread_local! {
-    static SCHEDULER: Box<RefCell<*mut Scheduler>> = Box::new(RefCell::new(std::ptr::null_mut()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static TIMEOUT_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
-    static RESULTS: Box<RefCell<*mut ObjectMap<usize>>> = Box::new(RefCell::new(std::ptr::null_mut()));
 }
 
 /// 主协程
-type MainCoroutine<'a> = OpenCoroutine<'a, (), (), ()>;
+type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 
 static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
 
@@ -43,51 +41,22 @@ impl Scheduler {
         }
     }
 
-    fn init_current(scheduler: &mut Scheduler) {
-        #[cfg(unix)]
-        unsafe {
-            extern "C" fn sigurg_handler(_signal: libc::c_int) {
-                // invoke by Monitor::signal()
-                let yielder: *const Yielder<&'static mut c_void, (), &'static mut c_void> =
-                    OpenCoroutine::yielder();
-                if !yielder.is_null() {
-                    //挂起当前协程
-                    unsafe { (*yielder).suspend(()) };
-                }
-            }
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
-        }
-        SCHEDULER.with(|boxed| {
-            *boxed.borrow_mut() = scheduler;
-        });
-    }
-
     pub fn current<'a>() -> Option<&'a mut Scheduler> {
-        SCHEDULER.with(|boxed| unsafe {
-            let mut ptr = boxed.borrow_mut();
-            if ptr.is_null() {
-                None
-            } else {
-                Some(&mut *(*ptr))
+        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
+            if let Some(ptr) = co.get_scheduler() {
+                return Some(unsafe { &mut *ptr });
             }
-        })
+        }
+        None
     }
 
-    fn clean_current() {
-        SCHEDULER.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
-    }
-
-    fn init_yielder(yielder: &Yielder<(), (), ()>) {
+    fn init_yielder(yielder: &Yielder<*mut Scheduler, (), ()>) {
         YIELDER.with(|boxed| {
             *boxed.borrow_mut() = yielder as *const _ as *const c_void;
         });
     }
 
-    fn yielder<'a>() -> *const Yielder<'a, (), (), ()> {
+    fn yielder<'a>() -> *const Yielder<'a, *mut Scheduler, (), ()> {
         YIELDER.with(|boxed| unsafe { std::mem::transmute(*boxed.borrow_mut()) })
     }
 
@@ -117,6 +86,7 @@ impl Scheduler {
     ) -> std::io::Result<&'static Coroutine<&'static mut c_void, &'static mut c_void>> {
         let mut coroutine = Coroutine::new(f, val, size)?;
         coroutine.status = Status::Ready;
+        coroutine.set_scheduler(self);
         let ptr = Box::leak(Box::new(coroutine));
         self.ready.push_back_raw(ptr as *mut _ as *mut c_void)?;
         Ok(ptr)
@@ -145,19 +115,17 @@ impl Scheduler {
     }
 
     pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<()> {
-        Scheduler::init_current(self);
         Scheduler::init_timeout_time(timeout_time);
-        #[allow(improper_ctypes_definitions)]
-        extern "C" fn main_context_func(yielder: &Yielder<(), (), ()>, _param: ()) {
+        extern "C" fn main_context_func(
+            yielder: &Yielder<*mut Scheduler, (), ()>,
+            scheduler: *mut Scheduler,
+        ) {
             Scheduler::init_yielder(yielder);
-            Scheduler::current()
-                .expect("current scheduler not inited !")
-                .do_schedule();
+            unsafe { (*scheduler).do_schedule() };
             unreachable!("should not execute to here !")
         }
-        let mut main = MainCoroutine::new(main_context_func, (), Stack::default_size())?;
-        main.resume();
-        Scheduler::clean_current();
+        let mut main = MainCoroutine::new(main_context_func, self, Stack::default_size())?;
+        assert_eq!(main.resume(), CoroutineResult::Yield(()));
         Scheduler::clean_time();
         Ok(())
     }
@@ -258,8 +226,7 @@ impl Scheduler {
     /// 用户不应该使用此方法
     pub fn syscall(&mut self) {
         //挂起当前协程
-        let yielder: *const Yielder<&'static mut c_void, (), &'static mut c_void> =
-            OpenCoroutine::yielder();
+        let yielder = Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
         if !yielder.is_null() {
             unsafe { (*yielder).syscall() };
         }

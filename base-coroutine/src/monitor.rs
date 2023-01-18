@@ -1,4 +1,5 @@
 use crate::work_steal::{WorkStealQueue, GLOBAL_QUEUE, LOCAL_QUEUES};
+use crate::Coroutine;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -26,6 +27,21 @@ unsafe impl Sync for Monitor {}
 
 impl Monitor {
     fn new() -> Self {
+        unsafe {
+            extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                // invoke by Monitor::signal()
+                let yielder = Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
+                if !yielder.is_null() {
+                    //挂起当前协程
+                    unsafe { (*yielder).suspend(()) };
+                }
+            }
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+            act.sa_flags = libc::SA_RESTART;
+            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+        }
         //通过这种方式来初始化monitor线程
         MONITOR.get_or_init(|| {
             std::thread::spawn(|| {
