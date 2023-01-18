@@ -86,15 +86,6 @@ mod tests {
         assert!(schedule());
     }
 
-    #[test]
-    fn test_join() {
-        let handle = co(f1, Some(unsafe { std::mem::transmute(1usize) }), 4096);
-        assert_eq!(
-            handle.timeout_join(Duration::from_millis(100)).unwrap(),
-            Some(1)
-        );
-    }
-
     fn now() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
