@@ -28,12 +28,40 @@ pub fn init() {
     println!("open-coroutine inited !");
 }
 
-pub fn co(
-    f: UserFunc<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
-    param: Option<&'static mut c_void>,
-    stack_size: usize,
-) -> JoinHandle {
-    unsafe { coroutine_crate(f, param, stack_size) }
+pub fn co<F, P, R: 'static>(f: F, param: Option<&'static mut P>, stack_size: usize) -> JoinHandle
+where
+    F: FnOnce(
+            &'static Yielder<Option<&'static mut P>, (), Option<&'static mut R>>,
+            Option<&'static mut P>,
+        ) -> Option<&'static mut R>
+        + Copy,
+{
+    extern "C" fn co_main<F, P: 'static, R: 'static>(
+        yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
+        input: Option<&'static mut c_void>,
+    ) -> Option<&'static mut c_void>
+    where
+        F: FnOnce(
+                &'static Yielder<Option<&'static mut P>, (), Option<&'static mut R>>,
+                Option<&'static mut P>,
+            ) -> Option<&'static mut R>
+            + Copy,
+    {
+        unsafe {
+            let ptr: &mut (F, Option<&'static mut P>) = std::mem::transmute(input.unwrap());
+            let data = std::ptr::read_unaligned(ptr);
+            let result = (data.0)(std::mem::transmute(yielder), data.1);
+            result.map(|p| std::mem::transmute(p))
+        }
+    }
+    let inner = Box::leak(Box::new((f, param)));
+    unsafe {
+        coroutine_crate(
+            co_main::<F, P, R>,
+            Some(std::mem::transmute(inner)),
+            stack_size,
+        )
+    }
 }
 
 pub fn join(handle: JoinHandle) -> libc::c_long {
@@ -50,7 +78,7 @@ pub fn schedule() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{co, init, schedule, Yielder};
+    use crate::{co, coroutine_crate, init, schedule, JoinHandle, UserFunc, Yielder};
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::os::raw::c_void;
@@ -63,26 +91,24 @@ mod tests {
         init();
     }
 
-    extern "C" fn f1(
-        _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
-        input: Option<&'static mut c_void>,
-    ) -> Option<&'static mut c_void> {
-        println!("[coroutine1] launched");
-        input
-    }
-
-    extern "C" fn f2(
-        _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
-        _input: Option<&'static mut c_void>,
-    ) -> Option<&'static mut c_void> {
-        println!("[coroutine2] launched");
-        None
-    }
-
     #[test]
     fn simplest() {
-        let _ = co(f1, None, 4096);
-        let _ = co(f2, None, 4096);
+        let _ = co(
+            |_yielder, input: Option<&'static mut c_void>| {
+                println!("[coroutine1] launched");
+                input
+            },
+            None,
+            4096,
+        );
+        let _ = co(
+            |_yielder, input: Option<&'static mut c_void>| {
+                println!("[coroutine2] launched");
+                input
+            },
+            None,
+            4096,
+        );
         assert!(schedule());
     }
 
@@ -94,8 +120,22 @@ mod tests {
     }
 
     fn hook_test(millis: u64) {
-        let _ = co(f1, None, 4096);
-        let _ = co(f2, None, 4096);
+        let _ = co(
+            |_yielder, input: Option<&'static mut c_void>| {
+                println!("[coroutine1] launched");
+                input
+            },
+            None,
+            4096,
+        );
+        let _ = co(
+            |_yielder, input: Option<&'static mut c_void>| {
+                println!("[coroutine2] launched");
+                input
+            },
+            None,
+            4096,
+        );
         let start = now();
         std::thread::sleep(Duration::from_millis(millis));
         let end = now();
@@ -110,6 +150,14 @@ mod tests {
     #[test]
     fn hook_test_schedule_normal() {
         hook_test(1_000)
+    }
+
+    fn co_crate(
+        f: UserFunc<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
+        param: Option<&'static mut c_void>,
+        stack_size: usize,
+    ) -> JoinHandle {
+        unsafe { coroutine_crate(f, param, stack_size) }
     }
 
     extern "C" fn fx(
@@ -130,20 +178,20 @@ mod tests {
 
     unsafe fn crate_server(port: u16, server_finished: Arc<(Mutex<bool>, Condvar)>) {
         //invoke by libc::listen
-        let _ = co(fx, Some(&mut *(1usize as *mut c_void)), 4096);
+        let _ = co_crate(fx, Some(&mut *(1usize as *mut c_void)), 4096);
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
             .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
         SERVER_STARTED.store(true, Ordering::Release);
         //invoke by libc::accept
-        let _ = co(fx, Some(&mut *(2usize as *mut c_void)), 4096);
+        let _ = co_crate(fx, Some(&mut *(2usize as *mut c_void)), 4096);
         for stream in listener.incoming() {
             let mut stream = stream.expect("accept new connection failed !");
             let mut buffer: [u8; 512] = [0; 512];
             loop {
                 //invoke by libc::recv
-                let _ = co(fx, Some(&mut *(6usize as *mut c_void)), 4096);
+                let _ = co_crate(fx, Some(&mut *(6usize as *mut c_void)), 4096);
                 //从流里面读内容，读到buffer中
                 let bytes_read = stream.read(&mut buffer).expect("server read failed !");
                 if bytes_read == 1 && buffer[0] == b'e' {
@@ -158,7 +206,7 @@ mod tests {
                 assert_eq!(512, bytes_read);
                 assert_eq!(data, buffer);
                 //invoke by libc::send
-                let _ = co(fx, Some(&mut *(7usize as *mut c_void)), 4096);
+                let _ = co_crate(fx, Some(&mut *(7usize as *mut c_void)), 4096);
                 //回写
                 assert_eq!(
                     bytes_read,
@@ -176,12 +224,12 @@ mod tests {
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
         for _ in 0..3 {
             //invoke by libc::send
-            let _ = co(fx, Some(&mut *(4usize as *mut c_void)), 4096);
+            let _ = co_crate(fx, Some(&mut *(4usize as *mut c_void)), 4096);
             //写入stream流，如果写入失败，提示“写入失败”
             assert_eq!(512, stream.write(&data).expect("Failed to write!"));
 
             //invoke by libc::recv
-            let _ = co(fx, Some(&mut *(5usize as *mut c_void)), 4096);
+            let _ = co_crate(fx, Some(&mut *(5usize as *mut c_void)), 4096);
             let mut reader = BufReader::new(&stream);
             //一直读到换行为止（b'\n'中的b表示字节），读到buffer里面
             assert_eq!(
@@ -210,7 +258,7 @@ mod tests {
                 //等服务端起来
                 while !SERVER_STARTED.load(Ordering::Acquire) {}
                 //invoke by libc::connect
-                let _ = co(fx, Some(&mut *(3usize as *mut c_void)), 4096);
+                let _ = co_crate(fx, Some(&mut *(3usize as *mut c_void)), 4096);
                 let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
                 let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
                     .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
