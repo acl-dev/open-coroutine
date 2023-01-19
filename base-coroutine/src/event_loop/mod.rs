@@ -30,7 +30,7 @@ impl JoinHandle {
         while result.get_result().is_none() {
             if timeout_time <= timer_utils::now() {
                 //timeout
-                return Ok(None);
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
             if result.get_result().is_some() {

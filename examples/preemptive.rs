@@ -2,6 +2,7 @@ use open_coroutine::co;
 use std::os::raw::c_void;
 use std::time::Duration;
 
+#[open_coroutine::main]
 fn main() {
     static mut FLAG: bool = true;
     let handle = co(
@@ -15,7 +16,7 @@ fn main() {
             }
             input
         },
-        None,
+        Some(unsafe { std::mem::transmute(1usize) }),
         4096,
     );
     co(
@@ -29,7 +30,8 @@ fn main() {
         None,
         4096,
     );
-    let _ = handle.join();
+    let result = handle.timeout_join(Duration::from_secs(1));
+    assert_eq!(result.unwrap(), Some(1));
     unsafe { assert!(!FLAG) };
     println!("preemptive schedule finished successfully!");
 }
