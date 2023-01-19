@@ -19,9 +19,9 @@ use std::time::Duration;
 pub struct JoinHandle(pub &'static c_void);
 
 impl JoinHandle {
-    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<usize>> {
+    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<usize> {
         if self.0 as *const c_void as usize == 0 {
-            return Ok(Some(0));
+            return Ok(0);
         }
         let timeout_time = timer_utils::get_timeout_time(dur);
         let result = unsafe {
@@ -30,7 +30,7 @@ impl JoinHandle {
         while result.get_result().is_none() {
             if timeout_time <= timer_utils::now() {
                 //timeout
-                return Ok(None);
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
             if result.get_result().is_some() {
@@ -46,7 +46,7 @@ impl JoinHandle {
                 }
             }
         }
-        Ok(result.get_result().map(|ptr| ptr as *mut c_void as usize))
+        Ok(result.get_result().unwrap() as *mut c_void as usize)
     }
 
     pub fn join(self) -> std::io::Result<usize> {
@@ -70,10 +70,7 @@ impl JoinHandle {
                 }
             }
         }
-        Ok(result
-            .get_result()
-            .map(|co| co as *mut c_void as usize)
-            .unwrap())
+        Ok(result.get_result().unwrap() as *mut c_void as usize)
     }
 }
 
@@ -336,17 +333,15 @@ mod tests {
     #[test]
     fn timed_join_test() {
         let handle = EventLoop::submit(f3, val(3), 4096).expect("submit failed !");
-        assert_eq!(
-            handle
-                .timeout_join(std::time::Duration::from_nanos(0))
-                .unwrap(),
-            None
-        );
+        let error = handle
+            .timeout_join(std::time::Duration::from_nanos(0))
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
         assert_eq!(
             handle
                 .timeout_join(std::time::Duration::from_secs(1))
                 .unwrap(),
-            Some(3)
+            3
         );
     }
 }

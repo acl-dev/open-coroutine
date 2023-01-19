@@ -38,13 +38,7 @@ pub extern "C" fn coroutine_join(handle: JoinHandle) -> libc::c_long {
 #[no_mangle]
 pub extern "C" fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long {
     match handle.timeout_join(std::time::Duration::from_nanos(ns_time)) {
-        Ok(option) => {
-            if let Some(ptr) = option {
-                ptr as libc::c_long
-            } else {
-                -2
-            }
-        }
+        Ok(ptr) => ptr as libc::c_long,
         Err(_) => -1,
     }
 }

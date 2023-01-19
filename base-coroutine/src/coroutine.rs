@@ -164,23 +164,25 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     //调用用户函数的参数
     param: Param,
     result: MaybeUninit<ManuallyDrop<Return>>,
+    scheduler: Option<*mut Scheduler>,
 }
 
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     extern "C" fn child_context_func(t: Transfer) {
-        let coroutine =
-            t.data as *mut c_void as *mut _ as *mut OpenCoroutine<'_, Param, Yield, Return>;
+        let coroutine = unsafe {
+            &mut *(t.data as *mut c_void as *mut _ as *mut OpenCoroutine<'_, Param, Yield, Return>)
+        };
         let yielder = Yielder {
             sp: &t,
             marker: Default::default(),
         };
         OpenCoroutine::init_yielder(&yielder);
         unsafe {
-            (*coroutine).status = Status::Running;
-            let proc = (*coroutine).proc;
-            let param = std::ptr::read_unaligned(&(*coroutine).param);
+            coroutine.status = Status::Running;
+            let proc = coroutine.proc;
+            let param = std::ptr::read_unaligned(&coroutine.param);
             let result = proc(&yielder, param);
-            (*coroutine).status = Status::Finished;
+            coroutine.status = Status::Finished;
             OpenCoroutine::<Param, Yield, Return>::clean_current();
             OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             #[cfg(unix)]
@@ -190,10 +192,10 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 Monitor::clean_task(Monitor::signal_time());
                 Monitor::clean_signal_time();
             }
-            if let Some(scheduler) = Scheduler::current() {
-                (*coroutine).result = MaybeUninit::new(ManuallyDrop::new(result));
+            if let Some(scheduler) = coroutine.scheduler {
+                coroutine.result = MaybeUninit::new(ManuallyDrop::new(result));
                 //执行下一个子协程
-                scheduler.do_schedule();
+                (*scheduler).do_schedule();
             } else {
                 let mut coroutine_result = CoroutineResult::<Yield, Return>::Return(result);
                 t.context.resume(&mut coroutine_result as *mut _ as usize);
@@ -233,6 +235,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             marker: Default::default(),
             param,
             result: MaybeUninit::uninit(),
+            scheduler: None,
         })
     }
 
@@ -272,6 +275,14 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         } else {
             None
         }
+    }
+
+    pub fn get_scheduler(&self) -> Option<*mut Scheduler> {
+        self.scheduler
+    }
+
+    pub(crate) fn set_scheduler(&mut self, scheduler: &mut Scheduler) {
+        self.scheduler = Some(scheduler);
     }
 
     fn init_yielder(yielder: &Yielder<Param, Yield, Return>) {

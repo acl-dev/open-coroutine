@@ -36,6 +36,7 @@ jobs:
         with:
           command: clippy
           args: -- -D warnings
+
   linux:
     name: Test ${{ matrix.rust }} on ubuntu-latest
     runs-on: ubuntu-latest
@@ -65,11 +66,17 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo test --release --all"
-      - name: Run cargo release example
+      - name: Run cargo release hellp example
         uses: actions-rs/cargo@v1
         with:
           command: run
           args: --example hello --release
+      - name: Run cargo release preemptive example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --example preemptive --release
+
   macos:
     name: Test ${{ matrix.rust }} on macOS-latest
     runs-on: macOS-latest
@@ -99,11 +106,17 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo test --release --all"
-      - name: Run cargo release example
+      - name: Run cargo release hello example
         uses: actions-rs/cargo@v1
         with:
           command: run
           args: --example hello --release
+      - name: Run cargo release preemptive example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --example preemptive --release
+
   windows:
     name: Test ${{ matrix.rust }} on windows-2019
     runs-on: windows-2019
@@ -133,8 +146,13 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe test --release --all"
-      - name: Run cargo release example
+      - name: Run cargo release hello example
         uses: actions-rs/cargo@v1
         with:
           command: run
           args: --example hello --release
+#      - name: Run cargo release preemptive example
+#        uses: actions-rs/cargo@v1
+#        with:
+#          command: run
+#          args: --example preemptive --release
