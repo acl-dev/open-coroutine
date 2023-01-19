@@ -35,8 +35,9 @@ impl JoinHandle {
             if result.get_result().is_some() {
                 break;
             }
+            let left_time = timeout_time.saturating_sub(timer_utils::now());
             //等待事件到来
-            if let Err(e) = EventLoop::next().wait(Some(dur)) {
+            if let Err(e) = EventLoop::next().wait(Some(Duration::from_nanos(left_time))) {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
                     std::io::ErrorKind::Interrupted => continue,
@@ -60,7 +61,7 @@ impl JoinHandle {
                 break;
             }
             //等待事件到来
-            if let Err(e) = EventLoop::next().wait(None) {
+            if let Err(e) = EventLoop::next().wait(Some(Duration::from_secs(1))) {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
                     std::io::ErrorKind::Interrupted => continue,
@@ -136,6 +137,7 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
+        //todo 多线程并发
         for _i in 0..num_cpus::get() {
             EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
         }
@@ -147,13 +149,12 @@ impl<'a> EventLoop<'a> {
             if timeout_time <= timer_utils::now() {
                 return Ok(());
             }
-            for _i in 0..num_cpus::get() {
-                EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
-            }
+            EventLoop::round_robin_timeout_schedule(timeout_time)?;
         }
     }
 
     pub fn round_robin_del_event(fd: libc::c_int) {
+        //todo 多线程并发
         for _i in 0..num_cpus::get() {
             let _ = EventLoop::next().del_event(fd);
         }
@@ -171,6 +172,7 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_read_event(fd: libc::c_int) {
+        //todo 多线程并发
         for _i in 0..num_cpus::get() {
             let _ = EventLoop::next().del_read_event(fd);
         }
@@ -196,6 +198,7 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_write_event(fd: libc::c_int) {
+        //todo 多线程并发
         for _i in 0..num_cpus::get() {
             let _ = EventLoop::next().del_write_event(fd);
         }
@@ -249,6 +252,7 @@ impl<'a> EventLoop<'a> {
     }
 
     fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
+        //fixme 这里应该只调1次scheduler.syscall，实际由于外层的loop，可能会调用多次
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout)?;
