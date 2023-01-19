@@ -15,7 +15,6 @@ thread_local! {
     static SCHEDULER: Box<RefCell<*mut Scheduler>> = Box::new(RefCell::new(std::ptr::null_mut()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static TIMEOUT_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
-    static RESULTS: Box<RefCell<*mut ObjectMap<usize>>> = Box::new(RefCell::new(std::ptr::null_mut()));
 }
 
 /// 主协程
