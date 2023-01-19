@@ -42,6 +42,9 @@ pub mod scheduler;
 mod monitor;
 
 #[allow(dead_code)]
+mod pool;
+
+#[allow(dead_code)]
 pub mod event_loop;
 
 #[cfg(any(

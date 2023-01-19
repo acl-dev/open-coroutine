@@ -14,6 +14,7 @@ scopeguard = "1.1.0"
 num_cpus = "1.14.0"
 concurrent-queue = "2.0.0"
 st3 = "0.4.0"
+threadpool = "1.8.1"
 object-collection = { version = "0.0.3", path = "../object-collection" }
 timer-utils = { version = "0.0.3", path = "../timer-utils" }
 

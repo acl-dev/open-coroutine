@@ -12,6 +12,7 @@ use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::time::Duration;
 
 #[repr(C)]
@@ -137,9 +138,18 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
-        //todo 多线程并发
-        for _i in 0..num_cpus::get() {
-            EventLoop::next_scheduler().try_timeout_schedule(timeout_time)?;
+        let (sender, receiver) = mpsc::channel();
+        let pool = crate::pool::get_instance();
+        for _ in 0..num_cpus::get() {
+            let clone = mpsc::Sender::clone(&sender);
+            pool.execute(move || {
+                clone
+                    .send(EventLoop::next_scheduler().try_timeout_schedule(timeout_time))
+                    .unwrap();
+            });
+        }
+        for result in receiver.iter().take(num_cpus::get()) {
+            result?;
         }
         Ok(())
     }
@@ -154,9 +164,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_event(fd: libc::c_int) {
-        //todo 多线程并发
-        for _i in 0..num_cpus::get() {
-            let _ = EventLoop::next().del_event(fd);
+        let pool = crate::pool::get_instance();
+        for _ in 0..num_cpus::get() {
+            pool.execute(move || {
+                let _ = EventLoop::next().del_event(fd);
+            });
         }
     }
 
@@ -172,9 +184,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_read_event(fd: libc::c_int) {
-        //todo 多线程并发
+        let pool = crate::pool::get_instance();
         for _i in 0..num_cpus::get() {
-            let _ = EventLoop::next().del_read_event(fd);
+            pool.execute(move || {
+                let _ = EventLoop::next().del_read_event(fd);
+            });
         }
     }
 
@@ -198,9 +212,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_write_event(fd: libc::c_int) {
-        //todo 多线程并发
-        for _i in 0..num_cpus::get() {
-            let _ = EventLoop::next().del_write_event(fd);
+        let pool = crate::pool::get_instance();
+        for _ in 0..num_cpus::get() {
+            pool.execute(move || {
+                let _ = EventLoop::next().del_write_event(fd);
+            });
         }
     }
 
