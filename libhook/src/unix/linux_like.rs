@@ -88,5 +88,8 @@ pub extern "C" fn accept4(
     len: *mut libc::socklen_t,
     flg: libc::c_int,
 ) -> libc::c_int {
-    impl_read_hook!((Lazy::force(&ACCEPT4))(fd, addr, len, flg), None)
+    impl_read_hook!(
+        (Lazy::force(&ACCEPT4))(fd, addr, len, flg),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
