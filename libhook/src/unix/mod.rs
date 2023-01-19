@@ -65,6 +65,7 @@ static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec)
 
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
+    //todo 用wait_event实现
     let mut rqtp = unsafe { *rqtp };
     if rqtp.tv_sec < 0 || rqtp.tv_nsec < 0 {
         return -1;
@@ -132,7 +133,9 @@ pub extern "C" fn connect(
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
-            if let Err(e) = event_loop.wait_write_event(socket, None) {
+            if let Err(e) =
+                event_loop.wait_write_event(socket, Some(std::time::Duration::from_secs(1)))
+            {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
                     std::io::ErrorKind::Interrupted => reset_errno(),
@@ -194,7 +197,10 @@ pub extern "C" fn accept(
     address: *mut libc::sockaddr,
     address_len: *mut libc::socklen_t,
 ) -> libc::c_int {
-    impl_read_hook!((Lazy::force(&ACCEPT))(socket, address, address_len), None)
+    impl_read_hook!(
+        (Lazy::force(&ACCEPT))(socket, address, address_len),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
@@ -348,7 +354,10 @@ pub extern "C" fn send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_expected_write_hook!((Lazy::force(&SEND))(socket, buf, len, flags), None)
+    impl_expected_write_hook!(
+        (Lazy::force(&SEND))(socket, buf, len, flags),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static WRITE: Lazy<extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t> =
@@ -360,7 +369,10 @@ pub extern "C" fn write(
     buf: *const libc::c_void,
     count: libc::size_t,
 ) -> libc::ssize_t {
-    impl_expected_write_hook!((Lazy::force(&WRITE))(fd, buf, count), None)
+    impl_expected_write_hook!(
+        (Lazy::force(&WRITE))(fd, buf, count),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static WRITEV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
@@ -372,7 +384,10 @@ pub extern "C" fn writev(
     iov: *const libc::iovec,
     iovcnt: libc::c_int,
 ) -> libc::ssize_t {
-    impl_write_hook!((Lazy::force(&WRITEV))(fd, iov, iovcnt), None)
+    impl_write_hook!(
+        (Lazy::force(&WRITEV))(fd, iov, iovcnt),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static SENDTO: Lazy<
@@ -397,7 +412,7 @@ pub extern "C" fn sendto(
 ) -> libc::ssize_t {
     impl_expected_write_hook!(
         (Lazy::force(&SENDTO))(socket, buf, len, flags, addr, addrlen),
-        None
+        Some(std::time::Duration::from_secs(1))
     )
 }
 
@@ -411,7 +426,10 @@ pub extern "C" fn sendmsg(
     msg: *const libc::msghdr,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_write_hook!((Lazy::force(&SENDMSG))(fd, msg, flags), None)
+    impl_write_hook!(
+        (Lazy::force(&SENDMSG))(fd, msg, flags),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static PWRITE: Lazy<
@@ -425,7 +443,10 @@ pub extern "C" fn pwrite(
     count: libc::size_t,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    impl_expected_write_hook!((Lazy::force(&PWRITE))(fd, buf, count, offset), None)
+    impl_expected_write_hook!(
+        (Lazy::force(&PWRITE))(fd, buf, count, offset),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static PWRITEV: Lazy<
@@ -439,7 +460,10 @@ pub extern "C" fn pwritev(
     iovcnt: libc::c_int,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    impl_write_hook!((Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset), None)
+    impl_write_hook!(
+        (Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 //read相关
@@ -454,7 +478,10 @@ pub extern "C" fn recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags), None)
+    impl_expected_read_hook!(
+        (Lazy::force(&RECV))(socket, buf, len, flags),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static READV: Lazy<extern "C" fn(libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t> =
@@ -466,7 +493,10 @@ pub extern "C" fn readv(
     iov: *const libc::iovec,
     iovcnt: libc::c_int,
 ) -> libc::ssize_t {
-    impl_read_hook!((Lazy::force(&READV))(fd, iov, iovcnt), None)
+    impl_read_hook!(
+        (Lazy::force(&READV))(fd, iov, iovcnt),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static PREAD: Lazy<
@@ -480,7 +510,10 @@ pub extern "C" fn pread(
     count: libc::size_t,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    impl_expected_read_hook!((Lazy::force(&PREAD))(fd, buf, count, offset), None)
+    impl_expected_read_hook!(
+        (Lazy::force(&PREAD))(fd, buf, count, offset),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static PREADV: Lazy<
@@ -494,7 +527,10 @@ pub extern "C" fn preadv(
     iovcnt: libc::c_int,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    impl_read_hook!((Lazy::force(&PREADV))(fd, iov, iovcnt, offset), None)
+    impl_read_hook!(
+        (Lazy::force(&PREADV))(fd, iov, iovcnt, offset),
+        Some(std::time::Duration::from_secs(1))
+    )
 }
 
 static RECVFROM: Lazy<
@@ -519,7 +555,7 @@ pub extern "C" fn recvfrom(
 ) -> libc::ssize_t {
     impl_expected_read_hook!(
         (Lazy::force(&RECVFROM))(socket, buf, len, flags, addr, addrlen),
-        None
+        Some(std::time::Duration::from_secs(1))
     )
 }
 
@@ -532,5 +568,8 @@ pub extern "C" fn recvmsg(
     msg: *mut libc::msghdr,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    impl_read_hook!((Lazy::force(&RECVMSG))(fd, msg, flags), None)
+    impl_read_hook!(
+        (Lazy::force(&RECVMSG))(fd, msg, flags),
+        Some(std::time::Duration::from_secs(1))
+    )
 }

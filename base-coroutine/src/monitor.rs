@@ -16,6 +16,7 @@ thread_local! {
     static SIGNAL_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
 }
 
+//todo 支持主动检测
 pub(crate) struct Monitor {
     task: TimerList,
     flag: AtomicBool,
