@@ -6,9 +6,51 @@ The `open-coroutine` is a simple, efficient and generic stackful-coroutine libra
 ### Status
 Still under development, please `do not` use this library in the `production` environment !
 
-Only support hook several `system calls`.
-
 ### Features
+#### 0.2.0
+- [x] use correct `epoll_event` struct
+- [x] use `rayon` for parallel computing
+- [x] support `#[open_coroutine::main]` macro
+- [x] hook almost all `read` syscall
+  <details><summary>read syscalls</summary>
+  
+  - [x] recv
+  - [x] readv
+  - [x] pread
+  - [x] preadv
+  - [x] recvfrom
+  - [x] recvmsg
+
+  </details>
+
+- [x] hook almost all `write` syscall
+  <details><summary>write syscalls</summary>
+
+  - [x] send
+  - [x] write
+  - [x] writev
+  - [x] sendto
+  - [x] sendmsg
+  - [x] pwrite
+  - [x] pwritev
+
+  </details>
+
+- [x] hook other syscall
+  <details><summary>other syscalls</summary>
+  
+  - [x] sleep
+  - [x] usleep
+  - [x] nanosleep
+  - [x] connect
+  - [x] listen
+  - [x] accept
+  - [x] shutdown
+  - [x] poll
+  - [x] select
+
+  </details>
+
 #### 0.1.0
 - [x] basic suspend/resume supported
 - [x] use jemalloc as memory pool
@@ -40,7 +82,15 @@ fn main() {
 #### step3 
 enjoy the performance improvement brought by `open-coroutine` !
 
-### simplest example below
+### examples
+<details><summary>simplest example</summary>
+
+run hello example
+```shell
+cargo run --example hello
+```
+
+code below
 ```rust
 use open_coroutine::co;
 use std::os::raw::c_void;
@@ -69,8 +119,18 @@ fn main() {
 }
 ```
 
-### preemptive example
+</details>
+
+<details><summary>preemptive example</summary>
+
 Note: not supported for windows
+
+run preemptive example
+```shell
+cargo run --example preemptive
+```
+
+code below
 ```rust
 use open_coroutine::co;
 use std::os::raw::c_void;
@@ -111,8 +171,4 @@ fn main() {
 }
 ```
 
-### How to run examples ?
-```shell
-cargo run --example hello
-cargo run --example preemptive
-```
+</details>

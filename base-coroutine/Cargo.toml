@@ -1,6 +1,6 @@
 [package]
 name = "base-coroutine"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 description = "A fast and safe implementation of stackful coroutines with scheduler which supports preemptive scheduling."
@@ -15,7 +15,7 @@ num_cpus = "1.14.0"
 concurrent-queue = "2.0.0"
 st3 = "0.4.0"
 rayon = "1.6.1"
-object-collection = { version = "0.0.3", path = "../object-collection" }
+object-collection = { version = "0.0.4", path = "../object-collection" }
 timer-utils = { version = "0.0.3", path = "../timer-utils" }
 
 [target."cfg(unix)".dependencies]
