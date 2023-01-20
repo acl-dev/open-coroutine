@@ -286,7 +286,7 @@ impl<'a> EventLoop<'a> {
         self.wait(timeout)
     }
 
-    pub fn syscall(&self) {
+    pub fn syscall(&mut self) {
         self.scheduler.syscall();
     }
 }

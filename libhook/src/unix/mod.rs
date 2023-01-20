@@ -80,7 +80,7 @@ static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec)
 
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
-    let mut rqtp = unsafe { *rqtp };
+    let rqtp = unsafe { *rqtp };
     if rqtp.tv_sec < 0 || rqtp.tv_nsec < 0 || rqtp.tv_nsec > 999999999 {
         crate::unix::common::set_errno(libc::EINVAL);
         return -1;
