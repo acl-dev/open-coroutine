@@ -111,6 +111,30 @@ macro_rules! impl_simple_hook {
     }};
 }
 
+#[macro_export]
+macro_rules! impl_sleep_hook {
+    ( $timeout:expr) => {{
+        let timeout_time = timer_utils::get_timeout_time($timeout);
+        //等待事件到来
+        loop {
+            let schedule_finished_time = timer_utils::now();
+            let left_time = match timeout_time.checked_sub(schedule_finished_time) {
+                Some(v) => v,
+                None => {
+                    $crate::unix::common::reset_errno();
+                    return 0;
+                }
+            };
+            if let Ok(()) = base_coroutine::EventLoop::next()
+                .wait(Some(std::time::Duration::from_nanos(left_time)))
+            {
+                $crate::unix::common::reset_errno();
+                return 0;
+            }
+        }
+    }};
+}
+
 //todo try to replace with impl_expected_read_hook
 #[macro_export]
 macro_rules! impl_read_hook {

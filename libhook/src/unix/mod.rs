@@ -32,51 +32,17 @@ mod linux_like;
 //sleep相关
 #[no_mangle]
 pub extern "C" fn sleep(secs: libc::c_uint) -> libc::c_uint {
-    let timeout_time = timer_utils::get_timeout_time(std::time::Duration::from_secs(secs as u64));
-    //等待事件到来
-    loop {
-        let schedule_finished_time = timer_utils::now();
-        let left_time = match timeout_time.checked_sub(schedule_finished_time) {
-            Some(v) => v,
-            None => {
-                crate::unix::common::reset_errno();
-                return 0;
-            }
-        };
-        if let Ok(()) =
-            base_coroutine::EventLoop::next().wait(Some(std::time::Duration::from_nanos(left_time)))
-        {
-            crate::unix::common::reset_errno();
-            return 0;
-        }
-    }
+    impl_sleep_hook!(std::time::Duration::from_secs(secs as u64))
 }
 
 #[no_mangle]
 pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
-    let timeout_time =
-        timer_utils::get_timeout_time(std::time::Duration::from_nanos((secs * 1_000) as u64));
-    //等待事件到来
-    loop {
-        let schedule_finished_time = timer_utils::now();
-        let left_time = match timeout_time.checked_sub(schedule_finished_time) {
-            Some(v) => v,
-            None => {
-                crate::unix::common::reset_errno();
-                return 0;
-            }
-        };
-        if let Ok(()) =
-            base_coroutine::EventLoop::next().wait(Some(std::time::Duration::from_nanos(left_time)))
-        {
-            crate::unix::common::reset_errno();
-            return 0;
-        }
-    }
+    let time = match (secs as u64).checked_mul(1_000) {
+        Some(v) => std::time::Duration::from_nanos(v),
+        None => std::time::Duration::MAX,
+    };
+    impl_sleep_hook!(time)
 }
-
-static NANOSLEEP: Lazy<extern "C" fn(*const libc::timespec, *mut libc::timespec) -> libc::c_int> =
-    init_hook!("nanosleep");
 
 #[no_mangle]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
