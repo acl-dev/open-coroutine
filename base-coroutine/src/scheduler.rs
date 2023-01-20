@@ -224,7 +224,7 @@ impl Scheduler {
     }
 
     /// 用户不应该使用此方法
-    pub fn syscall(&mut self) {
+    pub fn syscall(&self) {
         //挂起当前协程
         let yielder = Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
         if !yielder.is_null() {
