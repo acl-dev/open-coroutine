@@ -249,9 +249,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
-        //fixme 这里应该只调1次scheduler.syscall，实际由于外层的loop，可能会调用多次
-        self.scheduler.syscall();
+    pub(crate) fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
         let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout)?;
         for event in events.iter() {
@@ -286,6 +284,10 @@ impl<'a> EventLoop<'a> {
     ) -> std::io::Result<()> {
         self.add_write_event(fd)?;
         self.wait(timeout)
+    }
+
+    pub fn syscall(&mut self) {
+        self.scheduler.syscall();
     }
 }
 
