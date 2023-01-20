@@ -50,7 +50,7 @@ impl Monitor {
                 while monitor.flag.load(Ordering::Acquire) {
                     monitor.signal();
                     monitor.balance();
-                    EventLoop::next().wait(Some(Duration::from_millis(1)));
+                    let _ = EventLoop::next().wait(Some(Duration::from_millis(1)));
                 }
             })
         });
