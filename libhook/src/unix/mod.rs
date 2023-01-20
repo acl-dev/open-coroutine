@@ -137,6 +137,7 @@ pub extern "C" fn connect(
         set_non_blocking(socket, true);
     }
     let event_loop = base_coroutine::EventLoop::next();
+    event_loop.syscall();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
