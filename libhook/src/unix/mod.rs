@@ -1,5 +1,5 @@
 /**
-do not impl close/read hook !!!!!
+do not impl close hook !!!!!
 it will not pass linux CI !!!!!
  */
 use crate::unix::common::*;
@@ -480,6 +480,21 @@ pub extern "C" fn recv(
 ) -> libc::ssize_t {
     impl_expected_read_hook!(
         (Lazy::force(&RECV))(socket, buf, len, flags),
+        Some(std::time::Duration::from_secs(1))
+    )
+}
+
+static READ: Lazy<extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t> =
+    init_hook!("read");
+
+#[no_mangle]
+pub extern "C" fn read(
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    impl_expected_read_hook!(
+        (Lazy::force(&READ))(fd, buf, count),
         Some(std::time::Duration::from_secs(1))
     )
 }
