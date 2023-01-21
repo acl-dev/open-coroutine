@@ -1,5 +1,5 @@
 use crate::work_steal::{WorkStealQueue, GLOBAL_QUEUE, LOCAL_QUEUES};
-use crate::{Coroutine, EventLoop};
+use crate::Coroutine;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -50,7 +50,7 @@ impl Monitor {
                 while monitor.flag.load(Ordering::Acquire) {
                     monitor.signal();
                     monitor.balance();
-                    let _ = EventLoop::next().wait(Some(Duration::from_millis(1)));
+                    std::thread::sleep(Duration::from_millis(1));
                 }
             })
         });
