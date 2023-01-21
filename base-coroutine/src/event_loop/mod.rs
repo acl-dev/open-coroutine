@@ -249,7 +249,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
+    pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
         //fixme 这里应该只调1次scheduler.syscall，实际由于外层的loop，可能会调用多次
         self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
