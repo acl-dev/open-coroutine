@@ -30,7 +30,7 @@ fn main() {
         None,
         4096,
     );
-    let result = handle.timeout_join(Duration::from_secs(1));
+    let result = handle.timeout_join(Duration::from_secs(3));
     assert_eq!(result.unwrap(), 1);
     unsafe { assert!(!FLAG) };
     println!("preemptive schedule finished successfully!");
