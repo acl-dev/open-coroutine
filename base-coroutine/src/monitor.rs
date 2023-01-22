@@ -37,11 +37,16 @@ impl Monitor {
                     unsafe { (*yielder).suspend(()) };
                 }
             }
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            #[cfg(not(windows))]
+            {
+                let mut act: libc::sigaction = std::mem::zeroed();
+                act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+                act.sa_flags = libc::SA_RESTART;
+                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            }
+            #[cfg(windows)]
+            libc::signal(libc::SIGINT, sigurg_handler as libc::sighandler_t);
         }
         //通过这种方式来初始化monitor线程
         MONITOR.get_or_init(|| {
@@ -89,7 +94,10 @@ impl Monitor {
                                 let pthread = std::ptr::read_unaligned(
                                     pointer as *mut _ as *mut libc::pthread_t,
                                 );
+                                #[cfg(not(windows))]
                                 libc::pthread_kill(pthread, libc::SIGURG);
+                                #[cfg(windows)]
+                                libc::raise(libc::SIGINT);
                             }
                         }
                     }
@@ -99,6 +107,7 @@ impl Monitor {
     }
 
     pub(crate) fn add_task(time: u64) {
+        Monitor::init_signal_time(time);
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global().task.insert(time, pthread);
@@ -111,6 +120,7 @@ impl Monitor {
                 let mut pthread = libc::pthread_self();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
             }
+            Monitor::clean_signal_time();
         }
     }
 

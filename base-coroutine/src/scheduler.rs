@@ -1,6 +1,5 @@
 use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFunc, Yielder};
 use crate::id::IdGenerator;
-#[cfg(unix)]
 use crate::monitor::Monitor;
 use crate::stack::Stack;
 use crate::work_steal::{get_queue, WorkStealQueue};
@@ -151,12 +150,8 @@ impl Scheduler {
                 let coroutine = unsafe {
                     &mut *(pointer as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                 };
-                let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
-                #[cfg(unix)]
-                {
-                    Monitor::init_signal_time(_start);
-                    Monitor::add_task(_start);
-                }
+                let start = timer_utils::get_timeout_time(Duration::from_millis(10));
+                Monitor::add_task(start);
                 //see OpenCoroutine::child_context_func
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
@@ -183,13 +178,9 @@ impl Scheduler {
                         unsafe { SYSTEM_CALL_TABLE.insert(coroutine.get_id(), coroutine) };
                     }
                 };
-                #[cfg(unix)]
-                {
-                    //还没执行到10ms就主动yield了，此时需要清理signal
-                    //否则下一个协程执行不到10ms就被抢占调度了
-                    Monitor::clean_task(_start);
-                    Monitor::clean_signal_time();
-                }
+                //还没执行到10ms就主动yield了，此时需要清理signal
+                //否则下一个协程执行不到10ms就被抢占调度了
+                Monitor::clean_task(start);
                 self.do_schedule();
             }
             None => Scheduler::back_to_main(),
@@ -344,7 +335,6 @@ mod tests {
             .expect("try_schedule failed !");
     }
 
-    #[cfg(unix)]
     #[test]
     fn preemptive_schedule() {
         static mut FLAG: bool = true;

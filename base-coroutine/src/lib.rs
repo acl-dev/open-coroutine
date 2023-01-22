@@ -38,7 +38,6 @@ mod random;
 pub mod scheduler;
 
 #[allow(dead_code)]
-#[cfg(unix)]
 mod monitor;
 
 #[allow(dead_code)]
