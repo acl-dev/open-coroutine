@@ -89,12 +89,12 @@ impl Monitor {
                 }
                 if let Some(mut entry) = self.task.pop_front() {
                     for _ in 0..entry.len() {
-                        if let Some(pointer) = entry.pop_front_raw() {
+                        if let Some(_pointer) = entry.pop_front_raw() {
                             unsafe {
                                 #[cfg(not(windows))]
                                 {
                                     let pthread = std::ptr::read_unaligned(
-                                        pointer as *mut _ as *mut libc::pthread_t,
+                                        _pointer as *mut _ as *mut libc::pthread_t,
                                     );
                                     libc::pthread_kill(pthread, libc::SIGURG);
                                 }
@@ -200,11 +200,16 @@ mod tests {
 
     fn register_handler(sigurg_handler: libc::sighandler_t) {
         unsafe {
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            #[cfg(not(windows))]
+            {
+                let mut act: libc::sigaction = std::mem::zeroed();
+                act.sa_sigaction = sigurg_handler;
+                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+                act.sa_flags = libc::SA_RESTART;
+                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            }
+            #[cfg(windows)]
+            libc::signal(libc::SIGINT, sigurg_handler as libc::sighandler_t);
         }
     }
 
@@ -230,6 +235,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(20));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn test_sigmask() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
