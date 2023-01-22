@@ -91,11 +91,13 @@ impl Monitor {
                     for _ in 0..entry.len() {
                         if let Some(pointer) = entry.pop_front_raw() {
                             unsafe {
-                                let pthread = std::ptr::read_unaligned(
-                                    pointer as *mut _ as *mut libc::pthread_t,
-                                );
                                 #[cfg(not(windows))]
-                                libc::pthread_kill(pthread, libc::SIGURG);
+                                {
+                                    let pthread = std::ptr::read_unaligned(
+                                        pointer as *mut _ as *mut libc::pthread_t,
+                                    );
+                                    libc::pthread_kill(pthread, libc::SIGURG);
+                                }
                                 #[cfg(windows)]
                                 libc::raise(libc::SIGINT);
                             }
@@ -109,7 +111,10 @@ impl Monitor {
     pub(crate) fn add_task(time: u64) {
         Monitor::init_signal_time(time);
         unsafe {
+            #[cfg(not(windows))]
             let pthread = libc::pthread_self();
+            #[cfg(windows)]
+            let pthread = windows_sys::Win32::System::Threading::GetCurrentThreadId();
             Monitor::global().task.insert(time, pthread);
         }
     }
@@ -117,7 +122,10 @@ impl Monitor {
     pub(crate) fn clean_task(time: u64) {
         if let Some(entry) = Monitor::global().task.get_entry(time) {
             unsafe {
+                #[cfg(not(windows))]
                 let mut pthread = libc::pthread_self();
+                #[cfg(windows)]
+                let mut pthread = windows_sys::Win32::System::Threading::GetCurrentThreadId();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
             }
             Monitor::clean_signal_time();
