@@ -5,7 +5,7 @@ use std::time::Duration;
 #[open_coroutine::main]
 fn main() {
     static mut FLAG: bool = true;
-    co(
+    let handle = co(
         |_yielder, input: Option<&'static mut c_void>| {
             println!("[coroutine1] launched");
             unsafe {
@@ -16,7 +16,7 @@ fn main() {
             }
             input
         },
-        None,
+        Some(unsafe { std::mem::transmute(1usize) }),
         4096,
     );
     co(
@@ -30,7 +30,8 @@ fn main() {
         None,
         4096,
     );
-    std::thread::sleep(Duration::from_millis(50));
+    let result = handle.join();
+    assert_eq!(result.unwrap(), 1);
     unsafe { assert!(!FLAG) };
     println!("preemptive schedule finished successfully!");
 }
