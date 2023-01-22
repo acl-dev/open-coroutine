@@ -8,6 +8,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use timer_utils::TimerList;
 
+pub const SIGBREAK: libc::c_int = 21;
+
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
 static MONITOR: OnceCell<JoinHandle<()>> = OnceCell::new();
@@ -46,7 +48,7 @@ impl Monitor {
                 libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
             }
             #[cfg(windows)]
-            libc::signal(libc::SIGINT, sigurg_handler as libc::sighandler_t);
+            libc::signal(SIGBREAK, sigurg_handler as libc::sighandler_t);
         }
         //通过这种方式来初始化monitor线程
         MONITOR.get_or_init(|| {
@@ -99,7 +101,7 @@ impl Monitor {
                                     libc::pthread_kill(pthread, libc::SIGURG);
                                 }
                                 #[cfg(windows)]
-                                libc::raise(libc::SIGINT);
+                                libc::raise(SIGBREAK);
                             }
                         }
                     }
@@ -195,7 +197,7 @@ impl Monitor {
 
 #[cfg(test)]
 mod tests {
-    use crate::monitor::Monitor;
+    use crate::monitor::{Monitor, SIGBREAK};
     use std::time::Duration;
 
     fn register_handler(sigurg_handler: libc::sighandler_t) {
@@ -209,7 +211,7 @@ mod tests {
                 libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
             }
             #[cfg(windows)]
-            libc::signal(libc::SIGINT, sigurg_handler as libc::sighandler_t);
+            libc::signal(SIGBREAK, sigurg_handler as libc::sighandler_t);
         }
     }
 
