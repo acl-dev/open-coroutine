@@ -22,7 +22,7 @@ timer-utils = { version = "0.0.3", path = "../timer-utils" }
 jemalloc-sys = { version = "0.5.2+5.3.0-patched", default-features = false }
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.42.0", features = [
+windows-sys = { version = "0.45.0", features = [
     "Win32_System_Memory",
     "Win32_System_SystemInformation",
     "Win32_Foundation",

@@ -15,7 +15,7 @@ base-coroutine = { version = "0.2.0", path = "../base-coroutine" }
 timer-utils = { version = "0.0.3", path = "../timer-utils" }
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.42.0", features = [
+windows-sys = { version = "0.45.0", features = [
     "Win32_Foundation",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Threading",
