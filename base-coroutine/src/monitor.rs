@@ -99,6 +99,7 @@ impl Monitor {
     }
 
     pub(crate) fn add_task(time: u64) {
+        Monitor::init_signal_time(time);
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global().task.insert(time, pthread);
@@ -111,10 +112,11 @@ impl Monitor {
                 let mut pthread = libc::pthread_self();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
             }
+            Monitor::clean_signal_time();
         }
     }
 
-    pub(crate) fn init_signal_time(time: u64) {
+    fn init_signal_time(time: u64) {
         SIGNAL_TIME.with(|boxed| {
             *boxed.borrow_mut() = time;
         });
@@ -124,7 +126,7 @@ impl Monitor {
         SIGNAL_TIME.with(|boxed| *boxed.borrow_mut())
     }
 
-    pub(crate) fn clean_signal_time() {
+    fn clean_signal_time() {
         SIGNAL_TIME.with(|boxed| *boxed.borrow_mut() = 0)
     }
 
