@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn test_clean() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
+            unreachable!("sigurg should not handle");
         }
         register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(500));
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn test_sigmask() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
+            unreachable!("sigurg should not handle");
         }
         register_handler(sigurg_handler as libc::sighandler_t);
         unsafe {
