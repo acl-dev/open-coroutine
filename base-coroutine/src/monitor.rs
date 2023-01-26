@@ -16,7 +16,6 @@ thread_local! {
     static SIGNAL_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
 }
 
-//todo 支持主动检测
 pub(crate) struct Monitor {
     task: TimerList,
     flag: AtomicBool,
@@ -70,27 +69,20 @@ impl Monitor {
     }
 
     fn signal(&mut self) {
-        while !self.task.is_empty() {
-            self.do_signal();
-        }
-    }
-
-    fn do_signal(&mut self) {
         for _ in 0..self.task.len() {
             if let Some(entry) = self.task.front() {
                 let exec_time = entry.get_time();
                 if timer_utils::now() < exec_time {
                     break;
                 }
-                if let Some(mut entry) = self.task.pop_front() {
-                    for _ in 0..entry.len() {
-                        if let Some(pointer) = entry.pop_front_raw() {
-                            unsafe {
-                                let pthread = std::ptr::read_unaligned(
-                                    pointer as *mut _ as *mut libc::pthread_t,
-                                );
-                                libc::pthread_kill(pthread, libc::SIGURG);
-                            }
+                //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
+                for entry in self.task.iter() {
+                    for p in entry.iter() {
+                        unsafe {
+                            let pointer = std::ptr::read_unaligned(p);
+                            let pthread =
+                                std::ptr::read_unaligned(pointer as *mut _ as *mut libc::pthread_t);
+                            libc::pthread_kill(pthread, libc::SIGURG);
                         }
                     }
                 }
@@ -99,6 +91,7 @@ impl Monitor {
     }
 
     pub(crate) fn add_task(time: u64) {
+        Monitor::init_signal_time(time);
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global().task.insert(time, pthread);
@@ -111,10 +104,11 @@ impl Monitor {
                 let mut pthread = libc::pthread_self();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
             }
+            Monitor::clean_signal_time();
         }
     }
 
-    pub(crate) fn init_signal_time(time: u64) {
+    fn init_signal_time(time: u64) {
         SIGNAL_TIME.with(|boxed| {
             *boxed.borrow_mut() = time;
         });
@@ -124,7 +118,7 @@ impl Monitor {
         SIGNAL_TIME.with(|boxed| *boxed.borrow_mut())
     }
 
-    pub(crate) fn clean_signal_time() {
+    fn clean_signal_time() {
         SIGNAL_TIME.with(|boxed| *boxed.borrow_mut() = 0)
     }
 

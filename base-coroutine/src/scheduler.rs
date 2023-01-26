@@ -154,7 +154,6 @@ impl Scheduler {
                 let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
                 #[cfg(unix)]
                 {
-                    Monitor::init_signal_time(_start);
                     Monitor::add_task(_start);
                 }
                 //see OpenCoroutine::child_context_func
@@ -188,7 +187,6 @@ impl Scheduler {
                     //还没执行到10ms就主动yield了，此时需要清理signal
                     //否则下一个协程执行不到10ms就被抢占调度了
                     Monitor::clean_task(_start);
-                    Monitor::clean_signal_time();
                 }
                 self.do_schedule();
             }

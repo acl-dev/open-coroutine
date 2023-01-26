@@ -1,4 +1,5 @@
 use object_collection::ObjectList;
+use std::collections::vec_deque::{Iter, IterMut};
 use std::collections::VecDeque;
 use std::os::raw::c_void;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -76,6 +77,14 @@ impl TimerEntry {
     pub fn push_back_raw(&mut self, ptr: *mut c_void) {
         self.object_list.push_back_raw(ptr)
     }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, *mut c_void> {
+        self.object_list.iter_mut()
+    }
+
+    pub fn iter(&self) -> Iter<'_, *mut c_void> {
+        self.object_list.iter()
+    }
 }
 
 #[repr(C)]
@@ -135,6 +144,14 @@ impl TimerList {
             .binary_search_by(|x| x.time.cmp(&time))
             .unwrap_or_else(|x| x);
         self.dequeue.get_mut(index)
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, TimerEntry> {
+        self.dequeue.iter_mut()
+    }
+
+    pub fn iter(&self) -> Iter<'_, TimerEntry> {
+        self.dequeue.iter()
     }
 }
 

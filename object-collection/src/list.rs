@@ -1,3 +1,4 @@
+use std::collections::vec_deque::{Iter, IterMut};
 use std::collections::VecDeque;
 use std::os::raw::c_void;
 use std::ptr;
@@ -141,6 +142,14 @@ impl ObjectList {
             .binary_search_by(|x| x.cmp(&val))
             .unwrap_or_else(|x| x);
         self.inner.remove(index)
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, *mut c_void> {
+        self.inner.iter_mut()
+    }
+
+    pub fn iter(&self) -> Iter<'_, *mut c_void> {
+        self.inner.iter()
     }
 }
 
