@@ -190,7 +190,6 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 //还没执行到10ms就返回了，此时需要清理signal
                 //否则下一个协程执行不到10ms就被抢占调度了
                 Monitor::clean_task(Monitor::signal_time());
-                Monitor::clean_signal_time();
             }
             if let Some(scheduler) = coroutine.scheduler {
                 coroutine.result = MaybeUninit::new(ManuallyDrop::new(result));
