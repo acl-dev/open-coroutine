@@ -69,22 +69,18 @@ impl Monitor {
     }
 
     fn signal(&mut self) {
-        for _ in 0..self.task.len() {
-            if let Some(entry) = self.task.front() {
-                let exec_time = entry.get_time();
-                if timer_utils::now() < exec_time {
-                    break;
-                }
-                //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-                for entry in self.task.iter() {
-                    for p in entry.iter() {
-                        unsafe {
-                            let pointer = std::ptr::read_unaligned(p);
-                            let pthread =
-                                std::ptr::read_unaligned(pointer as *mut _ as *mut libc::pthread_t);
-                            libc::pthread_kill(pthread, libc::SIGURG);
-                        }
-                    }
+        //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
+        for entry in self.task.iter() {
+            let exec_time = entry.get_time();
+            if timer_utils::now() < exec_time {
+                break;
+            }
+            for p in entry.iter() {
+                unsafe {
+                    let pointer = std::ptr::read_unaligned(p);
+                    let pthread =
+                        std::ptr::read_unaligned(pointer as *mut _ as *mut libc::pthread_t);
+                    libc::pthread_kill(pthread, libc::SIGURG);
                 }
             }
         }
@@ -190,10 +186,10 @@ mod tests {
             println!("sigurg should not handle");
         }
         register_handler(sigurg_handler as libc::sighandler_t);
-        let time = timer_utils::get_timeout_time(Duration::from_millis(10));
+        let time = timer_utils::get_timeout_time(Duration::from_millis(500));
         Monitor::add_task(time);
         Monitor::clean_task(time);
-        std::thread::sleep(Duration::from_millis(20));
+        std::thread::sleep(Duration::from_millis(600));
     }
 
     #[test]
@@ -217,7 +213,7 @@ mod tests {
             libc::sigaddset(&mut set, libc::SIGURG);
             libc::pthread_sigmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
         }
-        Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
-        std::thread::sleep(Duration::from_millis(20));
+        Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(1000)));
+        std::thread::sleep(Duration::from_millis(1100));
     }
 }
