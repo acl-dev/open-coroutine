@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[repr(C)]
@@ -70,6 +70,7 @@ static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
 pub struct EventLoop<'a> {
     selector: Selector,
     scheduler: &'a mut Scheduler,
+    waiting: AtomicBool,
 }
 
 unsafe impl Send for EventLoop<'_> {}
@@ -80,6 +81,7 @@ impl<'a> EventLoop<'a> {
         Ok(EventLoop {
             selector: Selector::new()?,
             scheduler,
+            waiting: AtomicBool::new(false),
         })
     }
 
@@ -237,8 +239,19 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
+        if self
+            .waiting
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_err()
+        {
+            return Ok(());
+        }
         let mut events = Events::with_capacity(1024);
-        self.selector.select(&mut events, timeout)?;
+        self.selector.select(&mut events, timeout).map_err(|e| {
+            self.waiting.store(false, Ordering::Relaxed);
+            e
+        })?;
+        self.waiting.store(false, Ordering::Relaxed);
         for event in events.iter() {
             let fd = event.fd();
             let token = event.token();
