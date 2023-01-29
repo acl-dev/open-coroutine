@@ -36,7 +36,9 @@ impl JoinHandle {
             if result.get_result().is_some() {
                 break;
             }
-            let left_time = timeout_time.saturating_sub(timer_utils::now());
+            let left_time = timeout_time
+                .saturating_sub(timer_utils::now())
+                .min(1_000_000_000);
             //等待事件到来
             if let Err(e) = EventLoop::next().wait(Some(Duration::from_nanos(left_time))) {
                 match e.kind() {
@@ -146,7 +148,12 @@ impl<'a> EventLoop<'a> {
     pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
         let results: Vec<std::io::Result<()>> = (0..num_cpus::get())
             .into_par_iter()
-            .map(|_| EventLoop::next_scheduler().try_timeout_schedule(timeout_time))
+            .map(|_| {
+                let event_loop = EventLoop::next();
+                let r = event_loop.scheduler.try_timeout_schedule(timeout_time);
+                let _ = event_loop.wait(Some(Duration::new(0, 0)));
+                r
+            })
             .collect();
         for result in results {
             result?;
@@ -339,7 +346,7 @@ mod tests {
         assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
         assert_eq!(
             handle
-                .timeout_join(std::time::Duration::from_secs(1))
+                .timeout_join(std::time::Duration::from_secs(3))
                 .unwrap(),
             3
         );

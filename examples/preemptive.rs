@@ -1,12 +1,12 @@
-use open_coroutine::{co, schedule};
+use open_coroutine::co;
 use std::os::raw::c_void;
 use std::time::Duration;
 
 #[open_coroutine::main]
 fn main() {
     static mut EXAMPLE_FLAG: bool = true;
-    co(
-        |_yielder, input: Option<&'static mut c_void>| {
+    let handle = co(
+        |_yielder, input: Option<&'static mut i32>| {
             println!("[coroutine1] launched");
             unsafe {
                 while EXAMPLE_FLAG {
@@ -16,7 +16,7 @@ fn main() {
             }
             input
         },
-        None,
+        Some(Box::leak(Box::new(1))),
         4096,
     );
     co(
@@ -30,7 +30,8 @@ fn main() {
         None,
         4096,
     );
-    assert!(schedule());
+    let result = handle.join();
+    assert_eq!(result.unwrap(), 1);
     unsafe { assert!(!EXAMPLE_FLAG) };
     println!("preemptive schedule finished successfully!");
 }

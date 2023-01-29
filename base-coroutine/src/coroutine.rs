@@ -286,13 +286,13 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         })
     }
 
-    pub fn current<'c>() -> Option<&'a mut OpenCoroutine<'c, Param, Yield, Return>> {
+    pub fn current() -> Option<&'a mut OpenCoroutine<'a, Param, Yield, Return>> {
         COROUTINE.with(|boxed| {
             let ptr = *boxed.borrow_mut();
             if ptr.is_null() {
                 None
             } else {
-                Some(unsafe { &mut *(ptr as *mut OpenCoroutine<Param, Yield, Return>) })
+                Some(unsafe { &mut *(ptr as *mut OpenCoroutine<'a, Param, Yield, Return>) })
             }
         })
     }

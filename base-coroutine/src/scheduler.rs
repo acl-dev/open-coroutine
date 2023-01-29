@@ -92,12 +92,15 @@ impl Scheduler {
         Ok(ptr)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.ready.is_empty()
+            && unsafe { SUSPEND_TABLE.is_empty() && SYSTEM_CALL_TABLE.is_empty() }
+            && self.copy_stack.is_empty()
+    }
+
     pub fn timed_schedule(&mut self, timeout: Duration) -> std::io::Result<()> {
         let timeout_time = timer_utils::get_timeout_time(timeout);
-        while !self.ready.is_empty()
-            || unsafe { !SUSPEND_TABLE.is_empty() || !SYSTEM_CALL_TABLE.is_empty() }
-            || !self.copy_stack.is_empty()
-        {
+        while !self.is_empty() {
             if timeout_time <= timer_utils::now() {
                 break;
             }
