@@ -344,7 +344,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn preemptive_schedule() {
-        static mut FLAG: bool = true;
+        static mut TEST_FLAG: bool = true;
         let handler = std::thread::spawn(|| {
             let mut scheduler = Scheduler::new();
             extern "C" fn f1(
@@ -352,7 +352,7 @@ mod tests {
                 _input: &'static mut c_void,
             ) -> &'static mut c_void {
                 unsafe {
-                    while FLAG {
+                    while TEST_FLAG {
                         println!("loop");
                         std::thread::sleep(Duration::from_millis(10));
                     }
@@ -365,7 +365,7 @@ mod tests {
                 _input: &'static mut c_void,
             ) -> &'static mut c_void {
                 unsafe {
-                    FLAG = false;
+                    TEST_FLAG = false;
                 }
                 null()
             }
@@ -374,7 +374,7 @@ mod tests {
         });
         unsafe {
             handler.join().unwrap();
-            assert!(!FLAG);
+            assert!(!TEST_FLAG);
         }
     }
 }

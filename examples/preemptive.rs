@@ -4,12 +4,12 @@ use std::time::Duration;
 
 #[open_coroutine::main]
 fn main() {
-    static mut FLAG: bool = true;
+    static mut EXAMPLE_FLAG: bool = true;
     co(
         |_yielder, input: Option<&'static mut c_void>| {
             println!("[coroutine1] launched");
             unsafe {
-                while FLAG {
+                while EXAMPLE_FLAG {
                     println!("loop");
                     std::thread::sleep(Duration::from_millis(10));
                 }
@@ -23,7 +23,7 @@ fn main() {
         |_yielder, input: Option<&'static mut c_void>| {
             println!("[coroutine2] launched");
             unsafe {
-                FLAG = false;
+                EXAMPLE_FLAG = false;
             }
             input
         },
@@ -31,6 +31,6 @@ fn main() {
         4096,
     );
     assert!(schedule());
-    unsafe { assert!(!FLAG) };
+    unsafe { assert!(!EXAMPLE_FLAG) };
     println!("preemptive schedule finished successfully!");
 }
