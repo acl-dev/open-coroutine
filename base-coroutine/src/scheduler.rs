@@ -177,10 +177,6 @@ impl Scheduler {
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
-                    CoroutineResult::SystemCall => {
-                        coroutine.status = Status::SystemCall;
-                        unsafe { SYSTEM_CALL_TABLE.insert(coroutine.get_id(), coroutine) };
-                    }
                 };
                 #[cfg(unix)]
                 {
@@ -221,20 +217,20 @@ impl Scheduler {
         }
     }
 
-    /// 用户不应该使用此方法
-    pub fn syscall(&mut self) {
-        //挂起当前协程
-        let yielder = Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
-        if !yielder.is_null() {
-            unsafe { (*yielder).syscall() };
+    pub(crate) fn syscall(&self, co_id: usize, co: *mut c_void) {
+        unsafe {
+            let c: &mut Coroutine<&'static mut c_void, &'static mut c_void> =
+                &mut *(co as *mut OpenCoroutine<'_, &mut libc::c_void, (), &mut libc::c_void>);
+            c.status = Status::SystemCall;
+            SYSTEM_CALL_TABLE.insert_raw(co_id, co);
         }
     }
 
-    /// 用户不应该使用此方法
-    #[allow(clippy::missing_safety_doc)]
-    pub unsafe fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
-        if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-            self.ready.push_back_raw(co)?;
+    pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
+        unsafe {
+            if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
+                self.ready.push_back_raw(co)?;
+            }
         }
         Ok(())
     }

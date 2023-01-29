@@ -24,9 +24,7 @@ fn main() {
         "powerpc" => "ppc32",
         "powerpc64" => "ppc64",
         "x86_64" => "x86_64",
-        _ => {
-            panic!("Unsupported architecture: {}", target);
-        }
+        _ => panic!("Unsupported architecture: {target}"),
     };
 
     let abi = match arch {
