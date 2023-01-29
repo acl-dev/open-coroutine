@@ -221,44 +221,44 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn build_token() -> usize {
+    fn build_token() -> (usize, *mut c_void) {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            co.get_id()
+            (co.get_id(), co as *mut _ as *mut c_void)
         } else {
-            0
+            (0, std::ptr::null_mut())
         }
     }
 
     pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         let token = <EventLoop<'a>>::build_token();
-        self.selector.register(fd, token, Interest::READABLE)?;
+        self.scheduler.syscall(token.0, token.1);
+        self.selector.register(fd, token.0, Interest::READABLE)?;
         unsafe {
             READABLE_RECORDS.insert(fd);
-            READABLE_TOKEN_RECORDS.insert(fd, token);
+            READABLE_TOKEN_RECORDS.insert(fd, token.0);
         }
         Ok(())
     }
 
     pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         let token = <EventLoop<'a>>::build_token();
-        self.selector.register(fd, token, Interest::WRITABLE)?;
+        self.scheduler.syscall(token.0, token.1);
+        self.selector.register(fd, token.0, Interest::WRITABLE)?;
         unsafe {
             WRITABLE_RECORDS.insert(fd);
-            WRITABLE_TOKEN_RECORDS.insert(fd, token);
+            WRITABLE_TOKEN_RECORDS.insert(fd, token.0);
         }
         Ok(())
     }
 
     pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
-        //fixme 这里应该只调1次scheduler.syscall，实际由于外层的loop，可能会调用多次
-        self.scheduler.syscall();
         let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout)?;
         for event in events.iter() {
             let fd = event.fd();
             let token = event.token();
+            let _ = self.scheduler.resume(token);
             unsafe {
-                let _ = self.scheduler.resume(token);
                 if event.is_readable() {
                     READABLE_TOKEN_RECORDS.remove(&fd);
                 }

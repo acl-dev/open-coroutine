@@ -65,20 +65,6 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
         }
     }
 
-    pub(crate) extern "C" fn syscall(&self) {
-        OpenCoroutine::<Param, Yield, Return>::clean_current();
-        let yielder = OpenCoroutine::<Param, Yield, Return>::yielder();
-        OpenCoroutine::<Param, Yield, Return>::clean_yielder();
-        unsafe {
-            let mut coroutine_result = CoroutineResult::<Yield, Return>::SystemCall;
-            //see Scheduler.do_schedule
-            self.sp
-                .context
-                .resume(&mut coroutine_result as *mut _ as usize);
-            OpenCoroutine::init_yielder(&*yielder);
-        }
-    }
-
     pub extern "C" fn delay(&self, val: Yield, ms_time: u64) -> Param {
         self.delay_ns(
             val,
@@ -117,8 +103,6 @@ pub enum CoroutineResult<Yield, Return> {
 
     /// Value returned by a coroutine returning from its main function.
     Return(Return),
-
-    SystemCall,
 }
 
 impl<Yield, Return> CoroutineResult<Yield, Return> {
@@ -127,7 +111,6 @@ impl<Yield, Return> CoroutineResult<Yield, Return> {
         match self {
             CoroutineResult::Yield(val) => Some(val),
             CoroutineResult::Return(_) => None,
-            CoroutineResult::SystemCall => None,
         }
     }
 
@@ -136,7 +119,6 @@ impl<Yield, Return> CoroutineResult<Yield, Return> {
         match self {
             CoroutineResult::Yield(_) => None,
             CoroutineResult::Return(val) => Some(val),
-            CoroutineResult::SystemCall => None,
         }
     }
 }

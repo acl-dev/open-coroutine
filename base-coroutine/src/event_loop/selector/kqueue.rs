@@ -304,7 +304,7 @@ impl AsRawFd for Selector {
 impl Drop for Selector {
     fn drop(&mut self) {
         if let Err(err) = syscall!(close(self.kq)) {
-            eprintln!("error closing kqueue: {}", err);
+            eprintln!("error closing kqueue: {err}");
         }
     }
 }
