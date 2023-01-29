@@ -218,6 +218,9 @@ impl Scheduler {
     }
 
     pub(crate) fn syscall(&self, co_id: usize, co: *mut c_void) {
+        if co_id == 0 {
+            return;
+        }
         unsafe {
             let c: &mut Coroutine<&'static mut c_void, &'static mut c_void> =
                 &mut *(co as *mut OpenCoroutine<'_, &mut libc::c_void, (), &mut libc::c_void>);
