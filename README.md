@@ -140,7 +140,7 @@ use std::time::Duration;
 fn main() {
     static mut EXAMPLE_FLAG: bool = true;
     let handle = co(
-        |_yielder, input: Option<&'static mut c_void>| {
+        |_yielder, input: Option<&'static mut i32>| {
             println!("[coroutine1] launched");
             unsafe {
                 while EXAMPLE_FLAG {
@@ -150,21 +150,21 @@ fn main() {
             }
             input
         },
-        Some(unsafe { std::mem::transmute(1usize) }),
+        Some(Box::leak(Box::new(1))),
         4096,
     );
     co(
         |_yielder, input: Option<&'static mut c_void>| {
             println!("[coroutine2] launched");
             unsafe {
-                FLAG = false;
+              EXAMPLE_FLAG = false;
             }
             input
         },
         None,
         4096,
     );
-    let result = handle.timeout_join(Duration::from_secs(1));
+    let result = handle.join();
     assert_eq!(result.unwrap(), 1);
     unsafe { assert!(!EXAMPLE_FLAG) };
     println!("preemptive schedule finished successfully!");

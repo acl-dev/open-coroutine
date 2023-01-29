@@ -33,18 +33,6 @@ impl JoinHandle {
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
-            if result.get_result().is_some() {
-                break;
-            }
-            let left_time = timeout_time.saturating_sub(timer_utils::now());
-            //等待事件到来
-            if let Err(e) = EventLoop::next().wait(Some(Duration::from_nanos(left_time))) {
-                match e.kind() {
-                    //maybe invoke by Monitor::signal(), just ignore this
-                    std::io::ErrorKind::Interrupted => continue,
-                    _ => return Err(e),
-                }
-            }
         }
         Ok(result.get_result().unwrap() as *mut c_void as usize)
     }
@@ -58,17 +46,6 @@ impl JoinHandle {
         };
         while result.get_result().is_none() {
             EventLoop::round_robin_schedule()?;
-            if result.get_result().is_some() {
-                break;
-            }
-            //等待事件到来
-            if let Err(e) = EventLoop::next().wait(Some(Duration::from_secs(1))) {
-                match e.kind() {
-                    //maybe invoke by Monitor::signal(), just ignore this
-                    std::io::ErrorKind::Interrupted => continue,
-                    _ => return Err(e),
-                }
-            }
         }
         Ok(result.get_result().unwrap() as *mut c_void as usize)
     }
@@ -146,7 +123,15 @@ impl<'a> EventLoop<'a> {
     pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
         let results: Vec<std::io::Result<()>> = (0..num_cpus::get())
             .into_par_iter()
-            .map(|_| EventLoop::next_scheduler().try_timeout_schedule(timeout_time))
+            .map(|_| {
+                let event_loop = EventLoop::next();
+                let result = event_loop.scheduler.try_timeout_schedule(timeout_time);
+                let left_time = timeout_time
+                    .saturating_sub(timer_utils::now())
+                    .min(1_000_000_000);
+                let _ = event_loop.wait(Some(Duration::from_nanos(left_time)));
+                result
+            })
             .collect();
         for result in results {
             result?;
