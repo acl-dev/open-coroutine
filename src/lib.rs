@@ -78,7 +78,9 @@ pub fn schedule() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{co, coroutine_crate, init, schedule, JoinHandle, UserFunc, Yielder};
+    use crate::{
+        co, coroutine_crate, init, schedule, timed_schedule, JoinHandle, UserFunc, Yielder,
+    };
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::os::raw::c_void;
@@ -277,6 +279,99 @@ mod tests {
                 Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "The service was not completed within the specified time",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    static CO_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
+
+    unsafe fn crate_co_server(port: u16, server_finished: Arc<(Mutex<bool>, Condvar)>) {
+        //invoke by libc::listen
+        let _ = co_crate(fx, Some(&mut *(11usize as *mut c_void)), 4096);
+        let mut data: [u8; 512] = std::mem::zeroed();
+        data[511] = b'\n';
+        let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
+            .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
+        CO_SERVER_STARTED.store(true, Ordering::Release);
+        //invoke by libc::accept
+        let _ = co_crate(fx, Some(&mut *(12usize as *mut c_void)), 4096);
+        for stream in listener.incoming() {
+            let stream = stream.expect("accept new connection failed !");
+            let leaked: &'static mut TcpStream = Box::leak(Box::new(stream));
+            let _ = co(
+                |_yielder, input: Option<&'static mut c_void>| {
+                    let mut stream: TcpStream =
+                        std::ptr::read_unaligned(std::mem::transmute(input.unwrap()));
+                    let mut buffer: [u8; 512] = [0; 512];
+                    loop {
+                        //invoke by libc::recv
+                        let _ = co_crate(fx, Some(&mut *(16usize as *mut c_void)), 4096);
+                        //从流里面读内容，读到buffer中
+                        let bytes_read = stream.read(&mut buffer).expect("server read failed !");
+                        if bytes_read == 1 && buffer[0] == b'e' {
+                            //如果读到的为空，说明已经结束了
+                            let (lock, cvar) = &*server_finished;
+                            let mut pending = lock.lock().unwrap();
+                            *pending = false;
+                            cvar.notify_one();
+                            println!("coroutine server closed");
+                            return Some(Box::leak(Box::new(stream)));
+                        }
+                        assert_eq!(512, bytes_read);
+                        assert_eq!(data, buffer);
+                        //invoke by libc::send
+                        let _ = co_crate(fx, Some(&mut *(17usize as *mut c_void)), 4096);
+                        //回写
+                        assert_eq!(
+                            bytes_read,
+                            stream
+                                .write(&buffer[..bytes_read])
+                                .expect("server write failed !")
+                        );
+                    }
+                },
+                Some(std::mem::transmute(leaked)),
+                4096,
+            )
+            .join();
+            assert_eq!(timed_schedule(25_000_000_000), 0);
+        }
+    }
+
+    #[test]
+    fn hook_test_co_connect_and_poll_and_accept() -> std::io::Result<()> {
+        let port = 8889;
+        let clone = port.clone();
+        let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let server_finished = Arc::clone(&server_finished_pair);
+        unsafe {
+            std::thread::spawn(move || crate_co_server(clone, server_finished_pair));
+            std::thread::spawn(move || {
+                //等服务端起来
+                while !CO_SERVER_STARTED.load(Ordering::Acquire) {}
+                //invoke by libc::connect
+                let _ = co_crate(fx, Some(&mut *(13usize as *mut c_void)), 4096);
+                let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
+                let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
+                    .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
+                client_main(stream)
+            });
+
+            let (lock, cvar) = &*server_finished;
+            let result = cvar
+                .wait_timeout_while(
+                    lock.lock().unwrap(),
+                    Duration::from_secs(30),
+                    |&mut pending| pending,
+                )
+                .unwrap();
+            if result.1.timed_out() {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "The coroutine service was not completed within the specified time",
                 ))
             } else {
                 Ok(())
