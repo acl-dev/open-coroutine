@@ -165,7 +165,10 @@ fn main() {
         4096,
     );
     let result = handle.join();
-    assert_eq!(result.unwrap(), 1);
+    unsafe {
+        assert_eq!(std::ptr::read_unaligned(result.unwrap() as *mut i32), 1);
+        assert!(!EXAMPLE_FLAG);
+    }
     unsafe { assert!(!EXAMPLE_FLAG) };
     println!("preemptive schedule finished successfully!");
 }
