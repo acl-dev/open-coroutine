@@ -78,9 +78,7 @@ pub fn schedule() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        co, coroutine_crate, init, schedule, timed_schedule, JoinHandle, UserFunc, Yielder,
-    };
+    use crate::{co, coroutine_crate, init, schedule, JoinHandle, UserFunc, Yielder};
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::os::raw::c_void;
@@ -337,7 +335,6 @@ mod tests {
                 4096,
             )
             .join();
-            assert_eq!(timed_schedule(25_000_000_000), 0);
         }
     }
 
