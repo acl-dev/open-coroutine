@@ -218,7 +218,12 @@ mod tests {
         }
     }
 
-    unsafe fn client_main(mut stream: TcpStream) {
+    unsafe fn client_main(port: u16) {
+        //invoke by libc::connect
+        let _ = co_crate(fx, Some(&mut *(3usize as *mut c_void)), 4096);
+        let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
+        let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
+            .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
@@ -249,20 +254,14 @@ mod tests {
     #[test]
     fn hook_test_connect_and_poll_and_accept() -> std::io::Result<()> {
         let port = 8888;
-        let clone = port.clone();
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
-            std::thread::spawn(move || crate_server(clone, server_finished_pair));
+            std::thread::spawn(move || crate_server(port, server_finished_pair));
             std::thread::spawn(move || {
                 //等服务端起来
                 while !SERVER_STARTED.load(Ordering::Acquire) {}
-                //invoke by libc::connect
-                let _ = co_crate(fx, Some(&mut *(3usize as *mut c_void)), 4096);
-                let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
-                let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-                    .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
-                client_main(stream)
+                client_main(port)
             });
 
             let (lock, cvar) = &*server_finished;
@@ -339,22 +338,16 @@ mod tests {
     }
 
     #[test]
-    fn hook_test_co_connect_and_poll_and_accept() -> std::io::Result<()> {
+    fn hook_test_co_server() -> std::io::Result<()> {
         let port = 8889;
-        let clone = port.clone();
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
-            std::thread::spawn(move || crate_co_server(clone, server_finished_pair));
+            std::thread::spawn(move || crate_co_server(port, server_finished_pair));
             std::thread::spawn(move || {
                 //等服务端起来
                 while !CO_SERVER_STARTED.load(Ordering::Acquire) {}
-                //invoke by libc::connect
-                let _ = co_crate(fx, Some(&mut *(13usize as *mut c_void)), 4096);
-                let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
-                let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-                    .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
-                client_main(stream)
+                client_main(port)
             });
 
             let (lock, cvar) = &*server_finished;
