@@ -114,7 +114,7 @@ pub extern "C" fn connect(
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
             if let Err(e) =
-                event_loop.wait_write_event(socket, Some(std::time::Duration::from_secs(1)))
+                event_loop.wait_write_event(socket, Some(std::time::Duration::from_millis(10)))
             {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
@@ -179,7 +179,7 @@ pub extern "C" fn accept(
 ) -> libc::c_int {
     impl_read_hook!(
         (Lazy::force(&ACCEPT))(socket, address, address_len),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -324,7 +324,7 @@ pub extern "C" fn send(
 ) -> libc::ssize_t {
     impl_expected_write_hook!(
         (Lazy::force(&SEND))(socket, buf, len, flags),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -339,7 +339,7 @@ pub extern "C" fn write(
 ) -> libc::ssize_t {
     impl_expected_write_hook!(
         (Lazy::force(&WRITE))(fd, buf, count),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -354,7 +354,7 @@ pub extern "C" fn writev(
 ) -> libc::ssize_t {
     impl_write_hook!(
         (Lazy::force(&WRITEV))(fd, iov, iovcnt),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -380,7 +380,7 @@ pub extern "C" fn sendto(
 ) -> libc::ssize_t {
     impl_expected_write_hook!(
         (Lazy::force(&SENDTO))(socket, buf, len, flags, addr, addrlen),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -396,7 +396,7 @@ pub extern "C" fn sendmsg(
 ) -> libc::ssize_t {
     impl_write_hook!(
         (Lazy::force(&SENDMSG))(fd, msg, flags),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -413,7 +413,7 @@ pub extern "C" fn pwrite(
 ) -> libc::ssize_t {
     impl_expected_write_hook!(
         (Lazy::force(&PWRITE))(fd, buf, count, offset),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -430,7 +430,7 @@ pub extern "C" fn pwritev(
 ) -> libc::ssize_t {
     impl_write_hook!(
         (Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -448,7 +448,7 @@ pub extern "C" fn recv(
 ) -> libc::ssize_t {
     impl_expected_read_hook!(
         (Lazy::force(&RECV))(socket, buf, len, flags),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -463,7 +463,7 @@ pub extern "C" fn readv(
 ) -> libc::ssize_t {
     impl_read_hook!(
         (Lazy::force(&READV))(fd, iov, iovcnt),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -480,7 +480,7 @@ pub extern "C" fn pread(
 ) -> libc::ssize_t {
     impl_expected_read_hook!(
         (Lazy::force(&PREAD))(fd, buf, count, offset),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -497,7 +497,7 @@ pub extern "C" fn preadv(
 ) -> libc::ssize_t {
     impl_read_hook!(
         (Lazy::force(&PREADV))(fd, iov, iovcnt, offset),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -523,7 +523,7 @@ pub extern "C" fn recvfrom(
 ) -> libc::ssize_t {
     impl_expected_read_hook!(
         (Lazy::force(&RECVFROM))(socket, buf, len, flags, addr, addrlen),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }
 
@@ -538,6 +538,6 @@ pub extern "C" fn recvmsg(
 ) -> libc::ssize_t {
     impl_read_hook!(
         (Lazy::force(&RECVMSG))(fd, msg, flags),
-        Some(std::time::Duration::from_secs(1))
+        Some(std::time::Duration::from_millis(10))
     )
 }

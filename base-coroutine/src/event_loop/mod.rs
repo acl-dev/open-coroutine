@@ -130,7 +130,7 @@ impl<'a> EventLoop<'a> {
                 let result = event_loop.scheduler.try_timeout_schedule(timeout_time);
                 let left_time = timeout_time
                     .saturating_sub(timer_utils::now())
-                    .min(1_000_000_000);
+                    .min(10_000_000);
                 let _ = event_loop.wait(Some(Duration::from_nanos(left_time)));
                 result
             })
