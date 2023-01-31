@@ -13,20 +13,39 @@ Still under development, please `do not` use this library in the `production` en
   <summary>syscalls</summary>
 
     - [ ] open
-    - [ ] lseek
+    - [ ] chdir
+    - [ ] chroot
+    - [ ] mkdir
+    - [ ] rmdir
+    - [ ] link
+    - [ ] unlink
+    - [ ] readlink
+    - [ ] stat
+    - [ ] dup
+    - [ ] dup2
+    - [ ] umask
+    - [ ] mount
+    - [ ] umount
+    - [ ] mknod
     - [ ] fcntl
     - [ ] truncate
     - [ ] ftruncate
     - [ ] setjmp
     - [ ] longjmp
-    - [ ] sigsetjmp
-    - [ ] siglongjmp
     - [ ] chown
     - [ ] lchown
     - [ ] fchown
     - [ ] chmod
     - [ ] fchmod
     - [ ] fchmodat
+    - [ ] semop
+    - [ ] ppoll
+    - [ ] pselect
+    - [ ] io_getevents
+    - [ ] semop
+    - [ ] semtimedop
+    - [ ] msgrcv
+    - [ ] msgsnd
 
   </details>
 

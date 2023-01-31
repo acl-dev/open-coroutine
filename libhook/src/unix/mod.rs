@@ -220,14 +220,7 @@ pub extern "C" fn poll(
     let mut r;
     // just check select every x ms
     loop {
-        unsafe {
-            let mut set: libc::sigset_t = std::mem::zeroed();
-            libc::sigaddset(&mut set, libc::SIGURG);
-            let mut oldset: libc::sigset_t = std::mem::zeroed();
-            libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
-            r = (Lazy::force(&POLL))(fds, nfds, 0);
-            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
-        }
+        r = base_coroutine::unbreakable!((Lazy::force(&POLL))(fds, nfds, 0));
         if r != 0 || t == 0 {
             break;
         }
@@ -287,14 +280,9 @@ pub extern "C" fn select(
     let mut r;
     // just check poll every x ms
     loop {
-        unsafe {
-            let mut set: libc::sigset_t = std::mem::zeroed();
-            libc::sigaddset(&mut set, libc::SIGURG);
-            let mut oldset: libc::sigset_t = std::mem::zeroed();
-            libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
-            r = (Lazy::force(&SELECT))(nfds, readfds, writefds, errorfds, &mut o);
-            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
-        }
+        r = base_coroutine::unbreakable!((Lazy::force(&SELECT))(
+            nfds, readfds, writefds, errorfds, &mut o
+        ));
         if r != 0 || t == 0 {
             break;
         }
