@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
 use timer_utils::TimerList;
 
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
@@ -52,7 +51,8 @@ impl Monitor {
                     #[cfg(all(unix, feature = "preemptive-schedule"))]
                     monitor.signal();
                     monitor.balance();
-                    let _ = EventLoop::next().wait(Some(Duration::from_millis(1)));
+                    let timeout_time = timer_utils::add_timeout_time(1_000_000);
+                    let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
                 }
             })
         });
