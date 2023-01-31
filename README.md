@@ -7,12 +7,64 @@ The `open-coroutine` is a simple, efficient and generic stackful-coroutine libra
 Still under development, please `do not` use this library in the `production` environment !
 
 ### Features
+#### todo
+- [ ] hook other syscall maybe interrupt by signal
+  <details>
+  <summary>syscalls</summary>
+
+    - [ ] open
+    - [ ] chdir
+    - [ ] chroot
+    - [ ] mkdir
+    - [ ] rmdir
+    - [ ] link
+    - [ ] unlink
+    - [ ] readlink
+    - [ ] stat
+    - [ ] dup
+    - [ ] dup2
+    - [ ] umask
+    - [ ] mount
+    - [ ] umount
+    - [ ] mknod
+    - [ ] fcntl
+    - [ ] truncate
+    - [ ] ftruncate
+    - [ ] setjmp
+    - [ ] longjmp
+    - [ ] chown
+    - [ ] lchown
+    - [ ] fchown
+    - [ ] chmod
+    - [ ] fchmod
+    - [ ] fchmodat
+    - [ ] semop
+    - [ ] ppoll
+    - [ ] pselect
+    - [ ] io_getevents
+    - [ ] semop
+    - [ ] semtimedop
+    - [ ] msgrcv
+    - [ ] msgsnd
+
+  </details>
+
+- [ ] consider use `corosensei` as low_level coroutine
+- [ ] support back trace
+- [ ] support `join_all` to wait coroutines
+- [ ] support `#[open_coroutine::co]` macro
+- [ ] refactor `WorkStealQueue` to singleton
+- [ ] optimize `Stack` and `OpenCoroutine` to make `cache miss` happen less
+- [ ] `Monitor` follow the `thread-per-core` guideline
+- [ ] `EventLoop` follow the `thread-per-core` guideline, don't forget to consider the `Monitor` thread
+
 #### 0.2.0
 - [x] use correct `epoll_event` struct
 - [x] use `rayon` for parallel computing
 - [x] support `#[open_coroutine::main]` macro
 - [x] hook almost all `read` syscall
-  <details><summary>read syscalls</summary>
+  <details>
+  <summary>read syscalls</summary>
   
   - [x] recv
   - [x] readv
@@ -24,7 +76,8 @@ Still under development, please `do not` use this library in the `production` en
   </details>
 
 - [x] hook almost all `write` syscall
-  <details><summary>write syscalls</summary>
+  <details>
+  <summary>write syscalls</summary>
 
   - [x] send
   - [x] write
@@ -37,7 +90,8 @@ Still under development, please `do not` use this library in the `production` en
   </details>
 
 - [x] hook other syscall
-  <details><summary>other syscalls</summary>
+  <details>
+  <summary>other syscalls</summary>
   
   - [x] sleep
   - [x] usleep
@@ -83,14 +137,16 @@ fn main() {
 enjoy the performance improvement brought by `open-coroutine` !
 
 ### examples
-<details><summary>simplest example</summary>
+#### simplest example
 
 run hello example
 ```shell
 cargo run --example hello
 ```
 
-code below
+<details>
+<summary>Click to see code</summary>
+
 ```rust
 use open_coroutine::co;
 use std::os::raw::c_void;
@@ -121,7 +177,7 @@ fn main() {
 
 </details>
 
-<details><summary>preemptive example</summary>
+#### preemptive example
 
 Note: not supported for windows
 
@@ -130,7 +186,9 @@ run preemptive example
 cargo run --example preemptive
 ```
 
-code below
+<details>
+<summary>Click to see code</summary>
+
 ```rust
 use open_coroutine::co;
 use std::os::raw::c_void;

@@ -246,6 +246,7 @@ mod tests {
     use crate::coroutine::Yielder;
     use crate::scheduler::Scheduler;
     use std::os::raw::c_void;
+    use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
     use std::time::Duration;
 
@@ -339,9 +340,11 @@ mod tests {
 
     #[cfg(all(unix, feature = "preemptive-schedule"))]
     #[test]
-    fn preemptive_schedule() {
+    fn preemptive_schedule() -> std::io::Result<()> {
         static mut TEST_FLAG: bool = true;
-        let handler = std::thread::spawn(|| {
+        let pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let pair2 = Arc::clone(&pair);
+        let handler = thread::spawn(move || {
             let mut scheduler = Scheduler::new();
             extern "C" fn f1(
                 _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
@@ -367,10 +370,34 @@ mod tests {
             }
             scheduler.submit(f2, null(), 4096).expect("submit failed !");
             scheduler.try_schedule().expect("try_schedule failed !");
+
+            let (lock, cvar) = &*pair2;
+            let mut pending = lock.lock().unwrap();
+            *pending = false;
+            // notify the condvar that the value has changed.
+            cvar.notify_one();
         });
-        unsafe {
-            handler.join().unwrap();
-            assert!(!TEST_FLAG);
+
+        // wait for the thread to start up
+        let (lock, cvar) = &*pair;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(3000),
+                |&mut pending| pending,
+            )
+            .unwrap();
+        if result.1.timed_out() {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "preemptive schedule failed",
+            ))
+        } else {
+            unsafe {
+                handler.join().unwrap();
+                assert!(!TEST_FLAG);
+            }
+            Ok(())
         }
     }
 }
