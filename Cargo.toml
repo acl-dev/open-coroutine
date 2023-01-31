@@ -22,7 +22,7 @@ members = [
 
 [dependencies]
 libc = "0.2.119"
-base-coroutine = { version = "0.2.0", path = "base-coroutine" }
+base-coroutine = { version = "0.2.0", features = ["full"], path = "base-coroutine" }
 open-coroutine-macros = { version = "0.1.0", path = "open-coroutine-macros" }
 
 [dev-dependencies]

@@ -208,11 +208,7 @@ mod tests {
             println!("sigurg should not handle");
         }
         register_handler(sigurg_handler as libc::sighandler_t);
-        unsafe {
-            let mut set: libc::sigset_t = std::mem::zeroed();
-            libc::sigaddset(&mut set, libc::SIGURG);
-            libc::pthread_sigmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
-        }
+        shield!();
         Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(1000)));
         std::thread::sleep(Duration::from_millis(1100));
     }
