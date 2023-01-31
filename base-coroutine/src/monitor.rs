@@ -1,5 +1,5 @@
 use crate::work_steal::{WorkStealQueue, GLOBAL_QUEUE, LOCAL_QUEUES};
-use crate::{Coroutine, EventLoop};
+use crate::EventLoop;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -31,7 +31,8 @@ impl Monitor {
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                let yielder = Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
+                let yielder =
+                    crate::Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
                 if !yielder.is_null() {
                     //挂起当前协程
                     unsafe { (*yielder).suspend(()) };
@@ -91,6 +92,7 @@ impl Monitor {
 
     pub(crate) fn add_task(time: u64) {
         Monitor::init_signal_time(time);
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global().task.insert(time, pthread);
@@ -99,6 +101,7 @@ impl Monitor {
 
     pub(crate) fn clean_task(time: u64) {
         if let Some(entry) = Monitor::global().task.get_entry(time) {
+            #[cfg(all(unix, feature = "preemptive-schedule"))]
             unsafe {
                 let mut pthread = libc::pthread_self();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
