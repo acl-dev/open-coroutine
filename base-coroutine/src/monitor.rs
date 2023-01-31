@@ -1,5 +1,5 @@
 use crate::work_steal::{WorkStealQueue, GLOBAL_QUEUE, LOCAL_QUEUES};
-use crate::{Coroutine, EventLoop};
+use crate::EventLoop;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::os::raw::c_void;
@@ -27,10 +27,12 @@ unsafe impl Sync for Monitor {}
 
 impl Monitor {
     fn new() -> Self {
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                let yielder = Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
+                let yielder =
+                    crate::Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
                 if !yielder.is_null() {
                     //挂起当前协程
                     unsafe { (*yielder).suspend(()) };
@@ -47,6 +49,7 @@ impl Monitor {
             std::thread::spawn(|| {
                 let monitor = Monitor::global();
                 while monitor.flag.load(Ordering::Acquire) {
+                    #[cfg(all(unix, feature = "preemptive-schedule"))]
                     monitor.signal();
                     monitor.balance();
                     let _ = EventLoop::next().wait(Some(Duration::from_millis(1)));
@@ -68,6 +71,7 @@ impl Monitor {
         Monitor::global().flag.store(false, Ordering::Release);
     }
 
+    #[cfg(all(unix, feature = "preemptive-schedule"))]
     fn signal(&mut self) {
         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
         for entry in self.task.iter() {
@@ -88,6 +92,7 @@ impl Monitor {
 
     pub(crate) fn add_task(time: u64) {
         Monitor::init_signal_time(time);
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global().task.insert(time, pthread);
@@ -96,6 +101,7 @@ impl Monitor {
 
     pub(crate) fn clean_task(time: u64) {
         if let Some(entry) = Monitor::global().task.get_entry(time) {
+            #[cfg(all(unix, feature = "preemptive-schedule"))]
             unsafe {
                 let mut pthread = libc::pthread_self();
                 entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
@@ -165,7 +171,7 @@ impl Monitor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix, feature = "preemptive-schedule"))]
 mod tests {
     use crate::monitor::Monitor;
     use std::time::Duration;
@@ -208,11 +214,7 @@ mod tests {
             println!("sigurg should not handle");
         }
         register_handler(sigurg_handler as libc::sighandler_t);
-        unsafe {
-            let mut set: libc::sigset_t = std::mem::zeroed();
-            libc::sigaddset(&mut set, libc::SIGURG);
-            libc::pthread_sigmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
-        }
+        shield!();
         Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(1000)));
         std::thread::sleep(Duration::from_millis(1100));
     }
