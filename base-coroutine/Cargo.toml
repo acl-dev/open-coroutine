@@ -52,5 +52,5 @@ default = []
 # Not enable for default,
 preemptive-schedule = []
 
-# Enable all
+# Enable all features
 full = ["preemptive-schedule"]

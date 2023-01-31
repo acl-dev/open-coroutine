@@ -1,6 +1,5 @@
 use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFunc, Yielder};
 use crate::id::IdGenerator;
-#[cfg(all(unix, feature = "preemptive-schedule"))]
 use crate::monitor::Monitor;
 use crate::stack::Stack;
 use crate::work_steal::{get_queue, WorkStealQueue};
@@ -155,7 +154,6 @@ impl Scheduler {
                     &mut *(pointer as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
                 };
                 let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
-                #[cfg(all(unix, feature = "preemptive-schedule"))]
                 Monitor::add_task(_start);
                 //see OpenCoroutine::child_context_func
                 match coroutine.resume() {
@@ -181,7 +179,6 @@ impl Scheduler {
                 };
                 //还没执行到10ms就主动yield了，此时需要清理signal
                 //否则下一个协程执行不到10ms就被抢占调度了
-                #[cfg(all(unix, feature = "preemptive-schedule"))]
                 Monitor::clean_task(_start);
                 self.do_schedule();
             }

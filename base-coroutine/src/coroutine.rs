@@ -1,6 +1,5 @@
 use crate::context::{Context, Transfer};
 use crate::id::IdGenerator;
-#[cfg(all(unix, feature = "preemptive-schedule"))]
 use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
@@ -169,7 +168,6 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             //还没执行到10ms就返回了，此时需要清理signal
             //否则下一个协程执行不到10ms就被抢占调度了
-            #[cfg(all(unix, feature = "preemptive-schedule"))]
             Monitor::clean_task(Monitor::signal_time());
             if let Some(scheduler) = coroutine.scheduler {
                 coroutine.result = MaybeUninit::new(ManuallyDrop::new(result));

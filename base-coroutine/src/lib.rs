@@ -37,7 +37,7 @@ mod random;
 #[allow(dead_code)]
 pub mod scheduler;
 
-#[cfg(all(unix, feature = "preemptive-schedule"))]
+#[cfg(unix)]
 #[macro_export]
 macro_rules! shield {
     () => {{
@@ -51,7 +51,7 @@ macro_rules! shield {
     }};
 }
 
-#[cfg(all(unix, feature = "preemptive-schedule"))]
+#[cfg(unix)]
 #[macro_export]
 macro_rules! unbreakable {
     ( ( $fn: expr ) ( $($arg: expr),* $(,)* ) ) => {{
@@ -65,7 +65,6 @@ macro_rules! unbreakable {
 }
 
 #[allow(dead_code)]
-#[cfg(all(unix, feature = "preemptive-schedule"))]
 mod monitor;
 
 #[allow(dead_code)]

@@ -27,6 +27,7 @@ unsafe impl Sync for Monitor {}
 
 impl Monitor {
     fn new() -> Self {
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
@@ -47,6 +48,7 @@ impl Monitor {
             std::thread::spawn(|| {
                 let monitor = Monitor::global();
                 while monitor.flag.load(Ordering::Acquire) {
+                    #[cfg(all(unix, feature = "preemptive-schedule"))]
                     monitor.signal();
                     monitor.balance();
                     let _ = EventLoop::next().wait(Some(Duration::from_millis(1)));
@@ -68,6 +70,7 @@ impl Monitor {
         Monitor::global().flag.store(false, Ordering::Release);
     }
 
+    #[cfg(all(unix, feature = "preemptive-schedule"))]
     fn signal(&mut self) {
         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
         for entry in self.task.iter() {
@@ -165,7 +168,7 @@ impl Monitor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix, feature = "preemptive-schedule"))]
 mod tests {
     use crate::monitor::Monitor;
     use std::time::Duration;
