@@ -296,12 +296,11 @@ mod tests {
         //invoke by libc::accept
         let _ = co_crate(fx, Some(&mut *(12usize as *mut c_void)), 4096);
         for stream in listener.incoming() {
-            let stream = stream.expect("accept new connection failed !");
-            let leaked: &'static mut TcpStream = Box::leak(Box::new(stream));
+            let leaked = Box::leak(Box::new(stream));
             let _ = co(
-                |_yielder, input: Option<&'static mut c_void>| {
-                    let mut stream: TcpStream =
-                        std::ptr::read_unaligned(std::mem::transmute(input.unwrap()));
+                |_yielder, input: Option<&'static mut std::io::Result<TcpStream>>| {
+                    let mut stream = std::ptr::read_unaligned(input.unwrap())
+                        .expect("accept new connection failed !");
                     let mut buffer: [u8; 512] = [0; 512];
                     loop {
                         //invoke by libc::recv
@@ -330,7 +329,7 @@ mod tests {
                         );
                     }
                 },
-                Some(std::mem::transmute(leaked)),
+                Some(leaked),
                 4096,
             )
             .join();
