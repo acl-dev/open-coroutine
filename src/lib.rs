@@ -306,7 +306,9 @@ mod tests {
                         //invoke by libc::recv
                         let _ = co_crate(fx, Some(&mut *(16usize as *mut c_void)), 4096);
                         //从流里面读内容，读到buffer中
-                        let bytes_read = stream.read(&mut buffer).expect("server read failed !");
+                        let bytes_read = stream
+                            .read(&mut buffer)
+                            .expect("coroutine server read failed !");
                         if bytes_read == 1 && buffer[0] == b'e' {
                             //如果读到的为空，说明已经结束了
                             let (lock, cvar) = &*server_finished;
@@ -325,7 +327,7 @@ mod tests {
                             bytes_read,
                             stream
                                 .write(&buffer[..bytes_read])
-                                .expect("server write failed !")
+                                .expect("coroutine server write failed !")
                         );
                     }
                 },

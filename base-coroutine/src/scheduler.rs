@@ -7,6 +7,7 @@ use object_collection::{ObjectList, ObjectMap};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use timer_utils::TimerList;
 
@@ -29,6 +30,7 @@ pub struct Scheduler {
     ready: &'static mut WorkStealQueue,
     //not support for now
     copy_stack: ObjectList,
+    scheduling: AtomicBool,
 }
 
 impl Scheduler {
@@ -37,6 +39,7 @@ impl Scheduler {
             id: IdGenerator::next_scheduler_id(),
             ready: get_queue(),
             copy_stack: ObjectList::new(),
+            scheduling: AtomicBool::new(false),
         }
     }
 
@@ -117,6 +120,13 @@ impl Scheduler {
     }
 
     pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<()> {
+        if self
+            .scheduling
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_err()
+        {
+            return Ok(());
+        }
         Scheduler::init_timeout_time(timeout_time);
         extern "C" fn main_context_func(
             yielder: &Yielder<*mut Scheduler, (), ()>,
@@ -126,9 +136,14 @@ impl Scheduler {
             unsafe { (*scheduler).do_schedule() };
             unreachable!("should not execute to here !")
         }
-        let mut main = MainCoroutine::new(main_context_func, self, Stack::default_size())?;
+        let mut main =
+            MainCoroutine::new(main_context_func, self, Stack::default_size()).map_err(|e| {
+                self.scheduling.store(false, Ordering::Relaxed);
+                e
+            })?;
         assert_eq!(main.resume(), CoroutineResult::Yield(()));
         Scheduler::clean_time();
+        self.scheduling.store(false, Ordering::Relaxed);
         Ok(())
     }
 
