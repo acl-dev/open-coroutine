@@ -20,10 +20,13 @@ pub struct JoinHandle(pub &'static c_void);
 
 impl JoinHandle {
     pub fn timeout_join(&self, dur: Duration) -> std::io::Result<usize> {
+        self.timeout_at_join(timer_utils::get_timeout_time(dur))
+    }
+
+    pub fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<usize> {
         if self.0 as *const c_void as usize == 0 {
             return Ok(0);
         }
-        let timeout_time = timer_utils::get_timeout_time(dur);
         let result = unsafe {
             &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
         };

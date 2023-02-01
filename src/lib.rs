@@ -64,6 +64,16 @@ where
     }
 }
 
+#[macro_export]
+macro_rules! co {
+    ( $f: expr , $param:expr $(,)? ) => {{
+        $crate::co($f, $param, base_coroutine::Stack::default_size())
+    }};
+    ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{
+        $crate::co($f, $param, $stack_size)
+    }};
+}
+
 pub fn join(handle: JoinHandle) -> libc::c_long {
     unsafe { coroutine_join(handle) }
 }
@@ -93,7 +103,7 @@ mod tests {
 
     #[test]
     fn simplest() {
-        let _ = co(
+        let _ = co!(
             |_yielder, input: Option<&'static mut c_void>| {
                 println!("[coroutine1] launched");
                 input
@@ -101,13 +111,12 @@ mod tests {
             None,
             4096,
         );
-        let _ = co(
+        let _ = co!(
             |_yielder, input: Option<&'static mut c_void>| {
                 println!("[coroutine2] launched");
                 input
             },
             None,
-            4096,
         );
         assert!(schedule());
     }
