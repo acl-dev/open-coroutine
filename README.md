@@ -51,7 +51,7 @@ Still under development, please `do not` use this library in the `production` en
 
 - [ ] consider use `corosensei` as low_level coroutine
 - [ ] support back trace
-- [ ] support `join_all` to wait coroutines
+- [ ] support `#[open_coroutine::join]` macro to wait coroutines
 - [x] support `#[open_coroutine::co]` macro
 - [ ] refactor `WorkStealQueue` to singleton
 - [ ] optimize `Stack` and `OpenCoroutine` to make `cache miss` happen less
