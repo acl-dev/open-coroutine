@@ -1,4 +1,3 @@
-use crate::work_steal::{WorkStealQueue, GLOBAL_QUEUE, LOCAL_QUEUES};
 use crate::EventLoop;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
@@ -50,7 +49,6 @@ impl Monitor {
                 while monitor.flag.load(Ordering::Acquire) {
                     #[cfg(all(unix, feature = "preemptive-schedule"))]
                     monitor.signal();
-                    monitor.balance();
                     let timeout_time = timer_utils::add_timeout_time(1_000_000);
                     let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
                 }
@@ -122,52 +120,6 @@ impl Monitor {
 
     fn clean_signal_time() {
         SIGNAL_TIME.with(|boxed| *boxed.borrow_mut() = 0)
-    }
-
-    fn balance(&self) {
-        unsafe {
-            if let Some(local_queues) = LOCAL_QUEUES.get_mut() {
-                let mut max = (usize::MIN, 0);
-                let mut min = (usize::MAX, 0);
-                //全局队列没有则不从全局队列steal
-                if !GLOBAL_QUEUE.is_empty() {
-                    for i in 0..local_queues.len() {
-                        let local_queue = local_queues.get_mut(i).unwrap();
-                        if local_queue.spare() >= local_queue.capacity() * 3 / 4 {
-                            //任务不多(count<=64)，先尝试从全局队列steal
-                            if local_queue.try_lock() {
-                                if WorkStealQueue::try_global_lock() {
-                                    local_queue.steal_global(local_queue.capacity() / 4);
-                                }
-                                local_queue.release_lock();
-                            }
-                        }
-                        let spare = local_queue.spare();
-                        //find max
-                        if spare > max.0 {
-                            max.0 = spare;
-                            max.1 = i;
-                        }
-                        //find min
-                        if spare < min.0 {
-                            min.0 = spare;
-                            min.1 = i;
-                        }
-                    }
-                }
-                //任务少的从任务多的steal，相差不大时不steal
-                if let Some(count) = max.0.checked_sub(min.0) {
-                    if count >= 64 {
-                        let idle_more = local_queues.get_mut(max.1).unwrap();
-                        let idle_less = LOCAL_QUEUES.get_mut().unwrap().get_mut(min.1).unwrap();
-                        if idle_more.try_lock() {
-                            let _ = idle_more.steal_siblings(idle_less, count / 2);
-                            idle_more.release_lock();
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

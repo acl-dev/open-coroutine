@@ -32,6 +32,9 @@ pub mod coroutine;
 mod work_steal;
 
 #[allow(dead_code)]
+mod work_steal_v2;
+
+#[allow(dead_code)]
 mod random;
 
 #[allow(dead_code)]

@@ -118,8 +118,8 @@ jobs:
           args: --example preemptive --release
 
   windows:
-    name: Test ${{ matrix.rust }} on windows-2019
-    runs-on: windows-2019
+    name: Test ${{ matrix.rust }} on windows-latest
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:

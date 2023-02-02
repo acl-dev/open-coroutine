@@ -64,7 +64,7 @@ jobs:
 
   windows:
     name: build libhook on windows
-    runs-on: windows-2019
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
       - name: Install toolchain
