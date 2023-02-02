@@ -48,7 +48,7 @@ pub unsafe fn protect_stack(stack: &Stack) -> std::io::Result<Stack> {
         libc::mprotect(bottom, page_size, libc::PROT_NONE)
     };
     if ret != 0 {
-        Err(io::Error::last_os_error())
+        Err(std::io::Error::last_os_error())
     } else {
         let bottom = (stack.bottom() as usize + page_size) as *mut c_void;
         Ok(Stack::new(stack.top(), bottom))
