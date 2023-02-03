@@ -572,13 +572,11 @@ impl<T> Worker<T> {
 
                         // Restore the back index to the original task.
                         self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
-                    } else {
-                        if self.resizable {
-                            // Shrink the buffer if `len` is less than one fourth of the capacity.
-                            if buffer.cap > MIN_CAP && len < buffer.cap as isize / 4 {
-                                unsafe {
-                                    self.resize(buffer.cap / 2);
-                                }
+                    } else if self.resizable {
+                        // Shrink the buffer if `len` is less than one fourth of the capacity.
+                        if buffer.cap > MIN_CAP && len < buffer.cap as isize / 4 {
+                            unsafe {
+                                self.resize(buffer.cap / 2);
                             }
                         }
                     }

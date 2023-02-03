@@ -141,35 +141,33 @@ mod tests {
     }
 
     #[test]
-    fn test_clean() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
+    fn test() {
+        extern "C" fn handle(_signal: libc::c_int) {
+            println!("sigurg handled");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        register_handler(handle as libc::sighandler_t);
+        let time = timer_utils::get_timeout_time(Duration::from_millis(10));
+        Monitor::add_task(time);
+        std::thread::sleep(Duration::from_millis(20));
+        Monitor::clean_task(time);
+
+        extern "C" fn clean(_signal: libc::c_int) {
+            unreachable!("sigurg should not handle");
+        }
+        register_handler(clean as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(500));
         Monitor::add_task(time);
         Monitor::clean_task(time);
         std::thread::sleep(Duration::from_millis(600));
-    }
 
-    #[test]
-    fn test() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg handled");
+        extern "C" fn shield(_signal: libc::c_int) {
+            unreachable!("sigurg should not handle");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
-        Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(10)));
-        std::thread::sleep(Duration::from_millis(20));
-    }
-
-    #[test]
-    fn test_sigmask() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
-        }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        register_handler(shield as libc::sighandler_t);
         shield!();
-        Monitor::add_task(timer_utils::get_timeout_time(Duration::from_millis(1000)));
+        let time = timer_utils::get_timeout_time(Duration::from_millis(1000));
+        Monitor::add_task(time);
         std::thread::sleep(Duration::from_millis(1100));
+        Monitor::clean_task(time);
     }
 }
