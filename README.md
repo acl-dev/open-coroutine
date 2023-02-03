@@ -53,7 +53,7 @@ Still under development, please `do not` use this library in the `production` en
 - [ ] support back trace
 - [ ] support `#[open_coroutine::join]` macro to wait coroutines
 - [x] support `#[open_coroutine::co]` macro
-- [ ] refactor `WorkStealQueue` to singleton
+- [x] refactor `WorkStealQueue` to singleton
 - [ ] optimize `Stack` and `OpenCoroutine` to make `cache miss` happen less
 - [ ] `Monitor` follow the `thread-per-core` guideline
 - [ ] `EventLoop` follow the `thread-per-core` guideline, don't forget to consider the `Monitor` thread
