@@ -96,6 +96,25 @@ impl<T> LocalQueue<T> {
         self.stealing.store(false, Ordering::Relaxed);
     }
 
+    /// If the queue is full, first push half to global,
+    /// then push the item to global.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use work_steal_queue::WorkStealQueue;
+    ///
+    /// let queue = WorkStealQueue::new(1, 2);
+    /// let local = queue.local_queue();
+    /// for i in 0..4 {
+    ///     local.push_back(i);
+    /// }
+    /// assert_eq!(local.pop_front(), Some(3));
+    /// assert_eq!(local.pop_front(), Some(0));
+    /// assert_eq!(local.pop_front(), Some(1));
+    /// assert_eq!(local.pop_front(), Some(2));
+    /// assert_eq!(local.pop_front(), None);
+    /// ```
     pub fn push_back(&self, item: T) {
         if let Err(item) = self.queue.push(item) {
             //把本地队列的一半放到全局队列
@@ -115,6 +134,37 @@ impl<T> LocalQueue<T> {
         }
     }
 
+    /// If the queue is empty, first try steal from global,
+    /// then try steal from siblings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use work_steal_queue::WorkStealQueue;
+    ///
+    /// let queue = WorkStealQueue::new(1, 32);
+    /// queue.push(1);
+    /// queue.push(2);
+    /// let local = queue.local_queue();
+    /// assert_eq!(local.pop_front(), Some(1));
+    /// assert_eq!(local.pop_front(), Some(2));
+    /// assert!(local.pop_front().is_none());
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use work_steal_queue::WorkStealQueue;
+    /// let queue = WorkStealQueue::new(2, 64);
+    /// let local0 = queue.local_queue();
+    /// local0.push_back(2);
+    /// local0.push_back(3);
+    /// let local1 = queue.local_queue();
+    /// local1.push_back(0);
+    /// local1.push_back(1);
+    /// for i in 0..4 {
+    ///     assert_eq!(local1.pop_front(), Some(i));
+    /// }
+    /// ```
     pub fn pop_front(&self) -> Option<T> {
         //优先从本地队列弹出元素
         if let Some(val) = self.queue.pop() {
@@ -170,50 +220,6 @@ impl<T> LocalQueue<T> {
                 Steal::Retry => continue,
                 Steal::Empty => return None,
             }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::WorkStealQueue;
-
-    #[test]
-    fn push_many() {
-        let queue = WorkStealQueue::new(1, 2);
-        let local = queue.local_queue();
-        for i in 0..4 {
-            local.push_back(i);
-        }
-        assert_eq!(local.pop_front(), Some(3));
-        assert_eq!(local.pop_front(), Some(0));
-        assert_eq!(local.pop_front(), Some(1));
-        assert_eq!(local.pop_front(), Some(2));
-        assert_eq!(local.pop_front(), None);
-    }
-
-    #[test]
-    fn steal_global() {
-        let queue = WorkStealQueue::new(1, 32);
-        queue.push(1);
-        queue.push(2);
-        let local = queue.local_queue();
-        assert_eq!(local.pop_front(), Some(1));
-        assert_eq!(local.pop_front(), Some(2));
-        assert!(local.pop_front().is_none());
-    }
-
-    #[test]
-    fn steal_siblings() {
-        let queue = WorkStealQueue::new(2, 64);
-        let local0 = queue.local_queue();
-        local0.push_back(2);
-        local0.push_back(3);
-        let local1 = queue.local_queue();
-        local1.push_back(0);
-        local1.push_back(1);
-        for i in 0..4 {
-            assert_eq!(local1.pop_front(), Some(i));
         }
     }
 }
