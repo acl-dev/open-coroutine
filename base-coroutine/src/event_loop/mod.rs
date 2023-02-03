@@ -211,11 +211,20 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn build_token() -> (usize, *mut c_void) {
+    fn build_token() -> (
+        usize,
+        &'static mut Coroutine<&'static mut c_void, &'static mut c_void>,
+    ) {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            (co.get_id(), co as *mut _ as *mut c_void)
+            (co.get_id(), co)
         } else {
-            (0, std::ptr::null_mut())
+            (
+                0,
+                #[allow(invalid_value)]
+                unsafe {
+                    std::mem::zeroed()
+                },
+            )
         }
     }
 

@@ -1,7 +1,6 @@
 use crate::EventLoop;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
-use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use timer_utils::TimerList;
@@ -29,8 +28,10 @@ impl Monitor {
         unsafe {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                let yielder =
-                    crate::Coroutine::<&'static mut c_void, &'static mut c_void>::yielder();
+                let yielder = crate::Coroutine::<
+                    &'static mut libc::c_void,
+                    &'static mut libc::c_void,
+                >::yielder();
                 if !yielder.is_null() {
                     //挂起当前协程
                     unsafe { (*yielder).suspend(()) };
@@ -99,11 +100,11 @@ impl Monitor {
     }
 
     pub(crate) fn clean_task(time: u64) {
-        if let Some(entry) = Monitor::global().task.get_entry(time) {
+        if let Some(_entry) = Monitor::global().task.get_entry(time) {
             #[cfg(all(unix, feature = "preemptive-schedule"))]
             unsafe {
                 let mut pthread = libc::pthread_self();
-                entry.remove_raw(&mut pthread as *mut _ as *mut c_void);
+                _entry.remove_raw(&mut pthread as *mut _ as *mut libc::c_void);
             }
             Monitor::clean_signal_time();
         }

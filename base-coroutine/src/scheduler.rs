@@ -3,9 +3,10 @@ use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::stack::Stack;
 use crate::work_steal::{get_queue, WorkStealQueue};
-use object_collection::{ObjectList, ObjectMap};
+use object_collection::ObjectList;
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -19,7 +20,9 @@ thread_local! {
 /// 主协程
 type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 
-static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
+static mut SYSTEM_CALL_TABLE: Lazy<
+    HashMap<usize, &'static mut Coroutine<&'static mut c_void, &'static mut c_void>>,
+> = Lazy::new(HashMap::new);
 
 static mut SUSPEND_TABLE: Lazy<TimerList> = Lazy::new(TimerList::new);
 
@@ -228,22 +231,24 @@ impl Scheduler {
         }
     }
 
-    pub(crate) fn syscall(&self, co_id: usize, co: *mut c_void) {
+    pub(crate) fn syscall(
+        &self,
+        co_id: usize,
+        co: &'static mut Coroutine<&'static mut c_void, &'static mut c_void>,
+    ) {
         if co_id == 0 {
             return;
         }
+        co.status = Status::SystemCall;
         unsafe {
-            let c: &mut Coroutine<&'static mut c_void, &'static mut c_void> =
-                &mut *(co as *mut OpenCoroutine<'_, &mut libc::c_void, (), &mut libc::c_void>);
-            c.status = Status::SystemCall;
-            SYSTEM_CALL_TABLE.insert_raw(co_id, co);
+            SYSTEM_CALL_TABLE.insert(co_id, co);
         }
     }
 
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
             if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-                self.ready.push_back_raw(co)?;
+                self.ready.push_back_raw(co as *mut _ as *mut c_void)?;
             }
         }
         Ok(())
@@ -261,7 +266,6 @@ mod tests {
     use crate::coroutine::Yielder;
     use crate::scheduler::Scheduler;
     use std::os::raw::c_void;
-    use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
     use std::time::Duration;
 
@@ -356,6 +360,7 @@ mod tests {
     #[cfg(all(unix, feature = "preemptive-schedule"))]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {
+        use std::sync::{Arc, Condvar, Mutex};
         static mut TEST_FLAG: bool = true;
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
