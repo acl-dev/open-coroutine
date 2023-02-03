@@ -5,6 +5,7 @@ use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::RefCell;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::os::raw::c_void;
@@ -146,6 +147,18 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     param: Param,
     result: MaybeUninit<ManuallyDrop<Return>>,
     scheduler: Option<*mut Scheduler>,
+}
+
+impl<'a, Param, Yield, Return> Debug for OpenCoroutine<'a, Param, Yield, Return> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenCoroutine")
+            .field("id", &self.id)
+            .field("status", &self.status)
+            .field("sp", &self.sp)
+            .field("stack", &self.stack)
+            .field("scheduler", &self.scheduler)
+            .finish()
+    }
 }
 
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
