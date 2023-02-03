@@ -1,9 +1,8 @@
 use crate::random::Rng;
+use crate::work_steal_v2::StealError;
 use concurrent_queue::{ConcurrentQueue, PushError};
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -70,32 +69,6 @@ impl Queue {
 impl Default for Queue {
     fn default() -> Self {
         Self::new(num_cpus::get(), 256)
-    }
-}
-
-/// Error type returned by steal methods.
-#[derive(Debug)]
-pub enum StealError {
-    CanNotStealSelf,
-    EmptySibling,
-    NoMoreSpare,
-    StealSiblingFailed,
-}
-
-impl Display for StealError {
-    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
-        match *self {
-            StealError::CanNotStealSelf => write!(fmt, "can not steal self"),
-            StealError::EmptySibling => write!(fmt, "the sibling is empty"),
-            StealError::NoMoreSpare => write!(fmt, "self has no more spare"),
-            StealError::StealSiblingFailed => write!(fmt, "steal from another local queue failed"),
-        }
-    }
-}
-
-impl Error for StealError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
     }
 }
 
