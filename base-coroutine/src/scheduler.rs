@@ -19,6 +19,9 @@ thread_local! {
 /// 主协程
 type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 
+/// 用户协程
+pub type SchedulableCoroutine = Coroutine<&'static mut c_void, &'static mut c_void>;
+
 static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
 
 static mut SUSPEND_TABLE: Lazy<TimerList> = Lazy::new(TimerList::new);
@@ -85,7 +88,7 @@ impl Scheduler {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
-    ) -> std::io::Result<&'static Coroutine<&'static mut c_void, &'static mut c_void>> {
+    ) -> std::io::Result<&'static SchedulableCoroutine> {
         let mut coroutine = Coroutine::new(f, val, size)?;
         coroutine.status = Status::Ready;
         coroutine.set_scheduler(self);
@@ -165,9 +168,7 @@ impl Scheduler {
         let _ = self.check_ready();
         match self.ready.pop_front_raw() {
             Some(pointer) => {
-                let coroutine = unsafe {
-                    &mut *(pointer as *mut Coroutine<&'static mut c_void, &'static mut c_void>)
-                };
+                let coroutine = unsafe { &mut *(pointer as *mut SchedulableCoroutine) };
                 let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
                 Monitor::add_task(_start);
                 //see OpenCoroutine::child_context_func
@@ -213,8 +214,7 @@ impl Scheduler {
                     if let Some(mut entry) = SUSPEND_TABLE.pop_front() {
                         for _ in 0..entry.len() {
                             if let Some(pointer) = entry.pop_front_raw() {
-                                let coroutine = &mut *(pointer
-                                    as *mut Coroutine<&'static mut c_void, &'static mut c_void>);
+                                let coroutine = &mut *(pointer as *mut SchedulableCoroutine);
                                 coroutine.status = Status::Ready;
                                 //把到时间的协程加入就绪队列
                                 self.ready
@@ -233,8 +233,7 @@ impl Scheduler {
             return;
         }
         unsafe {
-            let c: &mut Coroutine<&'static mut c_void, &'static mut c_void> =
-                &mut *(co as *mut OpenCoroutine<'_, &mut libc::c_void, (), &mut libc::c_void>);
+            let c = &mut *(co as *mut SchedulableCoroutine);
             c.status = Status::SystemCall;
             SYSTEM_CALL_TABLE.insert_raw(co_id, co);
         }
@@ -261,7 +260,6 @@ mod tests {
     use crate::coroutine::Yielder;
     use crate::scheduler::Scheduler;
     use std::os::raw::c_void;
-    use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
     use std::time::Duration;
 
@@ -356,6 +354,7 @@ mod tests {
     #[cfg(all(unix, feature = "preemptive-schedule"))]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {
+        use std::sync::{Arc, Condvar, Mutex};
         static mut TEST_FLAG: bool = true;
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
