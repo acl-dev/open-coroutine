@@ -33,8 +33,14 @@ impl<T> WorkStealQueue<T> {
         self.shared_queue.push(item)
     }
 
-    pub fn pop(&self) -> Steal<T> {
-        self.shared_queue.steal()
+    pub fn pop(&self) -> Option<T> {
+        loop {
+            match self.shared_queue.steal() {
+                Steal::Success(item) => return Some(item),
+                Steal::Retry => continue,
+                Steal::Empty => return None,
+            }
+        }
     }
 
     fn try_lock(&self) -> bool {
@@ -214,12 +220,6 @@ impl<T> LocalQueue<T> {
             self.release_lock();
         }
         //都steal不到，只好从shared里pop
-        loop {
-            match self.shared.pop() {
-                Steal::Success(item) => return Some(item),
-                Steal::Retry => continue,
-                Steal::Empty => return None,
-            }
-        }
+        self.shared.pop()
     }
 }
