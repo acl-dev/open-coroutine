@@ -41,6 +41,10 @@ pub struct WorkStealQueue<T> {
     index: AtomicUsize,
 }
 
+unsafe impl<T> Send for WorkStealQueue<T> {}
+
+unsafe impl<T> Sync for WorkStealQueue<T> {}
+
 impl<T> WorkStealQueue<T>
 where
     T: Debug,
@@ -106,6 +110,10 @@ pub struct LocalQueue<T> {
     stealing: AtomicBool,
     queue: Worker<T>,
 }
+
+unsafe impl<T> Send for LocalQueue<T> {}
+
+unsafe impl<T> Sync for LocalQueue<T> {}
 
 impl<T> LocalQueue<T>
 where

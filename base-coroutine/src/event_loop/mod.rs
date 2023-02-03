@@ -7,7 +7,7 @@ mod selector;
 use crate::event_loop::event::Events;
 use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
-use crate::{Coroutine, Scheduler, UserFunc};
+use crate::{Coroutine, SchedulableCoroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -27,9 +27,7 @@ impl JoinHandle {
         if self.0 as *const c_void as usize == 0 {
             return Ok(0);
         }
-        let result = unsafe {
-            &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
-        };
+        let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
         while result.get_result().is_none() {
             if timeout_time <= timer_utils::now() {
                 //timeout
@@ -44,9 +42,7 @@ impl JoinHandle {
         if self.0 as *const c_void as usize == 0 {
             return Ok(0);
         }
-        let result = unsafe {
-            &*(self.0 as *const _ as *const Coroutine<&'static mut c_void, &'static mut c_void>)
-        };
+        let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
         while result.get_result().is_none() {
             EventLoop::round_robin_schedule()?;
         }
@@ -211,10 +207,7 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn build_token() -> (
-        usize,
-        &'static mut Coroutine<&'static mut c_void, &'static mut c_void>,
-    ) {
+    fn build_token() -> (usize, &'static mut SchedulableCoroutine) {
         if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
             (co.get_id(), co)
         } else {
