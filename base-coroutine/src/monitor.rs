@@ -49,7 +49,8 @@ impl Monitor {
                 while monitor.flag.load(Ordering::Acquire) {
                     #[cfg(all(unix, feature = "preemptive-schedule"))]
                     monitor.signal();
-                    let timeout_time = timer_utils::add_timeout_time(1_000_000);
+                    //尽量至少wait 1ms
+                    let timeout_time = timer_utils::add_timeout_time(1_999_999);
                     let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
                 }
             })
