@@ -7,7 +7,7 @@ mod selector;
 use crate::event_loop::event::Events;
 use crate::event_loop::interest::Interest;
 use crate::event_loop::selector::Selector;
-use crate::{Coroutine, SchedulableCoroutine, Scheduler, UserFunc};
+use crate::{SchedulableCoroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -207,9 +207,9 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn build_token() -> (usize, *mut c_void) {
-        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
-            (co.get_id(), co as *mut _ as *mut c_void)
+    fn build_token() -> (usize, *const c_void) {
+        if let Some(co) = SchedulableCoroutine::current() {
+            (co.get_id(), co as *const _ as *const c_void)
         } else {
             (0, std::ptr::null_mut())
         }

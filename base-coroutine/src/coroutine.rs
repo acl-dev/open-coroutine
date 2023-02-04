@@ -5,6 +5,7 @@ use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::RefCell;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::os::raw::c_void;
@@ -60,7 +61,7 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
             OpenCoroutine::init_yielder(&*yielder);
             let backed = transfer.data as *mut c_void as *mut _
                 as *mut OpenCoroutine<'_, Param, Yield, Return>;
-            std::ptr::read_unaligned(&(*backed).param)
+            std::ptr::read_unaligned((*backed).param.as_ptr())
         }
     }
 
@@ -129,29 +130,33 @@ pub type UserFunc<'a, Param, Yield, Return> =
 pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
 
 thread_local! {
-    static COROUTINE: Box<RefCell<*mut c_void>> = Box::new(RefCell::new(std::ptr::null_mut()));
+    static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
 }
 
 #[repr(C)]
 pub struct OpenCoroutine<'a, Param, Yield, Return> {
     id: usize,
-    sp: Transfer,
+    sp: RefCell<Transfer>,
     stack: ProtectedFixedSizeStack,
-    pub(crate) status: Status,
+    status: RefCell<Status>,
     //用户函数
     proc: UserFunc<'a, Param, Yield, Return>,
     marker: PhantomData<&'a extern "C" fn(Param) -> CoroutineResult<Yield, Return>>,
     //调用用户函数的参数
-    param: Param,
-    result: MaybeUninit<ManuallyDrop<Return>>,
-    scheduler: Option<*mut Scheduler>,
+    param: RefCell<Param>,
+    result: RefCell<MaybeUninit<ManuallyDrop<Return>>>,
+    scheduler: RefCell<Option<*mut Scheduler>>,
 }
+
+unsafe impl<Input, Yield, Return> Send for OpenCoroutine<'_, Input, Yield, Return> {}
+unsafe impl<Input, Yield, Return> Sync for OpenCoroutine<'_, Input, Yield, Return> {}
 
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     extern "C" fn child_context_func(t: Transfer) {
         let coroutine = unsafe {
-            &mut *(t.data as *mut c_void as *mut _ as *mut OpenCoroutine<'_, Param, Yield, Return>)
+            &*(t.data as *const c_void as *const _
+                as *const OpenCoroutine<'_, Param, Yield, Return>)
         };
         let yielder = Yielder {
             sp: &t,
@@ -159,18 +164,18 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         };
         OpenCoroutine::init_yielder(&yielder);
         unsafe {
-            coroutine.status = Status::Running;
+            coroutine.set_status(Status::Running);
             let proc = coroutine.proc;
-            let param = std::ptr::read_unaligned(&coroutine.param);
+            let param = std::ptr::read_unaligned(coroutine.param.as_ptr());
             let result = proc(&yielder, param);
-            coroutine.status = Status::Finished;
+            coroutine.set_status(Status::Finished);
             OpenCoroutine::<Param, Yield, Return>::clean_current();
             OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             //还没执行到10ms就返回了，此时需要清理signal
             //否则下一个协程执行不到10ms就被抢占调度了
             Monitor::clean_task(Monitor::signal_time());
-            if let Some(scheduler) = coroutine.scheduler {
-                coroutine.result = MaybeUninit::new(ManuallyDrop::new(result));
+            if let Some(scheduler) = *coroutine.scheduler.borrow_mut() {
+                *coroutine.result.borrow_mut() = MaybeUninit::new(ManuallyDrop::new(result));
                 //执行下一个子协程
                 (*scheduler).do_schedule();
             } else {
@@ -197,7 +202,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         })?;
         Ok(OpenCoroutine {
             id: IdGenerator::next_coroutine_id(),
-            sp: Transfer::new(
+            sp: RefCell::new(Transfer::new(
                 unsafe {
                     Context::new(
                         &stack,
@@ -205,30 +210,29 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                     )
                 },
                 0,
-            ),
+            )),
             stack,
-            status: Status::Created,
+            status: RefCell::new(Status::Created),
             proc,
             marker: Default::default(),
-            param,
-            result: MaybeUninit::uninit(),
-            scheduler: None,
+            param: RefCell::new(param),
+            result: RefCell::new(MaybeUninit::uninit()),
+            scheduler: RefCell::new(None),
         })
     }
 
-    pub fn resume_with(&mut self, val: Param) -> CoroutineResult<Yield, Return> {
-        self.param = val;
+    pub fn resume_with(&self, val: Param) -> CoroutineResult<Yield, Return> {
+        *self.param.borrow_mut() = val;
         self.resume()
     }
 
-    pub fn resume(&mut self) -> CoroutineResult<Yield, Return> {
-        self.status = Status::Ready;
-        self.sp.data = self as *mut _ as usize;
+    pub fn resume(&self) -> CoroutineResult<Yield, Return> {
+        self.set_status(Status::Ready);
+        OpenCoroutine::init_current(self);
         unsafe {
-            OpenCoroutine::init_current(self);
-            let transfer = self.sp.context.resume(self.sp.data);
+            let transfer = self.sp.borrow().context.resume(self as *const _ as usize);
             //更新sp
-            self.sp.context = transfer.context;
+            self.sp.borrow_mut().context = transfer.context;
             std::ptr::read_unaligned(
                 transfer.data as *mut c_void as *mut _ as *mut CoroutineResult<Yield, Return>,
             )
@@ -240,13 +244,17 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     }
 
     pub fn get_status(&self) -> Status {
-        self.status
+        *self.status.borrow()
+    }
+
+    pub fn set_status(&self, status: Status) {
+        *self.status.borrow_mut() = status;
     }
 
     pub fn get_result(&self) -> Option<Return> {
         if self.get_status() == Status::Finished {
             unsafe {
-                let mut m = self.result.assume_init_read();
+                let mut m = self.result.borrow().assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             }
         } else {
@@ -255,11 +263,11 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     }
 
     pub fn get_scheduler(&self) -> Option<*mut Scheduler> {
-        self.scheduler
+        *self.scheduler.borrow()
     }
 
-    pub(crate) fn set_scheduler(&mut self, scheduler: &mut Scheduler) {
-        self.scheduler = Some(scheduler);
+    pub(crate) fn set_scheduler(&self, scheduler: &mut Scheduler) {
+        *self.scheduler.borrow_mut() = Some(scheduler);
     }
 
     fn init_yielder(yielder: &Yielder<Param, Yield, Return>) {
@@ -276,31 +284,43 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         YIELDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
     }
 
-    fn init_current(coroutine: &mut OpenCoroutine<'a, Param, Yield, Return>) {
+    fn init_current(coroutine: &OpenCoroutine<'a, Param, Yield, Return>) {
         COROUTINE.with(|boxed| {
-            *boxed.borrow_mut() = coroutine as *mut _ as *mut c_void;
+            *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
         })
     }
 
-    pub fn current() -> Option<&'a mut OpenCoroutine<'a, Param, Yield, Return>> {
+    pub fn current() -> Option<&'a OpenCoroutine<'a, Param, Yield, Return>> {
         COROUTINE.with(|boxed| {
             let ptr = *boxed.borrow_mut();
             if ptr.is_null() {
                 None
             } else {
-                Some(unsafe { &mut *(ptr as *mut OpenCoroutine<'a, Param, Yield, Return>) })
+                Some(unsafe { &*(ptr as *const OpenCoroutine<'a, Param, Yield, Return>) })
             }
         })
     }
 
     fn clean_current() {
-        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
+        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
+    }
+}
+
+impl<'a, Param, Yield, Return> Debug for OpenCoroutine<'a, Param, Yield, Return> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenCoroutine")
+            .field("id", &self.id)
+            .field("status", &self.status)
+            .field("sp", &self.sp)
+            .field("stack", &self.stack)
+            .field("scheduler", &self.scheduler)
+            .finish()
     }
 }
 
 impl<'a, Param, Yield, Return> Drop for OpenCoroutine<'a, Param, Yield, Return> {
     fn drop(&mut self) {
-        self.status = Status::Exited;
+        self.status = RefCell::new(Status::Exited);
     }
 }
 
@@ -314,7 +334,7 @@ mod tests {
             assert_eq!(0, input);
             1
         }
-        let mut coroutine =
+        let coroutine =
             OpenCoroutine::new(context_func, 0, 2048).expect("create coroutine failed !");
         assert_eq!(1, coroutine.resume_with(0).as_return().unwrap());
     }
@@ -326,7 +346,7 @@ mod tests {
             assert_eq!(3, yielder.suspend(2));
             6
         }
-        let mut coroutine =
+        let coroutine =
             OpenCoroutine::new(context_func, 1, 2048).expect("create coroutine failed !");
         assert_eq!(2, coroutine.resume_with(1).as_yield().unwrap());
     }
@@ -339,7 +359,7 @@ mod tests {
             assert_eq!(5, yielder.suspend(4));
             6
         }
-        let mut coroutine =
+        let coroutine =
             OpenCoroutine::new(context_func, 1, 2048).expect("create coroutine failed !");
         assert_eq!(2, coroutine.resume_with(1).as_yield().unwrap());
         assert_eq!(4, coroutine.resume_with(3).as_yield().unwrap());
@@ -356,7 +376,7 @@ mod tests {
             1
         }
         assert!(OpenCoroutine::<usize, usize, usize>::current().is_none());
-        let mut coroutine =
+        let coroutine =
             OpenCoroutine::new(context_func, 0, 2048).expect("create coroutine failed !");
         coroutine.resume_with(0).as_return().unwrap();
     }

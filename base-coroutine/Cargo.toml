@@ -17,6 +17,7 @@ st3 = "0.4.0"
 rayon = "1.6.1"
 object-collection = { version = "0.0.4", path = "../object-collection" }
 timer-utils = { version = "0.0.3", path = "../timer-utils" }
+work-steal-queue = { version = "0.1.0", path = "../work-steal-queue" }
 
 [target."cfg(unix)".dependencies]
 jemalloc-sys = { version = "0.5.2+5.3.0-patched", default-features = false }
