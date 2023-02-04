@@ -41,17 +41,6 @@ impl Queue {
         }
     }
 
-    /// Push an item to the global queue. When one of the local queues empties, they can pick this
-    /// item up.
-    fn push<T>(&self, item: T) {
-        let ptr = Box::leak(Box::new(item));
-        self.push_raw(ptr as *mut _ as *mut c_void)
-    }
-
-    fn push_raw(&self, ptr: *mut c_void) {
-        unsafe { GLOBAL_QUEUE.push(ptr).unwrap() }
-    }
-
     fn local_queue(&mut self) -> &mut WorkStealQueue {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
@@ -121,27 +110,34 @@ impl WorkStealQueue {
 
     pub fn push_back_raw(&mut self, ptr: *mut c_void) -> std::io::Result<()> {
         if let Err(item) = self.queue.push(ptr) {
-            unsafe {
-                //把本地队列的一半放到全局队列
-                let count = self.len() / 2;
-                //todo 这里实际上可以减少一次copy
-                let half = Worker::new(count);
-                let stealer = self.queue.stealer();
-                let _ = stealer.steal(&half, |_n| count);
-                while !half.is_empty() {
-                    let _ = GLOBAL_QUEUE.push(half.pop().unwrap());
+            //把本地队列的一半放到全局队列
+            let count = self.len() / 2;
+            for _ in 0..count {
+                if let Some(v) = self.queue.pop() {
+                    self.push_global_raw(v)?
                 }
-                GLOBAL_QUEUE.push(item).map_err(|e| match e {
-                    PushError::Full(_) => {
-                        std::io::Error::new(ErrorKind::Other, "global queue is full")
-                    }
-                    PushError::Closed(_) => {
-                        std::io::Error::new(ErrorKind::Other, "global queue closed")
-                    }
-                })?
             }
+            self.push_global_raw(item)?
         }
         Ok(())
+    }
+
+    pub fn push_global<T>(&mut self, element: T) -> std::io::Result<()> {
+        let ptr = Box::leak(Box::new(element));
+        self.push_global_raw(ptr as *mut _ as *mut c_void)
+    }
+
+    /// Push an item to the global queue. When one of the local queues empties,
+    /// they can pick this item up.
+    pub fn push_global_raw(&self, ptr: *mut c_void) -> std::io::Result<()> {
+        unsafe {
+            GLOBAL_QUEUE.push(ptr).map_err(|e| match e {
+                PushError::Full(_) => std::io::Error::new(ErrorKind::Other, "global queue is full"),
+                PushError::Closed(_) => {
+                    std::io::Error::new(ErrorKind::Other, "global queue closed")
+                }
+            })
+        }
     }
 
     pub fn is_empty(&self) -> bool {
