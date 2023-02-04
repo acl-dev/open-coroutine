@@ -228,18 +228,9 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 
     pub fn resume(&self) -> CoroutineResult<Yield, Return> {
         self.set_status(Status::Ready);
-        loop {
-            match self.sp.try_borrow_mut() {
-                Ok(mut sp) => {
-                    sp.data = self as *const _ as usize;
-                    break;
-                }
-                Err(_) => continue,
-            }
-        }
         OpenCoroutine::init_current(self);
         unsafe {
-            let transfer = self.sp.borrow().context.resume(self.sp.borrow().data);
+            let transfer = self.sp.borrow().context.resume(self as *const _ as usize);
             //更新sp
             self.sp.borrow_mut().context = transfer.context;
             std::ptr::read_unaligned(
