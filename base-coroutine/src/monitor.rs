@@ -3,7 +3,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use timer_utils::TimerList;
+use timer_utils::TimerObjectList;
 
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
@@ -14,7 +14,7 @@ thread_local! {
 }
 
 pub(crate) struct Monitor {
-    task: TimerList,
+    task: TimerObjectList,
     flag: AtomicBool,
 }
 
@@ -57,7 +57,7 @@ impl Monitor {
             })
         });
         Monitor {
-            task: TimerList::new(),
+            task: TimerObjectList::new(),
             flag: AtomicBool::new(true),
         }
     }

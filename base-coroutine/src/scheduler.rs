@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use timer_utils::TimerList;
+use timer_utils::TimerObjectList;
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -24,7 +24,7 @@ pub type SchedulableCoroutine = Coroutine<&'static mut c_void, &'static mut c_vo
 
 static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
 
-static mut SUSPEND_TABLE: Lazy<TimerList> = Lazy::new(TimerList::new);
+static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new);
 
 #[repr(C)]
 #[derive(Debug)]

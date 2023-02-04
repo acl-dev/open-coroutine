@@ -11,6 +11,9 @@ pub struct WorkStealQueue<T> {
     index: AtomicUsize,
 }
 
+unsafe impl<T: Send> Send for WorkStealQueue<T> {}
+unsafe impl<T: Send> Sync for WorkStealQueue<T> {}
+
 impl<T> WorkStealQueue<T> {
     pub fn new(local_queues: usize, local_capacity: usize) -> Self {
         let global_queue = Arc::new(Injector::new());
@@ -63,6 +66,12 @@ impl<T> WorkStealQueue<T> {
     }
 }
 
+impl<T> Default for WorkStealQueue<T> {
+    fn default() -> Self {
+        Self::new(num_cpus::get(), 256)
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct LocalQueue<T> {
@@ -70,6 +79,9 @@ pub struct LocalQueue<T> {
     stealing: AtomicBool,
     queue: Worker<T>,
 }
+
+unsafe impl<T: Send> Send for LocalQueue<T> {}
+unsafe impl<T: Send> Sync for LocalQueue<T> {}
 
 impl<T> LocalQueue<T> {
     pub fn new(shared: Arc<WorkStealQueue<T>>, max_capacity: usize) -> Self {

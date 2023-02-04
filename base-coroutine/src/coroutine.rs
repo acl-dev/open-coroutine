@@ -5,6 +5,7 @@ use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::RefCell;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::os::raw::c_void;
@@ -147,6 +148,9 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     result: MaybeUninit<ManuallyDrop<Return>>,
     scheduler: Option<*mut Scheduler>,
 }
+
+unsafe impl<Input, Yield, Return> Send for OpenCoroutine<'_, Input, Yield, Return> {}
+unsafe impl<Input, Yield, Return> Sync for OpenCoroutine<'_, Input, Yield, Return> {}
 
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     extern "C" fn child_context_func(t: Transfer) {
@@ -295,6 +299,18 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 
     fn clean_current() {
         COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut())
+    }
+}
+
+impl<'a, Param, Yield, Return> Debug for OpenCoroutine<'a, Param, Yield, Return> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenCoroutine")
+            .field("id", &self.id)
+            .field("status", &self.status)
+            .field("sp", &self.sp)
+            .field("stack", &self.stack)
+            .field("scheduler", &self.scheduler)
+            .finish()
     }
 }
 
