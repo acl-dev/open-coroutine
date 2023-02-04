@@ -47,7 +47,7 @@ impl Scheduler {
     }
 
     pub fn current<'a>() -> Option<&'a mut Scheduler> {
-        if let Some(co) = Coroutine::<&'static mut c_void, &'static mut c_void>::current() {
+        if let Some(co) = SchedulableCoroutine::current() {
             if let Some(ptr) = co.get_scheduler() {
                 return Some(unsafe { &mut *ptr });
             }

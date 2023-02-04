@@ -145,7 +145,7 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     marker: PhantomData<&'a extern "C" fn(Param) -> CoroutineResult<Yield, Return>>,
     //调用用户函数的参数
     param: RefCell<Param>,
-    result: MaybeUninit<ManuallyDrop<Return>>,
+    result: RefCell<MaybeUninit<ManuallyDrop<Return>>>,
     scheduler: RefCell<Option<*mut Scheduler>>,
 }
 
@@ -155,7 +155,8 @@ unsafe impl<Input, Yield, Return> Sync for OpenCoroutine<'_, Input, Yield, Retur
 impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     extern "C" fn child_context_func(t: Transfer) {
         let coroutine = unsafe {
-            &mut *(t.data as *mut c_void as *mut _ as *mut OpenCoroutine<'_, Param, Yield, Return>)
+            &*(t.data as *const c_void as *const _
+                as *const OpenCoroutine<'_, Param, Yield, Return>)
         };
         let yielder = Yielder {
             sp: &t,
@@ -174,7 +175,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             //否则下一个协程执行不到10ms就被抢占调度了
             Monitor::clean_task(Monitor::signal_time());
             if let Some(scheduler) = *coroutine.scheduler.borrow_mut() {
-                coroutine.result = MaybeUninit::new(ManuallyDrop::new(result));
+                *coroutine.result.borrow_mut() = MaybeUninit::new(ManuallyDrop::new(result));
                 //执行下一个子协程
                 (*scheduler).do_schedule();
             } else {
@@ -215,7 +216,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             proc,
             marker: Default::default(),
             param: RefCell::new(param),
-            result: MaybeUninit::uninit(),
+            result: RefCell::new(MaybeUninit::uninit()),
             scheduler: RefCell::new(None),
         })
     }
@@ -227,7 +228,15 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 
     pub fn resume(&self) -> CoroutineResult<Yield, Return> {
         self.set_status(Status::Ready);
-        self.sp.borrow_mut().data = self as *const _ as usize;
+        loop {
+            match self.sp.try_borrow_mut() {
+                Ok(mut sp) => {
+                    sp.data = self as *const _ as usize;
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
         OpenCoroutine::init_current(self);
         unsafe {
             let transfer = self.sp.borrow().context.resume(self.sp.borrow().data);
@@ -254,7 +263,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     pub fn get_result(&self) -> Option<Return> {
         if self.get_status() == Status::Finished {
             unsafe {
-                let mut m = self.result.assume_init_read();
+                let mut m = self.result.borrow().assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             }
         } else {
