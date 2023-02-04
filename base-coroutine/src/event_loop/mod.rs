@@ -105,7 +105,7 @@ impl<'a> EventLoop<'a> {
     ) -> std::io::Result<JoinHandle> {
         EventLoop::next_scheduler()
             .submit(f, param, size)
-            .map(|co| JoinHandle(unsafe { std::mem::transmute(co) }))
+            .map(|co| JoinHandle(unsafe { &*(co as *const libc::c_void) }))
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {

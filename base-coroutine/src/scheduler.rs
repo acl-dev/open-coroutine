@@ -2,14 +2,16 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::stack::Stack;
-use crate::work_steal::{get_queue, WorkStealQueue};
-use object_collection::{ObjectList, ObjectMap};
+use object_collection::ObjectList;
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
-use timer_utils::TimerObjectList;
+use timer_utils::TimerList;
+use work_steal_queue::{LocalQueue, WorkStealQueue};
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -22,15 +24,18 @@ type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 /// 用户协程
 pub type SchedulableCoroutine = Coroutine<&'static mut c_void, &'static mut c_void>;
 
-static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
+static mut SYSTEM_CALL_TABLE: Lazy<HashMap<usize, Arc<SchedulableCoroutine>>> =
+    Lazy::new(HashMap::new);
 
-static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new);
+static mut SUSPEND_TABLE: Lazy<TimerList<Arc<SchedulableCoroutine>>> = Lazy::new(TimerList::new);
+
+static QUEUE: Lazy<WorkStealQueue<Arc<SchedulableCoroutine>>> = Lazy::new(WorkStealQueue::default);
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: &'static mut WorkStealQueue,
+    ready: Arc<LocalQueue<Arc<SchedulableCoroutine>>>,
     //not support for now
     copy_stack: ObjectList,
     scheduling: AtomicBool,
@@ -40,7 +45,7 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: get_queue(),
+            ready: QUEUE.local_queue(),
             copy_stack: ObjectList::new(),
             scheduling: AtomicBool::new(false),
         }
@@ -88,12 +93,13 @@ impl Scheduler {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
-    ) -> std::io::Result<&'static SchedulableCoroutine> {
+    ) -> std::io::Result<*const SchedulableCoroutine> {
         let coroutine = Coroutine::new(f, val, size)?;
         coroutine.set_status(Status::Ready);
         coroutine.set_scheduler(self);
-        let ptr = Box::leak(Box::new(coroutine));
-        self.ready.push_back_raw(ptr as *mut _ as *mut c_void)?;
+        let arc = Arc::new(coroutine);
+        let ptr = Arc::as_ptr(&arc);
+        self.ready.push_back(arc);
         Ok(ptr)
     }
 
@@ -166,11 +172,10 @@ impl Scheduler {
             Scheduler::back_to_main()
         }
         let _ = self.check_ready();
-        match self.ready.pop_front_raw() {
-            Some(pointer) => {
-                let coroutine = unsafe { &mut *(pointer as *mut SchedulableCoroutine) };
-                let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
-                Monitor::add_task(_start);
+        match self.ready.pop_front() {
+            Some(coroutine) => {
+                let start = timer_utils::get_timeout_time(Duration::from_millis(10));
+                Monitor::add_task(start);
                 //see OpenCoroutine::child_context_func
                 match coroutine.resume() {
                     CoroutineResult::Yield(()) => {
@@ -180,22 +185,20 @@ impl Scheduler {
                             //挂起协程到时间轮
                             coroutine.set_status(Status::Suspend);
                             unsafe {
-                                SUSPEND_TABLE.insert_raw(
-                                    timer_utils::add_timeout_time(delay_time),
-                                    coroutine as *mut _ as *mut c_void,
-                                );
+                                SUSPEND_TABLE
+                                    .insert(timer_utils::add_timeout_time(delay_time), coroutine);
                             }
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::clean_delay();
                         } else {
                             //放入就绪队列尾部
-                            let _ = self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                            self.ready.push_back(coroutine);
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
                 };
                 //还没执行到10ms就主动yield了，此时需要清理signal
                 //否则下一个协程执行不到10ms就被抢占调度了
-                Monitor::clean_task(_start);
+                Monitor::clean_task(start);
                 self.do_schedule();
             }
             None => Scheduler::back_to_main(),
@@ -213,12 +216,10 @@ impl Scheduler {
                     //移动至"就绪"队列
                     if let Some(mut entry) = SUSPEND_TABLE.pop_front() {
                         for _ in 0..entry.len() {
-                            if let Some(pointer) = entry.pop_front_raw() {
-                                let coroutine = &mut *(pointer as *mut SchedulableCoroutine);
+                            if let Some(coroutine) = entry.pop_front() {
                                 coroutine.set_status(Status::Ready);
                                 //把到时间的协程加入就绪队列
-                                self.ready
-                                    .push_back_raw(coroutine as *mut _ as *mut c_void)?
+                                self.ready.push_back(coroutine);
                             }
                         }
                     }
@@ -233,16 +234,16 @@ impl Scheduler {
             return;
         }
         unsafe {
-            let c = &*(co as *const SchedulableCoroutine);
-            c.set_status(Status::SystemCall);
-            SYSTEM_CALL_TABLE.insert(co_id, std::ptr::read_unaligned(c));
+            let coroutine = &*(co as *const SchedulableCoroutine);
+            coroutine.set_status(Status::SystemCall);
+            SYSTEM_CALL_TABLE.insert(co_id, Arc::from_raw(coroutine));
         }
     }
 
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
-            if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-                self.ready.push_back_raw(co)?;
+            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_id) {
+                self.ready.push_back(coroutine);
             }
         }
         Ok(())
