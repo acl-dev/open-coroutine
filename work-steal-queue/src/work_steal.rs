@@ -6,7 +6,7 @@ use std::sync::Arc;
 #[repr(C)]
 #[derive(Debug)]
 pub struct WorkStealQueue<T> {
-    shared_queue: Arc<Injector<T>>,
+    shared_queue: Injector<T>,
     /// Number of pending tasks in the queue. This helps prevent unnecessary
     /// locking in the hot path.
     len: AtomicUsize,
@@ -29,9 +29,8 @@ unsafe impl<T: Send> Sync for WorkStealQueue<T> {}
 
 impl<T> WorkStealQueue<T> {
     pub fn new(local_queues: usize, local_capacity: usize) -> Self {
-        let global_queue = Arc::new(Injector::new());
         let mut queue = WorkStealQueue {
-            shared_queue: Arc::clone(&global_queue),
+            shared_queue: Injector::new(),
             len: AtomicUsize::new(0),
             stealing: AtomicBool::new(false),
             local_queues: Vec::with_capacity(local_queues),
@@ -116,6 +115,14 @@ pub struct LocalQueue<T> {
     queue: Worker<T>,
     /// Fast random number generator.
     rand: FastRand,
+}
+
+impl<T> Drop for LocalQueue<T> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.queue.pop().is_none(), "local queue not empty");
+        }
+    }
 }
 
 unsafe impl<T: Send> Send for LocalQueue<T> {}
