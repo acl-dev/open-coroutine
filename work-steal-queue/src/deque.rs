@@ -948,10 +948,10 @@ impl<T> Stealer<T> {
     /// ```
     pub fn steal_batch_and_pop(&self, dest: &Worker<T>) -> Steal<T> {
         if Arc::ptr_eq(&self.inner, &dest.inner) {
-            match dest.pop() {
-                None => return Steal::Empty,
-                Some(task) => return Steal::Success(task),
-            }
+            return match dest.pop() {
+                None => Steal::Empty,
+                Some(task) => Steal::Success(task),
+            };
         }
 
         // Load the front index.
