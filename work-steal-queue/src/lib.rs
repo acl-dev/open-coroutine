@@ -55,19 +55,19 @@
 //! use work_steal_queue::WorkStealQueue;
 //!
 //! let queue = WorkStealQueue::new(2, 64);
-//! queue.push(2);
-//! queue.push(3);
+//! queue.push(6);
+//! queue.push(7);
 //!
 //! let local0 = queue.local_queue();
+//! local0.push_back(2);
+//! local0.push_back(3);
 //! local0.push_back(4);
 //! local0.push_back(5);
-//! local0.push_back(6);
-//! local0.push_back(7);
 //!
 //! let local1 = queue.local_queue();
 //! local1.push_back(0);
 //! local1.push_back(1);
-//! for i in 0..7 {
+//! for i in 0..8 {
 //!     assert_eq!(local1.pop_front(), Some(i));
 //! }
 //! ```
@@ -91,7 +91,8 @@ cfg_if! {
         mod deque;
         pub use crate::deque::{Injector, Steal, Stealer, Worker};
 
-        mod random;
+        #[allow(dead_code)]
+        mod rand;
         mod work_steal;
         pub use crate::work_steal::{WorkStealQueue, LocalQueue};
     }

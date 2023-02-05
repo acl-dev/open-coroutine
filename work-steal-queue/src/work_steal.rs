@@ -1,14 +1,27 @@
+use crate::rand::{FastRand, RngSeed, RngSeedGenerator};
 use crate::{Injector, Steal, Worker};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct WorkStealQueue<T> {
     shared_queue: Arc<Injector<T>>,
+    /// Number of pending tasks in the queue. This helps prevent unnecessary
+    /// locking in the hot path.
+    len: AtomicUsize,
     stealing: AtomicBool,
     local_queues: Vec<Arc<LocalQueue<T>>>,
     index: AtomicUsize,
+    seed_generator: RngSeedGenerator,
+}
+
+impl<T> Drop for WorkStealQueue<T> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.pop().is_none(), "global queue not empty");
+        }
+    }
 }
 
 unsafe impl<T: Send> Send for WorkStealQueue<T> {}
@@ -19,12 +32,15 @@ impl<T> WorkStealQueue<T> {
         let global_queue = Arc::new(Injector::new());
         let mut queue = WorkStealQueue {
             shared_queue: Arc::clone(&global_queue),
+            len: AtomicUsize::new(0),
             stealing: AtomicBool::new(false),
             local_queues: Vec::with_capacity(local_queues),
             index: AtomicUsize::new(0),
+            seed_generator: RngSeedGenerator::new(RngSeed::new()),
         };
         for _ in 0..local_queues {
             queue.local_queues.push(Arc::new(LocalQueue::new(
+                FastRand::new(queue.seed_generator.next_seed()),
                 unsafe { Arc::from_raw(&queue) },
                 local_capacity,
             )));
@@ -32,14 +48,32 @@ impl<T> WorkStealQueue<T> {
         queue
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.len.load(Ordering::Acquire)
+    }
+
     pub fn push(&self, item: T) {
-        self.shared_queue.push(item)
+        self.shared_queue.push(item);
+        //add count
+        self.len.store(self.len() + 1, Ordering::Release);
     }
 
     pub fn pop(&self) -> Option<T> {
+        // Fast path, if len == 0, then there are no values
+        if self.is_empty() {
+            return None;
+        }
         loop {
             match self.shared_queue.steal() {
-                Steal::Success(item) => return Some(item),
+                Steal::Success(item) => {
+                    // Decrement the count.
+                    self.len.store(self.len() - 1, Ordering::Release);
+                    return Some(item);
+                }
                 Steal::Retry => continue,
                 Steal::Empty => return None,
             }
@@ -75,20 +109,26 @@ impl<T> Default for WorkStealQueue<T> {
 #[repr(C)]
 #[derive(Debug)]
 pub struct LocalQueue<T> {
+    /// Used to schedule bookkeeping tasks every so often.
+    tick: AtomicU32,
     shared: Arc<WorkStealQueue<T>>,
     stealing: AtomicBool,
     queue: Worker<T>,
+    /// Fast random number generator.
+    rand: FastRand,
 }
 
 unsafe impl<T: Send> Send for LocalQueue<T> {}
 unsafe impl<T: Send> Sync for LocalQueue<T> {}
 
 impl<T> LocalQueue<T> {
-    pub fn new(shared: Arc<WorkStealQueue<T>>, max_capacity: usize) -> Self {
+    pub(crate) fn new(rand: FastRand, shared: Arc<WorkStealQueue<T>>, max_capacity: usize) -> Self {
         LocalQueue {
+            tick: AtomicU32::new(0),
             shared,
             stealing: AtomicBool::new(false),
             queue: Worker::new_capacity_fifo(max_capacity, false),
+            rand,
         }
     }
 
@@ -152,6 +192,16 @@ impl<T> LocalQueue<T> {
         }
     }
 
+    /// Increment the tick
+    fn tick(&self) -> u32 {
+        let val = self.tick.fetch_add(1, Ordering::Release);
+        if val == u32::MAX {
+            self.tick.store(0, Ordering::Release);
+            return 0
+        }
+        val + 1
+    }
+
     /// If the queue is empty, first try steal from global,
     /// then try steal from siblings.
     ///
@@ -166,7 +216,7 @@ impl<T> LocalQueue<T> {
     /// let local = queue.local_queue();
     /// assert_eq!(local.pop_front(), Some(1));
     /// assert_eq!(local.pop_front(), Some(2));
-    /// assert!(local.pop_front().is_none());
+    /// assert_eq!(local.pop_front(), None);
     /// ```
     ///
     /// # Examples
@@ -182,15 +232,40 @@ impl<T> LocalQueue<T> {
     /// for i in 0..4 {
     ///     assert_eq!(local1.pop_front(), Some(i));
     /// }
+    /// assert_eq!(local0.pop_front(), None);
+    /// assert_eq!(local1.pop_front(), None);
+    /// assert_eq!(queue.pop(), None);
     /// ```
     pub fn pop_front(&self) -> Option<T> {
-        //优先从本地队列弹出元素
+        //每从本地弹出61次，就从全局队列弹出
+        if self.tick() % 61 == 0 {
+            if let Some(val) = self.shared.pop() {
+                return Some(val);
+            }
+        }
+
+        //从本地队列弹出元素
         if let Some(val) = self.queue.pop() {
             return Some(val);
         }
         if self.try_lock() {
+            //尝试从其他本地队列steal
+            let local_queues = &self.shared.local_queues;
+            let num = local_queues.len();
+            let start = self.rand.fastrand_n(num as u32) as usize;
+            for i in 0..num {
+                let i = (start + i) % num;
+                let another = local_queues.get(i).expect("get local queue failed!");
+                if let Steal::Success(popped_item) =
+                    another.queue.stealer().steal_batch_and_pop(&self.queue)
+                {
+                    self.release_lock();
+                    return Some(popped_item);
+                }
+            }
+
             //尝试从全局队列steal
-            if self.shared.try_lock() {
+            if !self.shared.is_empty() && self.shared.try_lock() {
                 if let Steal::Success(popped_item) =
                     self.shared.shared_queue.steal_batch_and_pop(&self.queue)
                 {
@@ -199,35 +274,6 @@ impl<T> LocalQueue<T> {
                     return Some(popped_item);
                 }
                 self.shared.release_lock();
-            }
-
-            //尝试从其他本地队列steal
-            let local_queues = &self.shared.local_queues;
-            //这里生成一个打乱顺序的数组，遍历获取index
-            let mut indexes = Vec::new();
-            let len = local_queues.len();
-            for i in 0..len {
-                indexes.push(i);
-            }
-            for i in 0..(len / 2) {
-                let random = crate::random::Rng {
-                    state: timer_utils::now(),
-                }
-                .gen_usize_to(len);
-                indexes.swap(i, random);
-            }
-            for i in indexes {
-                let another = local_queues.get(i).expect("get local queue failed!");
-                if self.is_full() {
-                    // self has no more space
-                    break;
-                }
-                if let Steal::Success(popped_item) =
-                    another.queue.stealer().steal_batch_and_pop(&self.queue)
-                {
-                    self.release_lock();
-                    return Some(popped_item);
-                }
             }
             self.release_lock();
         }
