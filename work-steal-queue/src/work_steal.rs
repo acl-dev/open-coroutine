@@ -11,7 +11,7 @@ pub struct WorkStealQueue<T> {
     /// locking in the hot path.
     len: AtomicUsize,
     stealing: AtomicBool,
-    local_queues: Vec<Arc<LocalQueue<T>>>,
+    local_queues: Box<[Worker<T>]>,
     index: AtomicUsize,
     seed_generator: RngSeedGenerator,
 }
@@ -19,6 +19,9 @@ pub struct WorkStealQueue<T> {
 impl<T> Drop for WorkStealQueue<T> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
+            for local_queue in self.local_queues.iter() {
+                assert!(local_queue.pop().is_none(), "local queue not empty");
+            }
             assert!(self.pop().is_none(), "global queue not empty");
         }
     }
@@ -29,22 +32,16 @@ unsafe impl<T: Send> Sync for WorkStealQueue<T> {}
 
 impl<T> WorkStealQueue<T> {
     pub fn new(local_queues: usize, local_capacity: usize) -> Self {
-        let mut queue = WorkStealQueue {
+        WorkStealQueue {
             shared_queue: Injector::new(),
             len: AtomicUsize::new(0),
             stealing: AtomicBool::new(false),
-            local_queues: Vec::with_capacity(local_queues),
+            local_queues: (0..local_queues)
+                .map(|_| Worker::new_capacity_fifo(local_capacity, false))
+                .collect(),
             index: AtomicUsize::new(0),
             seed_generator: RngSeedGenerator::new(RngSeed::new()),
-        };
-        for _ in 0..local_queues {
-            queue.local_queues.push(Arc::new(LocalQueue::new(
-                FastRand::new(queue.seed_generator.next_seed()),
-                unsafe { Arc::from_raw(&queue) },
-                local_capacity,
-            )));
         }
-        queue
     }
 
     pub fn is_empty(&self) -> bool {
@@ -89,13 +86,22 @@ impl<T> WorkStealQueue<T> {
         self.stealing.store(false, Ordering::Relaxed);
     }
 
-    pub fn local_queue(&self) -> Arc<LocalQueue<T>> {
+    pub fn local_queue(&self) -> LocalQueue<T> {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
             self.index.store(0, Ordering::Relaxed);
         }
-        let local = self.local_queues.get(index % num_cpus::get()).unwrap();
-        Arc::clone(local)
+        let local = self
+            .local_queues
+            .get(index % self.local_queues.len())
+            .unwrap();
+        unsafe {
+            LocalQueue::new(
+                Arc::from_raw(self),
+                Arc::from_raw(local),
+                FastRand::new(self.seed_generator.next_seed()),
+            )
+        }
     }
 }
 
@@ -112,29 +118,25 @@ pub struct LocalQueue<T> {
     tick: AtomicU32,
     shared: Arc<WorkStealQueue<T>>,
     stealing: AtomicBool,
-    queue: Worker<T>,
+    queue: Arc<Worker<T>>,
     /// Fast random number generator.
     rand: FastRand,
-}
-
-impl<T> Drop for LocalQueue<T> {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            assert!(self.queue.pop().is_none(), "local queue not empty");
-        }
-    }
 }
 
 unsafe impl<T: Send> Send for LocalQueue<T> {}
 unsafe impl<T: Send> Sync for LocalQueue<T> {}
 
 impl<T> LocalQueue<T> {
-    pub(crate) fn new(rand: FastRand, shared: Arc<WorkStealQueue<T>>, max_capacity: usize) -> Self {
+    pub(crate) fn new(
+        shared: Arc<WorkStealQueue<T>>,
+        queue: Arc<Worker<T>>,
+        rand: FastRand,
+    ) -> Self {
         LocalQueue {
             tick: AtomicU32::new(0),
             shared,
             stealing: AtomicBool::new(false),
-            queue: Worker::new_capacity_fifo(max_capacity, false),
+            queue,
             rand,
         }
     }
@@ -204,7 +206,7 @@ impl<T> LocalQueue<T> {
         let val = self.tick.fetch_add(1, Ordering::Release);
         if val == u32::MAX {
             self.tick.store(0, Ordering::Release);
-            return 0
+            return 0;
         }
         val + 1
     }
@@ -262,9 +264,9 @@ impl<T> LocalQueue<T> {
             let start = self.rand.fastrand_n(num as u32) as usize;
             for i in 0..num {
                 let i = (start + i) % num;
-                let another = local_queues.get(i).expect("get local queue failed!");
+                let another: &Worker<T> = local_queues.get(i).expect("get local queue failed!");
                 if let Steal::Success(popped_item) =
-                    another.queue.stealer().steal_batch_and_pop(&self.queue)
+                    another.stealer().steal_batch_and_pop(&self.queue)
                 {
                     self.release_lock();
                     return Some(popped_item);
