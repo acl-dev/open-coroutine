@@ -1,4 +1,3 @@
-use crate::EventLoop;
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +24,7 @@ unsafe impl Sync for Monitor {}
 impl Monitor {
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
-        unsafe {
+        {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
                 let yielder = crate::Coroutine::<
@@ -37,25 +36,27 @@ impl Monitor {
                     unsafe { (*yielder).suspend(()) };
                 }
             }
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            unsafe {
+                let mut act: libc::sigaction = std::mem::zeroed();
+                act.sa_sigaction = sigurg_handler as libc::sighandler_t;
+                libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+                act.sa_flags = libc::SA_RESTART;
+                libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            }
+            //通过这种方式来初始化monitor线程
+            MONITOR.get_or_init(|| {
+                std::thread::spawn(|| {
+                    let monitor = Monitor::global();
+                    while monitor.flag.load(Ordering::Acquire) {
+                        #[cfg(all(unix, feature = "preemptive-schedule"))]
+                        monitor.signal();
+                        //尽量至少wait 1ms
+                        let timeout_time = timer_utils::add_timeout_time(1_999_999);
+                        let _ = crate::EventLoop::round_robin_timeout_schedule(timeout_time);
+                    }
+                })
+            });
         }
-        //通过这种方式来初始化monitor线程
-        MONITOR.get_or_init(|| {
-            std::thread::spawn(|| {
-                let monitor = Monitor::global();
-                while monitor.flag.load(Ordering::Acquire) {
-                    #[cfg(all(unix, feature = "preemptive-schedule"))]
-                    monitor.signal();
-                    //尽量至少wait 1ms
-                    let timeout_time = timer_utils::add_timeout_time(1_999_999);
-                    let _ = EventLoop::round_robin_timeout_schedule(timeout_time);
-                }
-            })
-        });
         Monitor {
             task: TimerObjectList::new(),
             flag: AtomicBool::new(true),
