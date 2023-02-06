@@ -1,4 +1,4 @@
-use crate::rand::{FastRand, RngSeed, RngSeedGenerator};
+use crate::rand::{FastRand, RngSeedGenerator};
 use crate::{Injector, Steal, Worker};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
@@ -39,7 +39,7 @@ impl<T> WorkStealQueue<T> {
                 .map(|_| Worker::new_capacity_fifo(local_capacity, false))
                 .collect(),
             index: AtomicUsize::new(0),
-            seed_generator: RngSeedGenerator::new(RngSeed::new()),
+            seed_generator: RngSeedGenerator::default(),
         }
     }
 

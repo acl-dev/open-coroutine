@@ -92,7 +92,7 @@ cfg_if! {
         pub use crate::deque::{Injector, Steal, Stealer, Worker};
 
         #[allow(dead_code)]
-        mod rand;
+        pub mod rand;
         mod work_steal;
         pub use crate::work_steal::{WorkStealQueue, LocalQueue};
     }

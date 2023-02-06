@@ -32,9 +32,6 @@ pub mod coroutine;
 mod work_steal;
 
 #[allow(dead_code)]
-mod random;
-
-#[allow(dead_code)]
 pub mod scheduler;
 
 #[cfg(unix)]
