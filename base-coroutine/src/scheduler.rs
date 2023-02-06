@@ -2,7 +2,6 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::stack::Stack;
-use crate::work_steal::{get_queue, WorkStealQueue};
 use object_collection::{ObjectList, ObjectMap};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
@@ -30,7 +29,7 @@ static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: &'static mut WorkStealQueue,
+    ready: &'static mut crate::work_steal::LocalQueue,
     //not support for now
     copy_stack: ObjectList,
     scheduling: AtomicBool,
@@ -40,7 +39,7 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: get_queue(),
+            ready: crate::work_steal::get_queue(),
             copy_stack: ObjectList::new(),
             scheduling: AtomicBool::new(false),
         }

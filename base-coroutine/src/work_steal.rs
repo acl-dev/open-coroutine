@@ -8,9 +8,9 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use work_steal_queue::rand::{FastRand, RngSeedGenerator};
 
-static mut INSTANCE: Lazy<Queue> = Lazy::new(Queue::default);
+static mut INSTANCE: Lazy<WorkStealQueue> = Lazy::new(WorkStealQueue::default);
 
-pub fn get_queue() -> &'static mut WorkStealQueue {
+pub fn get_queue() -> &'static mut LocalQueue {
     unsafe { INSTANCE.local_queue() }
 }
 
@@ -19,31 +19,31 @@ static mut GLOBAL_LOCK: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 pub(crate) static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> =
     Lazy::new(ConcurrentQueue::unbounded);
 
-pub(crate) static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
+pub(crate) static mut LOCAL_QUEUES: OnceCell<Box<[LocalQueue]>> = OnceCell::new();
 
 static RNG_SEED_GENERATOR: Lazy<RngSeedGenerator> = Lazy::new(RngSeedGenerator::default);
 
 #[repr(C)]
 #[derive(Debug)]
-struct Queue {
+struct WorkStealQueue {
     index: AtomicUsize,
 }
 
-impl Queue {
+impl WorkStealQueue {
     fn new(local_queues: usize, local_capacity: usize) -> Self {
         unsafe {
             LOCAL_QUEUES.get_or_init(|| {
                 (0..local_queues)
-                    .map(|_| WorkStealQueue::new(local_capacity))
+                    .map(|_| LocalQueue::new(local_capacity))
                     .collect()
             });
         }
-        Queue {
+        WorkStealQueue {
             index: AtomicUsize::new(0),
         }
     }
 
-    fn local_queue(&mut self) -> &mut WorkStealQueue {
+    fn local_queue(&mut self) -> &mut LocalQueue {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
             self.index.store(0, Ordering::Relaxed);
@@ -58,7 +58,7 @@ impl Queue {
     }
 }
 
-impl Default for Queue {
+impl Default for WorkStealQueue {
     fn default() -> Self {
         Self::new(num_cpus::get(), 256)
     }
@@ -92,7 +92,7 @@ impl Error for StealError {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct WorkStealQueue {
+pub struct LocalQueue {
     stealing: AtomicBool,
     queue: Worker<*mut c_void>,
     /// Used to schedule bookkeeping tasks every so often.
@@ -101,9 +101,9 @@ pub struct WorkStealQueue {
     rand: FastRand,
 }
 
-impl WorkStealQueue {
+impl LocalQueue {
     fn new(max_capacity: usize) -> Self {
-        WorkStealQueue {
+        LocalQueue {
             stealing: AtomicBool::new(false),
             queue: Worker::new(max_capacity),
             tick: AtomicU32::new(0),
@@ -204,7 +204,7 @@ impl WorkStealQueue {
             let start = self.rand.fastrand_n(num as u32) as usize;
             for i in 0..num {
                 let i = (start + i) % num;
-                let another: &mut WorkStealQueue =
+                let another: &mut LocalQueue =
                     local_queues.get_mut(i).expect("get local queue failed!");
                 if self.steal_siblings(another, usize::MAX).is_ok() {
                     self.release_lock();
@@ -213,7 +213,7 @@ impl WorkStealQueue {
             }
 
             //尝试从全局队列steal
-            if WorkStealQueue::try_global_lock() {
+            if LocalQueue::try_global_lock() {
                 if let Ok(popped_item) = unsafe { GLOBAL_QUEUE.pop() } {
                     self.steal_global(self.queue.capacity() / 2);
                     self.release_lock();
@@ -230,7 +230,7 @@ impl WorkStealQueue {
 
     pub(crate) fn steal_siblings(
         &mut self,
-        another: &mut WorkStealQueue,
+        another: &mut LocalQueue,
         count: usize,
     ) -> Result<(), StealError> {
         if std::ptr::eq(&another.queue, &self.queue) {
