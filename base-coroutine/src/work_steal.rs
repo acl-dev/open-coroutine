@@ -174,14 +174,6 @@ impl WorkStealQueue {
         }
         unsafe {
             if self.try_lock() {
-                //尝试从全局队列steal
-                if WorkStealQueue::try_global_lock() {
-                    if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                        self.steal_global(self.queue.capacity() / 2);
-                        self.release_lock();
-                        return Some(popped_item);
-                    }
-                }
                 //尝试从其他本地队列steal
                 let local_queues = LOCAL_QUEUES.get_mut().unwrap();
                 //这里生成一个打乱顺序的数组，遍历获取index
@@ -203,6 +195,15 @@ impl WorkStealQueue {
                     if self.steal_siblings(another, usize::MAX).is_ok() {
                         self.release_lock();
                         return self.queue.pop();
+                    }
+                }
+
+                //尝试从全局队列steal
+                if WorkStealQueue::try_global_lock() {
+                    if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
+                        self.steal_global(self.queue.capacity() / 2);
+                        self.release_lock();
+                        return Some(popped_item);
                     }
                 }
                 self.release_lock();
