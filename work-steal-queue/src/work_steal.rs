@@ -123,6 +123,14 @@ pub struct LocalQueue<T> {
     rand: FastRand,
 }
 
+impl<T> Drop for LocalQueue<T> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.pop_front().is_none(), "local queue not empty");
+        }
+    }
+}
+
 unsafe impl<T: Send> Send for LocalQueue<T> {}
 unsafe impl<T: Send> Sync for LocalQueue<T> {}
 

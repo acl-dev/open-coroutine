@@ -11,19 +11,11 @@ license = "LGPL-3.0 OR Apache-2.0"
 cfg-if = "1"
 num_cpus = "1.14.0"
 timer-utils = { version = "0.0.3", path = "../timer-utils" }
+crossbeam-epoch = { version = "0.9.13", optional = true, default-features = false }
+crossbeam-utils = { version = "0.8.14", optional = true, default-features = false }
 
-[dependencies.crossbeam-epoch]
-version = "0.9"
-optional = true
-default-features = false
-
-[dependencies.crossbeam-utils]
-version = "0.8"
-optional = true
-default-features = false
-
-[dev-dependencies.rand]
-version = "0.8"
+[dev-dependencies]
+rand = "0.8.5"
 
 [features]
 default = ["std"]
