@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 static mut INSTANCE: Lazy<Queue> = Lazy::new(Queue::default);
 
@@ -93,6 +93,8 @@ impl Error for StealError {
 pub struct WorkStealQueue {
     stealing: AtomicBool,
     queue: Worker<*mut c_void>,
+    /// Used to schedule bookkeeping tasks every so often.
+    tick: AtomicU32,
 }
 
 impl WorkStealQueue {
@@ -100,6 +102,7 @@ impl WorkStealQueue {
         WorkStealQueue {
             stealing: AtomicBool::new(false),
             queue: Worker::new(max_capacity),
+            tick: AtomicU32::new(0),
         }
     }
 
@@ -166,8 +169,25 @@ impl WorkStealQueue {
         self.stealing.store(false, Ordering::Relaxed);
     }
 
+    /// Increment the tick
+    fn tick(&self) -> u32 {
+        let val = self.tick.fetch_add(1, Ordering::Release);
+        if val == u32::MAX {
+            self.tick.store(0, Ordering::Release);
+            return 0;
+        }
+        val + 1
+    }
+
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
     pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
+        //每从本地弹出61次，就从全局队列弹出
+        if self.tick() % 61 == 0 {
+            if let Ok(val) = unsafe { GLOBAL_QUEUE.pop() } {
+                return Some(val);
+            }
+        }
+
         //优先从本地队列弹出元素
         if let Some(val) = self.queue.pop() {
             return Some(val);
