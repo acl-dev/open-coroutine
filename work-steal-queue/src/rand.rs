@@ -29,8 +29,9 @@ pub(crate) fn seed() -> u64 {
 /// in a Mutex to make it thread safe. Different to the `FastRand` that we keep in a
 /// thread local store, the expectation is that seed generation will not need to happen
 /// very frequently, so the cost of the mutex should be minimal.
+#[repr(C)]
 #[derive(Debug)]
-pub(crate) struct RngSeedGenerator {
+pub struct RngSeedGenerator {
     /// Internal state for the seed generator. We keep it in a Mutex so that we can safely
     /// use it across multiple threads.
     state: Mutex<FastRand>,
@@ -38,14 +39,14 @@ pub(crate) struct RngSeedGenerator {
 
 impl RngSeedGenerator {
     /// Returns a new generator from the provided seed.
-    pub(crate) fn new(seed: RngSeed) -> Self {
+    pub fn new(seed: RngSeed) -> Self {
         Self {
             state: Mutex::new(FastRand::new(seed)),
         }
     }
 
     /// Returns the next seed in the sequence.
-    pub(crate) fn next_seed(&self) -> RngSeed {
+    pub fn next_seed(&self) -> RngSeed {
         let rng = self
             .state
             .lock()
@@ -58,8 +59,14 @@ impl RngSeedGenerator {
     }
 
     /// Directly creates a generator using the next seed.
-    pub(crate) fn next_generator(&self) -> Self {
+    pub fn next_generator(&self) -> Self {
         RngSeedGenerator::new(self.next_seed())
+    }
+}
+
+impl Default for RngSeedGenerator {
+    fn default() -> Self {
+        Self::new(RngSeed::new())
     }
 }
 
@@ -76,7 +83,7 @@ pub struct RngSeed {
 
 impl RngSeed {
     /// Creates a random seed using loom internally.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::from_u64(seed())
     }
 
@@ -96,6 +103,13 @@ impl RngSeed {
         Self { s, r }
     }
 }
+
+impl Default for RngSeed {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Fast random number generate.
 ///
 /// Implement xorshift64+: 2 32-bit xorshift sequences added together.
@@ -103,15 +117,16 @@ impl RngSeed {
 /// Xorshift paper: <https://www.jstatsoft.org/article/view/v008i14/xorshift.pdf>
 /// This generator passes the SmallCrush suite, part of TestU01 framework:
 /// <http://simul.iro.umontreal.ca/testu01/tu01.html>
+#[repr(C)]
 #[derive(Debug)]
-pub(crate) struct FastRand {
+pub struct FastRand {
     one: Cell<u32>,
     two: Cell<u32>,
 }
 
 impl FastRand {
     /// Initializes a new, thread-local, fast random number generator.
-    pub(crate) fn new(seed: RngSeed) -> FastRand {
+    pub fn new(seed: RngSeed) -> FastRand {
         FastRand {
             one: Cell::new(seed.s),
             two: Cell::new(seed.r),
@@ -123,7 +138,7 @@ impl FastRand {
     ///
     /// The random number generator will become equivalent to one created with
     /// the same seed.
-    pub(crate) fn replace_seed(&self, seed: RngSeed) -> RngSeed {
+    pub fn replace_seed(&self, seed: RngSeed) -> RngSeed {
         let old_seed = RngSeed::from_pair(self.one.get(), self.two.get());
 
         self.one.replace(seed.s);
@@ -132,7 +147,7 @@ impl FastRand {
         old_seed
     }
 
-    pub(crate) fn fastrand_n(&self, n: u32) -> u32 {
+    pub fn fastrand_n(&self, n: u32) -> u32 {
         // This is similar to fastrand() % n, but faster.
         // See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
         let mul = (self.fastrand() as u64).wrapping_mul(n as u64);

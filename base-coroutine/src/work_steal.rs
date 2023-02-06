@@ -1,4 +1,3 @@
-use crate::random::Rng;
 use concurrent_queue::{ConcurrentQueue, PushError};
 use once_cell::sync::{Lazy, OnceCell};
 use st3::fifo::Worker;
@@ -6,11 +5,12 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use work_steal_queue::rand::{FastRand, RngSeedGenerator};
 
-static mut INSTANCE: Lazy<Queue> = Lazy::new(Queue::default);
+static mut INSTANCE: Lazy<WorkStealQueue> = Lazy::new(WorkStealQueue::default);
 
-pub fn get_queue() -> &'static mut WorkStealQueue {
+pub fn get_queue() -> &'static mut LocalQueue {
     unsafe { INSTANCE.local_queue() }
 }
 
@@ -19,29 +19,31 @@ static mut GLOBAL_LOCK: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 pub(crate) static mut GLOBAL_QUEUE: Lazy<ConcurrentQueue<*mut c_void>> =
     Lazy::new(ConcurrentQueue::unbounded);
 
-pub(crate) static mut LOCAL_QUEUES: OnceCell<Box<[WorkStealQueue]>> = OnceCell::new();
+pub(crate) static mut LOCAL_QUEUES: OnceCell<Box<[LocalQueue]>> = OnceCell::new();
+
+static RNG_SEED_GENERATOR: Lazy<RngSeedGenerator> = Lazy::new(RngSeedGenerator::default);
 
 #[repr(C)]
 #[derive(Debug)]
-struct Queue {
+struct WorkStealQueue {
     index: AtomicUsize,
 }
 
-impl Queue {
+impl WorkStealQueue {
     fn new(local_queues: usize, local_capacity: usize) -> Self {
         unsafe {
             LOCAL_QUEUES.get_or_init(|| {
                 (0..local_queues)
-                    .map(|_| WorkStealQueue::new(local_capacity))
+                    .map(|_| LocalQueue::new(local_capacity))
                     .collect()
             });
         }
-        Queue {
+        WorkStealQueue {
             index: AtomicUsize::new(0),
         }
     }
 
-    fn local_queue(&mut self) -> &mut WorkStealQueue {
+    fn local_queue(&mut self) -> &mut LocalQueue {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
             self.index.store(0, Ordering::Relaxed);
@@ -56,7 +58,7 @@ impl Queue {
     }
 }
 
-impl Default for Queue {
+impl Default for WorkStealQueue {
     fn default() -> Self {
         Self::new(num_cpus::get(), 256)
     }
@@ -90,16 +92,22 @@ impl Error for StealError {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct WorkStealQueue {
+pub struct LocalQueue {
     stealing: AtomicBool,
     queue: Worker<*mut c_void>,
+    /// Used to schedule bookkeeping tasks every so often.
+    tick: AtomicU32,
+    /// Fast random number generator.
+    rand: FastRand,
 }
 
-impl WorkStealQueue {
+impl LocalQueue {
     fn new(max_capacity: usize) -> Self {
-        WorkStealQueue {
+        LocalQueue {
             stealing: AtomicBool::new(false),
             queue: Worker::new(max_capacity),
+            tick: AtomicU32::new(0),
+            rand: FastRand::new(RNG_SEED_GENERATOR.next_seed()),
         }
     }
 
@@ -166,57 +174,63 @@ impl WorkStealQueue {
         self.stealing.store(false, Ordering::Relaxed);
     }
 
+    /// Increment the tick
+    fn tick(&self) -> u32 {
+        let val = self.tick.fetch_add(1, Ordering::Release);
+        if val == u32::MAX {
+            self.tick.store(0, Ordering::Release);
+            return 0;
+        }
+        val + 1
+    }
+
     /// 如果是闭包，还是要获取裸指针再手动转换，不然类型有问题
     pub fn pop_front_raw(&mut self) -> Option<*mut c_void> {
-        //优先从本地队列弹出元素
+        //每从本地弹出61次，就从全局队列弹出
+        if self.tick() % 61 == 0 {
+            if let Ok(val) = unsafe { GLOBAL_QUEUE.pop() } {
+                return Some(val);
+            }
+        }
+
+        //从本地队列弹出元素
         if let Some(val) = self.queue.pop() {
             return Some(val);
         }
-        unsafe {
-            if self.try_lock() {
-                //尝试从全局队列steal
-                if WorkStealQueue::try_global_lock() {
-                    if let Ok(popped_item) = GLOBAL_QUEUE.pop() {
-                        self.steal_global(self.queue.capacity() / 2);
-                        self.release_lock();
-                        return Some(popped_item);
-                    }
+        if self.try_lock() {
+            //尝试从其他本地队列steal
+            let local_queues = unsafe { LOCAL_QUEUES.get_mut().unwrap() };
+            let num = local_queues.len();
+            let start = self.rand.fastrand_n(num as u32) as usize;
+            for i in 0..num {
+                let i = (start + i) % num;
+                let another: &mut LocalQueue =
+                    local_queues.get_mut(i).expect("get local queue failed!");
+                if self.steal_siblings(another, usize::MAX).is_ok() {
+                    self.release_lock();
+                    return self.queue.pop();
                 }
-                //尝试从其他本地队列steal
-                let local_queues = LOCAL_QUEUES.get_mut().unwrap();
-                //这里生成一个打乱顺序的数组，遍历获取index
-                let mut indexes = Vec::new();
-                let len = local_queues.len();
-                for i in 0..len {
-                    indexes.push(i);
-                }
-                for i in 0..(len / 2) {
-                    let random = Rng {
-                        state: timer_utils::now(),
-                    }
-                    .gen_usize_to(len);
-                    indexes.swap(i, random);
-                }
-                for i in indexes {
-                    let another: &mut WorkStealQueue =
-                        local_queues.get_mut(i).expect("get local queue failed!");
-                    if self.steal_siblings(another, usize::MAX).is_ok() {
-                        self.release_lock();
-                        return self.queue.pop();
-                    }
-                }
-                self.release_lock();
             }
-            match GLOBAL_QUEUE.pop() {
-                Ok(item) => Some(item),
-                Err(_) => None,
+
+            //尝试从全局队列steal
+            if LocalQueue::try_global_lock() {
+                if let Ok(popped_item) = unsafe { GLOBAL_QUEUE.pop() } {
+                    self.steal_global(self.queue.capacity() / 2);
+                    self.release_lock();
+                    return Some(popped_item);
+                }
             }
+            self.release_lock();
+        }
+        match unsafe { GLOBAL_QUEUE.pop() } {
+            Ok(item) => Some(item),
+            Err(_) => None,
         }
     }
 
     pub(crate) fn steal_siblings(
         &mut self,
-        another: &mut WorkStealQueue,
+        another: &mut LocalQueue,
         count: usize,
     ) -> Result<(), StealError> {
         if std::ptr::eq(&another.queue, &self.queue) {
