@@ -1,7 +1,6 @@
 use crate::rand::{FastRand, RngSeed, RngSeedGenerator};
 use crate::{Injector, Steal, Worker};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -95,13 +94,7 @@ impl<T> WorkStealQueue<T> {
             .local_queues
             .get(index % self.local_queues.len())
             .unwrap();
-        unsafe {
-            LocalQueue::new(
-                Arc::from_raw(self),
-                Arc::from_raw(local),
-                FastRand::new(self.seed_generator.next_seed()),
-            )
-        }
+        LocalQueue::new(self, local, FastRand::new(self.seed_generator.next_seed()))
     }
 }
 
@@ -113,25 +106,29 @@ impl<T> Default for WorkStealQueue<T> {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct LocalQueue<T> {
+pub struct LocalQueue<'l, T> {
     /// Used to schedule bookkeeping tasks every so often.
     tick: AtomicU32,
-    shared: Arc<WorkStealQueue<T>>,
+    shared: &'l WorkStealQueue<T>,
     stealing: AtomicBool,
-    queue: Arc<Worker<T>>,
+    queue: &'l Worker<T>,
     /// Fast random number generator.
     rand: FastRand,
 }
 
-unsafe impl<T: Send> Send for LocalQueue<T> {}
-unsafe impl<T: Send> Sync for LocalQueue<T> {}
+impl<T> Drop for LocalQueue<'_, T> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.pop_front().is_none(), "local queue not empty");
+        }
+    }
+}
 
-impl<T> LocalQueue<T> {
-    pub(crate) fn new(
-        shared: Arc<WorkStealQueue<T>>,
-        queue: Arc<Worker<T>>,
-        rand: FastRand,
-    ) -> Self {
+unsafe impl<T: Send> Send for LocalQueue<'_, T> {}
+unsafe impl<T: Send> Sync for LocalQueue<'_, T> {}
+
+impl<'l, T> LocalQueue<'l, T> {
+    pub(crate) fn new(shared: &'l WorkStealQueue<T>, queue: &'l Worker<T>, rand: FastRand) -> Self {
         LocalQueue {
             tick: AtomicU32::new(0),
             shared,
@@ -266,7 +263,7 @@ impl<T> LocalQueue<T> {
                 let i = (start + i) % num;
                 let another: &Worker<T> = local_queues.get(i).expect("get local queue failed!");
                 if let Steal::Success(popped_item) =
-                    another.stealer().steal_batch_and_pop(&self.queue)
+                    another.stealer().steal_batch_and_pop(self.queue)
                 {
                     self.release_lock();
                     return Some(popped_item);
@@ -276,7 +273,7 @@ impl<T> LocalQueue<T> {
             //尝试从全局队列steal
             if !self.shared.is_empty() && self.shared.try_lock() {
                 if let Steal::Success(popped_item) =
-                    self.shared.shared_queue.steal_batch_and_pop(&self.queue)
+                    self.shared.shared_queue.steal_batch_and_pop(self.queue)
                 {
                     self.shared.release_lock();
                     self.release_lock();
