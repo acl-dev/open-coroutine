@@ -95,6 +95,7 @@ impl Error for StealError {
 pub struct LocalQueue {
     stealing: AtomicBool,
     queue: Worker<*mut c_void>,
+    max_capacity: usize,
     /// Used to schedule bookkeeping tasks every so often.
     tick: AtomicU32,
     /// Fast random number generator.
@@ -106,6 +107,7 @@ impl LocalQueue {
         LocalQueue {
             stealing: AtomicBool::new(false),
             queue: Worker::new(max_capacity),
+            max_capacity,
             tick: AtomicU32::new(0),
             rand: FastRand::new(RNG_SEED_GENERATOR.next_seed()),
         }
@@ -117,17 +119,23 @@ impl LocalQueue {
     }
 
     pub fn push_back_raw(&mut self, ptr: *mut c_void) -> std::io::Result<()> {
-        if let Err(item) = self.queue.push(ptr) {
-            //把本地队列的一半放到全局队列
-            let count = self.len() / 2;
-            for _ in 0..count {
-                if let Some(v) = self.queue.pop() {
-                    self.push_global_raw(v)?
-                }
+        if self.len() < self.max_capacity {
+            if let Err(v) = self.queue.push(ptr) {
+                self.push_overflow(v)?;
             }
-            self.push_global_raw(item)?
+        } else {
+            self.push_overflow(ptr)?;
         }
         Ok(())
+    }
+
+    fn push_overflow(&mut self, item: *mut c_void) -> std::io::Result<()> {
+        //把本地队列的一半放到全局队列
+        let drain = self.queue.drain(|n| n / 2).unwrap();
+        for v in drain {
+            self.push_global_raw(v)?;
+        }
+        self.push_global_raw(item)
     }
 
     pub fn push_global<T>(&mut self, element: T) -> std::io::Result<()> {
