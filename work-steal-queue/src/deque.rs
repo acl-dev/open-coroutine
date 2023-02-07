@@ -750,11 +750,11 @@ impl<T> Stealer<T> {
     /// ```
     pub fn steal_batch(&self, dest: &Worker<T>) -> Steal<()> {
         if Arc::ptr_eq(&self.inner, &dest.inner) {
-            if dest.is_empty() {
-                return Steal::Empty;
+            return if dest.is_empty() {
+                Steal::Empty
             } else {
-                return Steal::Success(());
-            }
+                Steal::Success(())
+            };
         }
 
         // Load the front index.

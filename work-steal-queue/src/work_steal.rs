@@ -85,15 +85,16 @@ impl<T> WorkStealQueue<T> {
         self.stealing.store(false, Ordering::Relaxed);
     }
 
-    pub fn local_queue(&self) -> LocalQueue<T> {
+    pub fn next_index(&self) -> usize {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
             self.index.store(0, Ordering::Relaxed);
         }
-        let local = self
-            .local_queues
-            .get(index % self.local_queues.len())
-            .unwrap();
+        index % self.local_queues.len()
+    }
+
+    pub fn local_queue(&self) -> LocalQueue<T> {
+        let local = self.local_queues.get(self.next_index()).unwrap();
         LocalQueue::new(self, local, FastRand::new(self.seed_generator.next_seed()))
     }
 }
@@ -179,7 +180,7 @@ impl<'l, T> LocalQueue<'l, T> {
     /// assert_eq!(local.pop_front(), Some(2));
     /// assert_eq!(local.pop_front(), None);
     /// ```
-    pub fn push_back(&self, item: T) {
+    pub fn push_back(&self, item: T) -> std::io::Result<()> {
         if let Err(item) = self.queue.push(item) {
             //把本地队列的一半放到全局队列
             let count = self.len() / 2;
@@ -196,6 +197,7 @@ impl<'l, T> LocalQueue<'l, T> {
             //直接放到全局队列
             self.shared.push(item);
         }
+        Ok(())
     }
 
     /// Increment the tick

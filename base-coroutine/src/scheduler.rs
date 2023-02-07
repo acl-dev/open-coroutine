@@ -9,6 +9,7 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use timer_utils::TimerObjectList;
+use work_steal_queue::{LocalQueue, WorkStealQueue};
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -21,6 +22,8 @@ type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 /// 用户协程
 pub type SchedulableCoroutine = Coroutine<&'static mut c_void, &'static mut c_void>;
 
+static QUEUE: Lazy<WorkStealQueue<&'static mut c_void>> = Lazy::new(WorkStealQueue::default);
+
 static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
 
 static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new);
@@ -29,7 +32,7 @@ static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: &'static mut crate::work_steal::LocalQueue,
+    ready: &'static LocalQueue<'static, &'static mut c_void>,
     //not support for now
     copy_stack: ObjectList,
     scheduling: AtomicBool,
@@ -39,7 +42,7 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: crate::work_steal::get_queue(),
+            ready: Box::leak(Box::new(QUEUE.local_queue())),
             copy_stack: ObjectList::new(),
             scheduling: AtomicBool::new(false),
         }
@@ -92,7 +95,8 @@ impl Scheduler {
         coroutine.set_status(Status::Ready);
         coroutine.set_scheduler(self);
         let ptr = Box::leak(Box::new(coroutine));
-        self.ready.push_back_raw(ptr as *mut _ as *mut c_void)?;
+        self.ready
+            .push_back(unsafe { &mut *(ptr as *mut _ as *mut c_void) })?;
         Ok(ptr)
     }
 
@@ -165,9 +169,9 @@ impl Scheduler {
             Scheduler::back_to_main()
         }
         let _ = self.check_ready();
-        match self.ready.pop_front_raw() {
+        match self.ready.pop_front() {
             Some(pointer) => {
-                let coroutine = unsafe { &mut *(pointer as *mut SchedulableCoroutine) };
+                let coroutine: &mut SchedulableCoroutine = unsafe { std::mem::transmute(pointer) };
                 let _start = timer_utils::get_timeout_time(Duration::from_millis(10));
                 Monitor::add_task(_start);
                 //see OpenCoroutine::child_context_func
@@ -187,7 +191,9 @@ impl Scheduler {
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::clean_delay();
                         } else {
                             //放入就绪队列尾部
-                            let _ = self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                            self.ready
+                                .push_back(unsafe { std::mem::transmute(coroutine) })
+                                .unwrap();
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
@@ -216,8 +222,7 @@ impl Scheduler {
                                 let coroutine = &mut *(pointer as *mut SchedulableCoroutine);
                                 coroutine.set_status(Status::Ready);
                                 //把到时间的协程加入就绪队列
-                                self.ready
-                                    .push_back_raw(coroutine as *mut _ as *mut c_void)?
+                                self.ready.push_back(std::mem::transmute(coroutine))?
                             }
                         }
                     }
@@ -241,7 +246,7 @@ impl Scheduler {
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
             if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-                self.ready.push_back_raw(co)?;
+                self.ready.push_back(&mut *co)?;
             }
         }
         Ok(())
