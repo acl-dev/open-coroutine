@@ -49,11 +49,8 @@ impl WorkStealQueue {
             self.index.store(0, Ordering::Relaxed);
         }
         unsafe {
-            LOCAL_QUEUES
-                .get_mut()
-                .unwrap()
-                .get_mut(index % num_cpus::get())
-                .unwrap()
+            let local_queues = LOCAL_QUEUES.get_mut().unwrap();
+            local_queues.get_mut(index % local_queues.len()).unwrap()
         }
     }
 }

@@ -164,7 +164,7 @@ impl Scheduler {
         if Scheduler::timeout_time() <= timer_utils::now() {
             Scheduler::back_to_main()
         }
-        let _ = self.check_ready();
+        self.check_ready().unwrap();
         match self.ready.pop_front_raw() {
             Some(pointer) => {
                 let coroutine = unsafe { &mut *(pointer as *mut SchedulableCoroutine) };
@@ -187,7 +187,9 @@ impl Scheduler {
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::clean_delay();
                         } else {
                             //放入就绪队列尾部
-                            let _ = self.ready.push_back_raw(coroutine as *mut _ as *mut c_void);
+                            self.ready
+                                .push_back_raw(coroutine as *mut _ as *mut c_void)
+                                .unwrap();
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
@@ -217,7 +219,7 @@ impl Scheduler {
                                 coroutine.set_status(Status::Ready);
                                 //把到时间的协程加入就绪队列
                                 self.ready
-                                    .push_back_raw(coroutine as *mut _ as *mut c_void)?
+                                    .push_back_raw(coroutine as *mut _ as *mut c_void)?;
                             }
                         }
                     }
