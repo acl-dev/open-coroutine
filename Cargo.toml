@@ -15,6 +15,7 @@ members = [
     "object-collection",
     "timer-utils",
     "work-steal-queue",
+    "work-steal-queue-v2",
     "base-coroutine",
     "detour2",
     "libhook",
