@@ -9,7 +9,7 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use timer_utils::TimerObjectList;
-use work_steal_queue_v2::{LocalQueue, WorkStealQueue};
+use work_steal_queue::{LocalQueue, WorkStealQueue};
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -96,7 +96,7 @@ impl Scheduler {
         coroutine.set_scheduler(self);
         let ptr = Box::leak(Box::new(coroutine));
         self.ready
-            .push_back(unsafe { &mut *(ptr as *mut _ as *mut c_void) })?;
+            .push_back(unsafe { &mut *(ptr as *mut _ as *mut c_void) });
         Ok(ptr)
     }
 
@@ -191,7 +191,7 @@ impl Scheduler {
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::clean_delay();
                         } else {
                             //放入就绪队列尾部
-                            self.ready.push_back(pointer).unwrap();
+                            self.ready.push_back(pointer);
                         }
                     }
                     CoroutineResult::Return(_) => unreachable!("never have a result"),
@@ -220,7 +220,7 @@ impl Scheduler {
                                 let coroutine = &mut *(pointer as *mut SchedulableCoroutine);
                                 coroutine.set_status(Status::Ready);
                                 //把到时间的协程加入就绪队列
-                                self.ready.push_back(&mut *pointer)?;
+                                self.ready.push_back(&mut *pointer);
                             }
                         }
                     }
@@ -244,7 +244,7 @@ impl Scheduler {
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
             if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-                self.ready.push_back(&mut *co)?;
+                self.ready.push_back(&mut *co);
             }
         }
         Ok(())

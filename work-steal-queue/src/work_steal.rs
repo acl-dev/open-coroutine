@@ -1,10 +1,12 @@
 use crate::rand::{FastRand, RngSeedGenerator};
-use crate::{Injector, Steal, Worker};
+use crossbeam_deque::{Injector, Steal};
+use st3::fifo::Worker;
+use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct WorkStealQueue<T> {
+pub struct WorkStealQueue<T: Debug> {
     shared_queue: Injector<T>,
     /// Number of pending tasks in the queue. This helps prevent unnecessary
     /// locking in the hot path.
@@ -15,7 +17,7 @@ pub struct WorkStealQueue<T> {
     seed_generator: RngSeedGenerator,
 }
 
-impl<T> Drop for WorkStealQueue<T> {
+impl<T: Debug> Drop for WorkStealQueue<T> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             for local_queue in self.local_queues.iter() {
@@ -26,17 +28,17 @@ impl<T> Drop for WorkStealQueue<T> {
     }
 }
 
-unsafe impl<T: Send> Send for WorkStealQueue<T> {}
-unsafe impl<T: Send> Sync for WorkStealQueue<T> {}
+unsafe impl<T: Send + Debug> Send for WorkStealQueue<T> {}
+unsafe impl<T: Send + Debug> Sync for WorkStealQueue<T> {}
 
-impl<T> WorkStealQueue<T> {
+impl<T: Debug> WorkStealQueue<T> {
     pub fn new(local_queues: usize, local_capacity: usize) -> Self {
         WorkStealQueue {
             shared_queue: Injector::new(),
             len: AtomicUsize::new(0),
             stealing: AtomicBool::new(false),
             local_queues: (0..local_queues)
-                .map(|_| Worker::new_capacity_fifo(local_capacity, false))
+                .map(|_| Worker::new(local_capacity))
                 .collect(),
             index: AtomicUsize::new(0),
             seed_generator: RngSeedGenerator::default(),
@@ -98,7 +100,7 @@ impl<T> WorkStealQueue<T> {
     }
 }
 
-impl<T> Default for WorkStealQueue<T> {
+impl<T: Debug> Default for WorkStealQueue<T> {
     fn default() -> Self {
         Self::new(num_cpus::get(), 256)
     }
@@ -106,7 +108,7 @@ impl<T> Default for WorkStealQueue<T> {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct LocalQueue<'l, T> {
+pub struct LocalQueue<'l, T: Debug> {
     /// Used to schedule bookkeeping tasks every so often.
     tick: AtomicU32,
     shared: &'l WorkStealQueue<T>,
@@ -116,7 +118,7 @@ pub struct LocalQueue<'l, T> {
     rand: FastRand,
 }
 
-impl<T> Drop for LocalQueue<'_, T> {
+impl<T: Debug> Drop for LocalQueue<'_, T> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             assert!(self.pop_front().is_none(), "local queue not empty");
@@ -124,10 +126,10 @@ impl<T> Drop for LocalQueue<'_, T> {
     }
 }
 
-unsafe impl<T: Send> Send for LocalQueue<'_, T> {}
-unsafe impl<T: Send> Sync for LocalQueue<'_, T> {}
+unsafe impl<T: Send + Debug> Send for LocalQueue<'_, T> {}
+unsafe impl<T: Send + Debug> Sync for LocalQueue<'_, T> {}
 
-impl<'l, T> LocalQueue<'l, T> {
+impl<'l, T: Debug> LocalQueue<'l, T> {
     pub(crate) fn new(shared: &'l WorkStealQueue<T>, queue: &'l Worker<T>, rand: FastRand) -> Self {
         LocalQueue {
             tick: AtomicU32::new(0),
@@ -143,11 +145,11 @@ impl<'l, T> LocalQueue<'l, T> {
     }
 
     pub fn is_full(&self) -> bool {
-        self.queue.cap() == self.queue.len()
+        self.queue.capacity() == self.len()
     }
 
     pub fn len(&self) -> usize {
-        self.queue.len()
+        self.queue.capacity() - self.queue.spare_capacity()
     }
 
     fn try_lock(&self) -> bool {
@@ -173,9 +175,9 @@ impl<'l, T> LocalQueue<'l, T> {
     /// for i in 0..4 {
     ///     local.push_back(i);
     /// }
+    /// assert_eq!(local.pop_front(), Some(1));
     /// assert_eq!(local.pop_front(), Some(3));
     /// assert_eq!(local.pop_front(), Some(0));
-    /// assert_eq!(local.pop_front(), Some(1));
     /// assert_eq!(local.pop_front(), Some(2));
     /// assert_eq!(local.pop_front(), None);
     /// ```
@@ -183,14 +185,9 @@ impl<'l, T> LocalQueue<'l, T> {
         if let Err(item) = self.queue.push(item) {
             //把本地队列的一半放到全局队列
             let count = self.len() / 2;
-            let stealer = self.queue.stealer();
             for _ in 0..count {
-                loop {
-                    match stealer.steal() {
-                        Steal::Success(v) => self.shared.push(v),
-                        Steal::Retry => continue,
-                        Steal::Empty => break,
-                    }
+                if let Some(item) = self.queue.pop() {
+                    self.shared.push(item);
                 }
             }
             //直接放到全局队列
@@ -217,12 +214,15 @@ impl<'l, T> LocalQueue<'l, T> {
     /// use work_steal_queue::WorkStealQueue;
     ///
     /// let queue = WorkStealQueue::new(1, 32);
-    /// queue.push(1);
-    /// queue.push(2);
+    /// for i in 0..4 {
+    ///     queue.push(i);
+    /// }
     /// let local = queue.local_queue();
-    /// assert_eq!(local.pop_front(), Some(1));
-    /// assert_eq!(local.pop_front(), Some(2));
+    /// for i in 0..4 {
+    ///     assert_eq!(local.pop_front(), Some(i));
+    /// }
     /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(queue.pop(), None);
     /// ```
     ///
     /// # Examples
@@ -232,10 +232,12 @@ impl<'l, T> LocalQueue<'l, T> {
     /// let local0 = queue.local_queue();
     /// local0.push_back(2);
     /// local0.push_back(3);
+    /// local0.push_back(4);
+    /// local0.push_back(5);
     /// let local1 = queue.local_queue();
     /// local1.push_back(0);
     /// local1.push_back(1);
-    /// for i in 0..4 {
+    /// for i in 0..6 {
     ///     assert_eq!(local1.pop_front(), Some(i));
     /// }
     /// assert_eq!(local0.pop_front(), None);
@@ -262,19 +264,41 @@ impl<'l, T> LocalQueue<'l, T> {
             for i in 0..num {
                 let i = (start + i) % num;
                 let another: &Worker<T> = local_queues.get(i).expect("get local queue failed!");
-                if let Steal::Success(popped_item) =
-                    another.stealer().steal_batch_and_pop(self.queue)
-                {
+                if std::ptr::eq(&another, &self.queue) {
+                    //不能偷自己
+                    continue;
+                }
+                if another.is_empty() {
+                    //其他队列为空
+                    continue;
+                }
+                if self.queue.spare_capacity() == 0 {
+                    //本地队列已满
+                    continue;
+                }
+                if let Ok(_) = another.stealer().steal(self.queue, |n| {
+                    //本地队列空闲长度
+                    n.min(self.queue.spare_capacity())
+                        //其他队列当前长度的一半
+                        .min(((another.capacity() - another.spare_capacity()) + 1) / 2)
+                }) {
                     self.release_lock();
-                    return Some(popped_item);
+                    return self.queue.pop();
                 }
             }
 
             //尝试从全局队列steal
             if !self.shared.is_empty() && self.shared.try_lock() {
-                if let Steal::Success(popped_item) =
-                    self.shared.shared_queue.steal_batch_and_pop(self.queue)
-                {
+                if let Some(popped_item) = self.shared.pop() {
+                    let count = self.queue.spare_capacity().min(self.queue.capacity() / 2);
+                    for _ in 0..count {
+                        match self.shared.pop() {
+                            Some(item) => {
+                                self.queue.push(item).expect("steal to local queue failed!")
+                            }
+                            None => break,
+                        }
+                    }
                     self.shared.release_lock();
                     self.release_lock();
                     return Some(popped_item);

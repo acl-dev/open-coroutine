@@ -1,25 +1,13 @@
 [package]
 name = "work-steal-queue"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
-description = "Concurrent work-stealing deque, modified from crossbeam-deque."
+description = "Concurrent work-stealing queue, implemented using st3 and crossbeam-deque."
 repository = "https://github.com/acl-dev/open-coroutine/tree/dev/work-steal-queue"
 license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
-cfg-if = "1"
 num_cpus = "1.14.0"
-timer-utils = { version = "0.0.3", path = "../timer-utils" }
-crossbeam-epoch = { version = "0.9.13", optional = true, default-features = false }
-crossbeam-utils = { version = "0.8.14", optional = true, default-features = false }
-
-[dev-dependencies]
-rand = "0.8.5"
-
-[features]
-default = ["std"]
-std = [
-    "crossbeam-epoch/std",
-    "crossbeam-utils/std",
-]
+st3 = "0.4.1"
+crossbeam-deque = "0.8.2"
