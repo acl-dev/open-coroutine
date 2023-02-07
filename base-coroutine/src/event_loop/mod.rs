@@ -90,7 +90,7 @@ impl<'a> EventLoop<'a> {
             if index == usize::MAX {
                 INDEX.store(1, Ordering::SeqCst);
             }
-            EVENT_LOOPS.get_mut(index % num_cpus::get()).unwrap()
+            EVENT_LOOPS.get_mut(index % EVENT_LOOPS.len()).unwrap()
         }
     }
 
@@ -122,7 +122,7 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_timeout_schedule(timeout_time: u64) -> std::io::Result<()> {
-        let results: Vec<std::io::Result<()>> = (0..num_cpus::get())
+        let results: Vec<std::io::Result<()>> = (0..unsafe { EVENT_LOOPS.len() })
             .into_par_iter()
             .map(|_| {
                 let event_loop = EventLoop::next();
@@ -141,9 +141,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_event(fd: libc::c_int) {
-        (0..num_cpus::get()).into_par_iter().for_each(|_| {
-            let _ = EventLoop::next().del_event(fd);
-        });
+        (0..unsafe { EVENT_LOOPS.len() })
+            .into_par_iter()
+            .for_each(|_| {
+                let _ = EventLoop::next().del_event(fd);
+            });
     }
 
     fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
@@ -158,9 +160,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_read_event(fd: libc::c_int) {
-        (0..num_cpus::get()).into_par_iter().for_each(|_| {
-            let _ = EventLoop::next().del_read_event(fd);
-        });
+        (0..unsafe { EVENT_LOOPS.len() })
+            .into_par_iter()
+            .for_each(|_| {
+                let _ = EventLoop::next().del_read_event(fd);
+            });
     }
 
     fn del_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
@@ -183,9 +187,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn round_robin_del_write_event(fd: libc::c_int) {
-        (0..num_cpus::get()).into_par_iter().for_each(|_| {
-            let _ = EventLoop::next().del_write_event(fd);
-        });
+        (0..unsafe { EVENT_LOOPS.len() })
+            .into_par_iter()
+            .for_each(|_| {
+                let _ = EventLoop::next().del_write_event(fd);
+            });
     }
 
     fn del_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
