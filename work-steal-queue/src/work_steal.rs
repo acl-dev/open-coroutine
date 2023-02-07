@@ -276,12 +276,16 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
                     //本地队列已满
                     continue;
                 }
-                if let Ok(_) = another.stealer().steal(self.queue, |n| {
-                    //本地队列空闲长度
-                    n.min(self.queue.spare_capacity())
-                        //其他队列当前长度的一半
-                        .min(((another.capacity() - another.spare_capacity()) + 1) / 2)
-                }) {
+                if another
+                    .stealer()
+                    .steal(self.queue, |n| {
+                        //可偷取的最大长度与本地队列空闲长度做比较
+                        n.min(self.queue.spare_capacity())
+                            //与其他队列当前长度的一半做比较
+                            .min(((another.capacity() - another.spare_capacity()) + 1) / 2)
+                    })
+                    .is_ok()
+                {
                     self.release_lock();
                     return self.queue.pop();
                 }
