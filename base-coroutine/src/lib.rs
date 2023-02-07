@@ -29,6 +29,9 @@ mod context;
 pub mod coroutine;
 
 #[allow(dead_code)]
+mod work_steal;
+
+#[allow(dead_code)]
 pub mod scheduler;
 
 #[cfg(unix)]

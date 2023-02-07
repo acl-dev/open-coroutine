@@ -9,7 +9,7 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use timer_utils::TimerObjectList;
-use work_steal_queue::{LocalQueue, WorkStealQueue};
+use work_steal_queue::LocalQueue;
 
 thread_local! {
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
@@ -21,8 +21,6 @@ type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 
 /// 用户协程
 pub type SchedulableCoroutine = Coroutine<&'static mut c_void, &'static mut c_void>;
-
-static QUEUE: Lazy<WorkStealQueue<&'static mut c_void>> = Lazy::new(WorkStealQueue::default);
 
 static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
 
@@ -42,7 +40,7 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
             id: IdGenerator::next_scheduler_id(),
-            ready: Box::leak(Box::new(QUEUE.local_queue())),
+            ready: crate::work_steal::get_queue(),
             copy_stack: ObjectList::new(),
             scheduling: AtomicBool::new(false),
         }
