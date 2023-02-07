@@ -181,7 +181,7 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     /// assert_eq!(local.pop_front(), Some(2));
     /// assert_eq!(local.pop_front(), None);
     /// ```
-    pub fn push_back(&self, item: T) {
+    pub fn push_back(&self, item: T) -> std::io::Result<()> {
         if let Err(item) = self.queue.push(item) {
             //把本地队列的一半放到全局队列
             let count = self.len() / 2;
@@ -193,6 +193,7 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
             //直接放到全局队列
             self.shared.push(item);
         }
+        Ok(())
     }
 
     /// Increment the tick
