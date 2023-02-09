@@ -213,32 +213,36 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    fn build_token() -> (usize, *const c_void) {
+    /// 用户不应该使用此方法
+    pub fn syscall(&self) {
         if let Some(co) = SchedulableCoroutine::current() {
-            (co.get_id(), co as *const _ as *const c_void)
-        } else {
-            (0, std::ptr::null_mut())
+            self.scheduler.syscall(co.get_id(), co);
         }
+    }
+
+    fn build_token() -> usize {
+        if let Some(co) = SchedulableCoroutine::current() {
+            return co.get_id();
+        }
+        0
     }
 
     pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         let token = <EventLoop<'a>>::build_token();
-        self.scheduler.syscall(token.0, token.1);
-        self.selector.register(fd, token.0, Interest::READABLE)?;
+        self.selector.register(fd, token, Interest::READABLE)?;
         unsafe {
             READABLE_RECORDS.insert(fd);
-            READABLE_TOKEN_RECORDS.insert(fd, token.0);
+            READABLE_TOKEN_RECORDS.insert(fd, token);
         }
         Ok(())
     }
 
     pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         let token = <EventLoop<'a>>::build_token();
-        self.scheduler.syscall(token.0, token.1);
-        self.selector.register(fd, token.0, Interest::WRITABLE)?;
+        self.selector.register(fd, token, Interest::WRITABLE)?;
         unsafe {
             WRITABLE_RECORDS.insert(fd);
-            WRITABLE_TOKEN_RECORDS.insert(fd, token.0);
+            WRITABLE_TOKEN_RECORDS.insert(fd, token);
         }
         Ok(())
     }

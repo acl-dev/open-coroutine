@@ -137,6 +137,7 @@ macro_rules! impl_read_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = base_coroutine::EventLoop::next();
+        event_loop.syscall();
         let mut r;
         loop {
             r = base_coroutine::unbreakable!(($fn)($socket ,$($arg, )*));
@@ -174,6 +175,7 @@ macro_rules! impl_expected_read_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = base_coroutine::EventLoop::next();
+        event_loop.syscall();
         let mut received = 0;
         let mut r = 0;
         while received < $length {
@@ -219,6 +221,7 @@ macro_rules! impl_expected_read_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = base_coroutine::EventLoop::next();
+        event_loop.syscall();
         let mut received = 0;
         let mut r = 0;
         while received < $length {
@@ -270,6 +273,7 @@ macro_rules! impl_write_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = base_coroutine::EventLoop::next();
+        event_loop.syscall();
         let mut r;
         loop {
             r = base_coroutine::unbreakable!(($fn)($socket, $($arg, )*));
@@ -307,6 +311,7 @@ macro_rules! impl_expected_write_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = base_coroutine::EventLoop::next();
+        event_loop.syscall();
         let mut sent = 0;
         let mut r = 0;
         while sent < $length {
@@ -352,6 +357,7 @@ macro_rules! impl_expected_write_hook {
             $crate::unix::common::set_non_blocking(socket, true);
         }
         let event_loop = base_coroutine::EventLoop::next();
+        event_loop.syscall();
         let mut sent = 0;
         let mut r = 0;
         while sent < $length {
