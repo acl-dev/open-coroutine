@@ -230,15 +230,12 @@ impl Scheduler {
         }
     }
 
-    pub(crate) fn syscall(&self, co_id: usize, co: *const c_void) {
+    pub(crate) fn syscall(&self, co_id: usize, co: &SchedulableCoroutine) {
         if co_id == 0 {
             return;
         }
-        unsafe {
-            let c = &*(co as *const SchedulableCoroutine);
-            c.set_status(Status::SystemCall);
-            SYSTEM_CALL_TABLE.insert(co_id, std::ptr::read_unaligned(c));
-        }
+        co.set_status(Status::SystemCall);
+        unsafe { SYSTEM_CALL_TABLE.insert(co_id, std::ptr::read_unaligned(co)) };
     }
 
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
