@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[repr(C)]
-pub struct JoinHandle(pub i128);
+pub struct JoinHandle(pub libc::c_longlong);
 
 impl JoinHandle {
     pub fn error() -> Self {
@@ -109,7 +109,7 @@ impl<'a> EventLoop<'a> {
     ) -> std::io::Result<JoinHandle> {
         EventLoop::next_scheduler()
             .submit(f, param, size)
-            .map(JoinHandle)
+            .map(|co_id| JoinHandle(co_id as libc::c_longlong))
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {
