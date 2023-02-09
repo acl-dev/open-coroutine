@@ -32,7 +32,7 @@ fn main() {
     );
     let result = handle.join();
     unsafe {
-        assert_eq!(result.unwrap(), None);
+        assert!(result.unwrap().is_none());
         assert!(!EXAMPLE_FLAG);
     }
     println!("preemptive schedule finished successfully!");
