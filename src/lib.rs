@@ -273,7 +273,7 @@ mod tests {
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
             std::thread::spawn(move || crate_server(port, clone, server_finished_pair));
-            std::thread::spawn(move || client_main(port, server_started.clone()));
+            std::thread::spawn(move || client_main(port, server_started));
 
             let (lock, cvar) = &*server_finished;
             let result = cvar
@@ -360,7 +360,7 @@ mod tests {
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
             std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
-            std::thread::spawn(move || client_main(port, server_started.clone()));
+            std::thread::spawn(move || client_main(port, server_started));
 
             let (lock, cvar) = &*server_finished;
             let result = cvar
@@ -433,7 +433,7 @@ mod tests {
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
             std::thread::spawn(move || crate_server(port, clone, server_finished_pair));
-            std::thread::spawn(move || co_client_main(port, server_started.clone()));
+            std::thread::spawn(move || co_client_main(port, server_started));
 
             let (lock, cvar) = &*server_finished;
             let result = cvar
