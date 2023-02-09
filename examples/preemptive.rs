@@ -16,7 +16,7 @@ fn main() {
             }
             input
         },
-        Some(Box::leak(Box::new(1))),
+        None,
         4096,
     );
     co(
@@ -32,7 +32,7 @@ fn main() {
     );
     let result = handle.join();
     unsafe {
-        assert_eq!(std::ptr::read_unaligned(result.unwrap() as *mut i32), 1);
+        assert_eq!(result.unwrap(), None);
         assert!(!EXAMPLE_FLAG);
     }
     println!("preemptive schedule finished successfully!");
