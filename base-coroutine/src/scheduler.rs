@@ -2,7 +2,7 @@ use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFu
 use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::stack::Stack;
-use object_collection::{ObjectList, ObjectMap};
+use object_collection::ObjectList;
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -23,11 +23,11 @@ type MainCoroutine<'a> = OpenCoroutine<'a, *mut Scheduler, (), ()>;
 /// 用户协程
 pub type SchedulableCoroutine = Coroutine<&'static mut c_void, &'static mut c_void>;
 
-static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new);
+static mut SYSTEM_CALL_TABLE: Lazy<HashMap<usize, &SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
-static mut SUSPEND_TABLE: Lazy<TimerList<&mut SchedulableCoroutine>> = Lazy::new(TimerList::new);
+static mut SUSPEND_TABLE: Lazy<TimerList<&SchedulableCoroutine>> = Lazy::new(TimerList::new);
 
-static QUEUE: Lazy<WorkStealQueue<&'static mut SchedulableCoroutine>> =
+static QUEUE: Lazy<WorkStealQueue<&'static SchedulableCoroutine>> =
     Lazy::new(WorkStealQueue::default);
 
 static mut RESULT_TABLE: Lazy<HashMap<usize, SchedulableCoroutine>> = Lazy::new(HashMap::new);
@@ -36,7 +36,7 @@ static mut RESULT_TABLE: Lazy<HashMap<usize, SchedulableCoroutine>> = Lazy::new(
 #[derive(Debug)]
 pub struct Scheduler {
     id: usize,
-    ready: LocalQueue<'static, &'static mut SchedulableCoroutine>,
+    ready: LocalQueue<'static, &'static SchedulableCoroutine>,
     //not support for now
     copy_stack: ObjectList,
     scheduling: AtomicBool,
@@ -229,19 +229,18 @@ impl Scheduler {
         }
     }
 
-    pub(crate) fn syscall(&self, co_id: usize, co: &SchedulableCoroutine) {
+    pub(crate) fn syscall(&self, co_id: usize, co: &'static SchedulableCoroutine) {
         if co_id == 0 {
             return;
         }
         co.set_status(Status::SystemCall);
-        unsafe { SYSTEM_CALL_TABLE.insert(co_id, std::ptr::read_unaligned(co)) };
+        unsafe { SYSTEM_CALL_TABLE.insert(co_id, co) };
     }
 
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
             if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
-                self.ready
-                    .push_back(&mut *(co as *mut SchedulableCoroutine));
+                self.ready.push_back(co);
             }
         }
         Ok(())

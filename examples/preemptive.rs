@@ -8,31 +8,27 @@ fn main() {
     let handle = co(
         |_yielder, input: Option<&'static mut i32>| {
             println!("[coroutine1] launched");
-            unsafe {
-                while EXAMPLE_FLAG {
-                    println!("loop");
-                    std::thread::sleep(Duration::from_millis(10));
-                }
+            while unsafe { EXAMPLE_FLAG } {
+                println!("loop");
+                std::thread::sleep(Duration::from_millis(10));
             }
             input
         },
-        None,
+        Some(Box::leak(Box::new(1))),
         4096,
     );
     co(
         |_yielder, input: Option<&'static mut c_void>| {
             println!("[coroutine2] launched");
-            unsafe {
-                EXAMPLE_FLAG = false;
-            }
+            unsafe { EXAMPLE_FLAG = false };
             input
         },
         None,
         4096,
     );
-    let result = handle.join();
+    let result = handle.join().unwrap().unwrap();
     unsafe {
-        assert!(result.unwrap().is_none());
+        assert_eq!(1, std::ptr::read_unaligned(result));
         assert!(!EXAMPLE_FLAG);
     }
     println!("preemptive schedule finished successfully!");

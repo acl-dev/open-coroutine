@@ -23,18 +23,15 @@ impl JoinHandle {
         JoinHandle(-1)
     }
 
-    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
+    pub fn timeout_join<R>(&self, dur: Duration) -> std::io::Result<Option<&'static mut R>> {
         self.timeout_at_join(timer_utils::get_timeout_time(dur))
     }
 
-    pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
+    pub fn join<R>(self) -> std::io::Result<Option<&'static mut R>> {
         self.timeout_at_join(u64::MAX)
     }
 
-    pub fn timeout_at_join(
-        &self,
-        timeout_time: u64,
-    ) -> std::io::Result<Option<&'static mut c_void>> {
+    pub fn timeout_at_join<R>(&self, timeout_time: u64) -> std::io::Result<Option<&'static mut R>> {
         if self.0 <= 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -50,7 +47,10 @@ impl JoinHandle {
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
             result = Scheduler::get_result(self.0 as usize);
         }
-        Ok(result.unwrap().get_result())
+        Ok(result
+            .unwrap()
+            .get_result()
+            .map(|ptr| unsafe { std::mem::transmute(ptr) }))
     }
 }
 
@@ -218,21 +218,21 @@ impl<'a> EventLoop<'a> {
     }
 
     /// 用户不应该使用此方法
-    pub fn syscall(&self) {
+    pub fn syscall(&self) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
-            self.scheduler.syscall(co.get_id(), co);
-        }
-    }
-
-    fn build_token() -> usize {
-        if let Some(co) = SchedulableCoroutine::current() {
-            return co.get_id();
+            let co_id = co.get_id();
+            self.scheduler.syscall(co_id, co);
+            return co_id;
         }
         0
     }
 
-    pub fn add_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        let token = <EventLoop<'a>>::build_token();
+    pub fn add_read_event(&mut self, fd: libc::c_int, token: usize) -> std::io::Result<()> {
+        unsafe {
+            if READABLE_TOKEN_RECORDS.contains_key(&fd) {
+                return Ok(());
+            }
+        }
         self.selector.register(fd, token, Interest::READABLE)?;
         unsafe {
             READABLE_RECORDS.insert(fd);
@@ -241,8 +241,12 @@ impl<'a> EventLoop<'a> {
         Ok(())
     }
 
-    pub fn add_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        let token = <EventLoop<'a>>::build_token();
+    pub fn add_write_event(&mut self, fd: libc::c_int, token: usize) -> std::io::Result<()> {
+        unsafe {
+            if WRITABLE_TOKEN_RECORDS.contains_key(&fd) {
+                return Ok(());
+            }
+        }
         self.selector.register(fd, token, Interest::WRITABLE)?;
         unsafe {
             WRITABLE_RECORDS.insert(fd);
@@ -284,18 +288,20 @@ impl<'a> EventLoop<'a> {
     pub fn wait_read_event(
         &mut self,
         fd: libc::c_int,
+        token: usize,
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
-        self.add_read_event(fd)?;
+        self.add_read_event(fd, token)?;
         self.wait(timeout)
     }
 
     pub fn wait_write_event(
         &mut self,
         fd: libc::c_int,
+        token: usize,
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
-        self.add_write_event(fd)?;
+        self.add_write_event(fd, token)?;
         self.wait(timeout)
     }
 }
@@ -345,7 +351,7 @@ mod tests {
     fn timed_join_test() {
         let handle = EventLoop::submit(f3, val(3), 4096).expect("submit failed !");
         let error = handle
-            .timeout_join(std::time::Duration::from_nanos(0))
+            .timeout_join::<c_void>(std::time::Duration::from_nanos(0))
             .unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
         assert_eq!(
