@@ -103,6 +103,7 @@ pub extern "C" fn connect(
         set_non_blocking(socket, true);
     }
     let event_loop = base_coroutine::EventLoop::next();
+    let co_id = event_loop.syscall();
     let mut r;
     loop {
         r = (Lazy::force(&CONNECT))(socket, address, len);
@@ -113,9 +114,11 @@ pub extern "C" fn connect(
         let errno = std::io::Error::last_os_error().raw_os_error();
         if errno == Some(libc::EINPROGRESS) {
             //等待写事件
-            if let Err(e) =
-                event_loop.wait_write_event(socket, Some(std::time::Duration::from_millis(10)))
-            {
+            if let Err(e) = event_loop.wait_write_event(
+                socket,
+                co_id,
+                Some(std::time::Duration::from_millis(10)),
+            ) {
                 match e.kind() {
                     //maybe invoke by Monitor::signal(), just ignore this
                     std::io::ErrorKind::Interrupted => reset_errno(),
