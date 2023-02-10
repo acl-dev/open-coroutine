@@ -229,7 +229,10 @@ impl<'a> EventLoop<'a> {
                 return Ok(());
             }
         }
+        #[cfg(not(windows))]
         unbreakable!(self.selector.register(fd, token, Interest::READABLE))?;
+        #[cfg(windows)]
+        self.selector.register(fd, token, Interest::READABLE)?;
         unsafe {
             READABLE_RECORDS.insert(fd);
             READABLE_TOKEN_RECORDS.insert(fd, token);
@@ -243,7 +246,10 @@ impl<'a> EventLoop<'a> {
                 return Ok(());
             }
         }
+        #[cfg(not(windows))]
         unbreakable!(self.selector.register(fd, token, Interest::WRITABLE))?;
+        #[cfg(windows)]
+        self.selector.register(fd, token, Interest::WRITABLE)?;
         unsafe {
             WRITABLE_RECORDS.insert(fd);
             WRITABLE_TOKEN_RECORDS.insert(fd, token);
