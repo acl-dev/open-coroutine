@@ -48,10 +48,10 @@ macro_rules! shield {
 #[cfg(unix)]
 #[macro_export]
 macro_rules! unbreakable {
-    ( ( $fn: expr ) ( $($arg: expr),* $(,)* ) ) => {{
+    ( $fn: expr ) => {{
+        let oldset = $crate::shield!();
         unsafe {
-            let mut oldset = $crate::shield!();
-            let res = $fn($($arg, )*);
+            let res = $fn;
             libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
             res
         }

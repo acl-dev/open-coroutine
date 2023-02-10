@@ -4,7 +4,7 @@ use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
@@ -139,7 +139,7 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     id: usize,
     sp: RefCell<Transfer>,
     stack: ProtectedFixedSizeStack,
-    status: RefCell<Status>,
+    status: Cell<Status>,
     //用户函数
     proc: UserFunc<'a, Param, Yield, Return>,
     marker: PhantomData<&'a extern "C" fn(Param) -> CoroutineResult<Yield, Return>>,
@@ -174,7 +174,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             //还没执行到10ms就返回了，此时需要清理signal
             //否则下一个协程执行不到10ms就被抢占调度了
             Monitor::clean_task(Monitor::signal_time());
-            if let Some(scheduler) = *coroutine.scheduler.borrow_mut() {
+            if let Some(scheduler) = coroutine.get_scheduler() {
                 *coroutine.result.borrow_mut() = MaybeUninit::new(ManuallyDrop::new(result));
                 //执行下一个子协程
                 (*scheduler).do_schedule();
@@ -212,7 +212,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 0,
             )),
             stack,
-            status: RefCell::new(Status::Created),
+            status: Cell::new(Status::Created),
             proc,
             marker: Default::default(),
             param: RefCell::new(param),
@@ -244,11 +244,11 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     }
 
     pub fn get_status(&self) -> Status {
-        *self.status.borrow()
+        self.status.get()
     }
 
     pub fn set_status(&self, status: Status) {
-        *self.status.borrow_mut() = status;
+        self.status.set(status);
     }
 
     pub fn get_result(&self) -> Option<Return> {
@@ -320,7 +320,7 @@ impl<'a, Param, Yield, Return> Debug for OpenCoroutine<'a, Param, Yield, Return>
 
 impl<'a, Param, Yield, Return> Drop for OpenCoroutine<'a, Param, Yield, Return> {
     fn drop(&mut self) {
-        self.status = RefCell::new(Status::Exited);
+        self.status.set(Status::Exited);
     }
 }
 

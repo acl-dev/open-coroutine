@@ -183,16 +183,18 @@ mod tests {
         None
     }
 
-    static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
-
-    unsafe fn crate_server(port: u16, server_finished: Arc<(Mutex<bool>, Condvar)>) {
+    unsafe fn crate_server(
+        port: u16,
+        server_started: Arc<AtomicBool>,
+        server_finished: Arc<(Mutex<bool>, Condvar)>,
+    ) {
         //invoke by libc::listen
         let _ = co_crate(fx, Some(&mut *(1usize as *mut c_void)), 4096);
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
             .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
-        SERVER_STARTED.store(true, Ordering::Release);
+        server_started.store(true, Ordering::Release);
         //invoke by libc::accept
         let _ = co_crate(fx, Some(&mut *(2usize as *mut c_void)), 4096);
         for stream in listener.incoming() {
@@ -227,7 +229,9 @@ mod tests {
         }
     }
 
-    unsafe fn client_main(port: u16) {
+    unsafe fn client_main(port: u16, server_started: Arc<AtomicBool>) {
+        //等服务端起来
+        while !server_started.load(Ordering::Acquire) {}
         //invoke by libc::connect
         let _ = co_crate(fx, Some(&mut *(3usize as *mut c_void)), 4096);
         let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
@@ -263,15 +267,13 @@ mod tests {
     #[test]
     fn hook_test_connect_and_poll_and_accept() -> std::io::Result<()> {
         let port = 8888;
+        let server_started = Arc::new(AtomicBool::new(false));
+        let clone = server_started.clone();
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
-            std::thread::spawn(move || crate_server(port, server_finished_pair));
-            std::thread::spawn(move || {
-                //等服务端起来
-                while !SERVER_STARTED.load(Ordering::Acquire) {}
-                client_main(port)
-            });
+            std::thread::spawn(move || crate_server(port, clone, server_finished_pair));
+            std::thread::spawn(move || client_main(port, server_started));
 
             let (lock, cvar) = &*server_finished;
             let result = cvar
@@ -292,16 +294,18 @@ mod tests {
         }
     }
 
-    static CO_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
-
-    unsafe fn crate_co_server(port: u16, server_finished: Arc<(Mutex<bool>, Condvar)>) {
+    unsafe fn crate_co_server(
+        port: u16,
+        server_started: Arc<AtomicBool>,
+        server_finished: Arc<(Mutex<bool>, Condvar)>,
+    ) {
         //invoke by libc::listen
         let _ = co_crate(fx, Some(&mut *(11usize as *mut c_void)), 4096);
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
             .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
-        CO_SERVER_STARTED.store(true, Ordering::Release);
+        server_started.store(true, Ordering::Release);
         //invoke by libc::accept
         let _ = co_crate(fx, Some(&mut *(12usize as *mut c_void)), 4096);
         for stream in listener.incoming() {
@@ -350,15 +354,13 @@ mod tests {
     #[test]
     fn hook_test_co_server() -> std::io::Result<()> {
         let port = 8889;
+        let server_started = Arc::new(AtomicBool::new(false));
+        let clone = server_started.clone();
         let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
         let server_finished = Arc::clone(&server_finished_pair);
         unsafe {
-            std::thread::spawn(move || crate_co_server(port, server_finished_pair));
-            std::thread::spawn(move || {
-                //等服务端起来
-                while !CO_SERVER_STARTED.load(Ordering::Acquire) {}
-                client_main(port)
-            });
+            std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
+            std::thread::spawn(move || client_main(port, server_started));
 
             let (lock, cvar) = &*server_finished;
             let result = cvar
