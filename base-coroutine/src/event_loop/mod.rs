@@ -16,37 +16,52 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[repr(C)]
-pub struct JoinHandle(pub &'static c_void);
+pub struct JoinHandle(pub libc::c_long);
 
 impl JoinHandle {
-    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<usize> {
+    pub fn error() -> Self {
+        JoinHandle(-1)
+    }
+
+    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
         self.timeout_at_join(timer_utils::get_timeout_time(dur))
     }
 
-    pub fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<usize> {
-        if self.0 as *const c_void as usize == 0 {
-            return Ok(0);
+    pub fn timeout_at_join(
+        &self,
+        timeout_time: u64,
+    ) -> std::io::Result<Option<&'static mut c_void>> {
+        if self.0 <= 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid coroutine id",
+            ));
         }
-        let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
-        while result.get_result().is_none() {
+        let mut result = Scheduler::get_result(self.0 as usize);
+        while result.is_none() {
             if timeout_time <= timer_utils::now() {
                 //timeout
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
+            result = Scheduler::get_result(self.0 as usize);
         }
-        Ok(result.get_result().unwrap() as *mut c_void as usize)
+        Ok(result.unwrap().get_result())
     }
 
-    pub fn join(self) -> std::io::Result<usize> {
-        if self.0 as *const c_void as usize == 0 {
-            return Ok(0);
+    pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
+        if self.0 <= 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid coroutine id",
+            ));
         }
-        let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
-        while result.get_result().is_none() {
+        let mut result = Scheduler::get_result(self.0 as usize);
+        while result.is_none() {
             EventLoop::round_robin_schedule()?;
+            result = Scheduler::get_result(self.0 as usize);
         }
-        Ok(result.get_result().unwrap() as *mut c_void as usize)
+        Ok(result.unwrap().get_result())
     }
 }
 
@@ -105,7 +120,7 @@ impl<'a> EventLoop<'a> {
     ) -> std::io::Result<JoinHandle> {
         EventLoop::next_scheduler()
             .submit(f, param, size)
-            .map(|co| JoinHandle(unsafe { std::mem::transmute(co) }))
+            .map(|co_id| JoinHandle(co_id as libc::c_long))
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {
@@ -337,8 +352,8 @@ mod tests {
     fn join_test() {
         let handle1 = EventLoop::submit(f1, val(1), 4096).expect("submit failed !");
         let handle2 = EventLoop::submit(f2, val(2), 4096).expect("submit failed !");
-        assert_eq!(handle1.join().unwrap(), 1);
-        assert_eq!(handle2.join().unwrap(), 2);
+        assert_eq!(handle1.join().unwrap().unwrap() as *mut c_void as usize, 1);
+        assert_eq!(handle2.join().unwrap().unwrap() as *mut c_void as usize, 2);
     }
 
     extern "C" fn f3(
@@ -359,7 +374,8 @@ mod tests {
         assert_eq!(
             handle
                 .timeout_join(std::time::Duration::from_secs(1))
-                .unwrap(),
+                .unwrap()
+                .unwrap() as *mut c_void as usize,
             3
         );
     }

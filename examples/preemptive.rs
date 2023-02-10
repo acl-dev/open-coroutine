@@ -30,9 +30,12 @@ fn main() {
         None,
         4096,
     );
-    let result = handle.join();
+    let result = handle
+        .timeout_join(Duration::from_secs(1))
+        .unwrap()
+        .unwrap() as *mut c_void as *mut i32;
     unsafe {
-        assert_eq!(std::ptr::read_unaligned(result.unwrap() as *mut i32), 1);
+        assert_eq!(std::ptr::read_unaligned(result), 1);
         assert!(!EXAMPLE_FLAG);
     }
     println!("preemptive schedule finished successfully!");
