@@ -72,10 +72,7 @@ jobs:
           command: run
           args: --example hello --release
       - name: Run cargo release preemptive example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example preemptive --release
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release"
 
   macos:
     name: Test ${{ matrix.rust }} on macOS-latest
@@ -112,10 +109,7 @@ jobs:
           command: run
           args: --example hello --release
       - name: Run cargo release preemptive example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example preemptive --release
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release"
 
   windows:
     name: Test ${{ matrix.rust }} on windows-latest
@@ -152,7 +146,4 @@ jobs:
           command: run
           args: --example hello --release
 #      - name: Run cargo release preemptive example
-#        uses: actions-rs/cargo@v1
-#        with:
-#          command: run
-#          args: --example preemptive --release
+#        run: bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example preemptive --release"
