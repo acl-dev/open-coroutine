@@ -230,7 +230,7 @@ impl Scheduler {
         }
     }
 
-    pub(crate) fn syscall(&self, co_id: usize, co: &SchedulableCoroutine) {
+    pub(crate) fn syscall(&self, co_id: usize, co: &'static SchedulableCoroutine) {
         if co_id == 0 {
             return;
         }

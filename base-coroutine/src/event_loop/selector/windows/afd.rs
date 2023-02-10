@@ -194,7 +194,7 @@ impl Afd {
             );
             if status != STATUS_SUCCESS {
                 let raw_err = io::Error::from_raw_os_error(RtlNtStatusToDosError(status) as i32);
-                let msg = format!("Failed to open \\Device\\Afd\\Mio: {}", raw_err);
+                let msg = format!("Failed to open \\Device\\Afd\\Mio: {raw_err}");
                 return Err(io::Error::new(raw_err.kind(), msg));
             }
             let fd = File::from_raw_handle(afd_helper_handle as RawHandle);
