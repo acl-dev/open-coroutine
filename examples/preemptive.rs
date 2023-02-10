@@ -31,7 +31,7 @@ fn main() {
         4096,
     );
     let result = handle
-        .timeout_join(Duration::from_secs(1))
+        .timeout_join(Duration::from_secs(10))
         .unwrap()
         .unwrap() as *mut c_void as *mut i32;
     unsafe {
