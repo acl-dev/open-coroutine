@@ -233,8 +233,10 @@ impl<'a> EventLoop<'a> {
                 return Ok(());
             }
         }
+        let mut oldset = shield!();
         self.selector.register(fd, token, Interest::READABLE)?;
         unsafe {
+            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
             READABLE_RECORDS.insert(fd);
             READABLE_TOKEN_RECORDS.insert(fd, token);
         }
@@ -247,8 +249,10 @@ impl<'a> EventLoop<'a> {
                 return Ok(());
             }
         }
+        let mut oldset = shield!();
         self.selector.register(fd, token, Interest::WRITABLE)?;
         unsafe {
+            libc::pthread_sigmask(libc::SIG_SETMASK, &oldset, std::ptr::null_mut());
             WRITABLE_RECORDS.insert(fd);
             WRITABLE_TOKEN_RECORDS.insert(fd, token);
         }
