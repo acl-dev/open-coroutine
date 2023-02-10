@@ -29,7 +29,10 @@ pub extern "C" fn coroutine_crate(
 #[no_mangle]
 pub extern "C" fn coroutine_join(handle: JoinHandle) -> libc::c_long {
     match handle.join() {
-        Ok(ptr) => ptr as libc::c_long,
+        Ok(ptr) => match ptr {
+            Some(ptr) => ptr as *mut c_void as libc::c_long,
+            None => 0,
+        },
         Err(_) => -1,
     }
 }
@@ -38,7 +41,10 @@ pub extern "C" fn coroutine_join(handle: JoinHandle) -> libc::c_long {
 #[no_mangle]
 pub extern "C" fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long {
     match handle.timeout_join(std::time::Duration::from_nanos(ns_time)) {
-        Ok(ptr) => ptr as libc::c_long,
+        Ok(ptr) => match ptr {
+            Some(ptr) => ptr as *mut c_void as libc::c_long,
+            None => 0,
+        },
         Err(_) => -1,
     }
 }
