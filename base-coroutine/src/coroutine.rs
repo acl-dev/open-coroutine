@@ -251,8 +251,12 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         self.status.set(status);
     }
 
+    pub fn is_finished(&self) -> bool {
+        self.get_status() == Status::Finished
+    }
+
     pub fn get_result(&self) -> Option<Return> {
-        if self.get_status() == Status::Finished {
+        if self.is_finished() {
             unsafe {
                 let mut m = self.result.borrow().assume_init_read();
                 Some(ManuallyDrop::take(&mut m))

@@ -19,34 +19,37 @@ use std::time::Duration;
 pub struct JoinHandle(pub &'static c_void);
 
 impl JoinHandle {
-    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<usize> {
+    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
         self.timeout_at_join(timer_utils::get_timeout_time(dur))
     }
 
-    pub fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<usize> {
+    pub fn timeout_at_join(
+        &self,
+        timeout_time: u64,
+    ) -> std::io::Result<Option<&'static mut c_void>> {
         if self.0 as *const c_void as usize == 0 {
-            return Ok(0);
+            return Ok(None);
         }
         let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
-        while result.get_result().is_none() {
+        while !result.is_finished() {
             if timeout_time <= timer_utils::now() {
                 //timeout
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
         }
-        Ok(result.get_result().unwrap() as *mut c_void as usize)
+        Ok(result.get_result())
     }
 
-    pub fn join(self) -> std::io::Result<usize> {
+    pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
         if self.0 as *const c_void as usize == 0 {
-            return Ok(0);
+            return Ok(None);
         }
         let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
-        while result.get_result().is_none() {
+        while !result.is_finished() {
             EventLoop::round_robin_schedule()?;
         }
-        Ok(result.get_result().unwrap() as *mut c_void as usize)
+        Ok(result.get_result())
     }
 }
 
@@ -337,8 +340,8 @@ mod tests {
     fn join_test() {
         let handle1 = EventLoop::submit(f1, val(1), 4096).expect("submit failed !");
         let handle2 = EventLoop::submit(f2, val(2), 4096).expect("submit failed !");
-        assert_eq!(handle1.join().unwrap(), 1);
-        assert_eq!(handle2.join().unwrap(), 2);
+        assert_eq!(handle1.join().unwrap().unwrap() as *mut c_void as usize, 1);
+        assert_eq!(handle2.join().unwrap().unwrap() as *mut c_void as usize, 2);
     }
 
     extern "C" fn f3(
@@ -359,7 +362,8 @@ mod tests {
         assert_eq!(
             handle
                 .timeout_join(std::time::Duration::from_secs(1))
-                .unwrap(),
+                .unwrap()
+                .unwrap() as *mut c_void as usize,
             3
         );
     }
