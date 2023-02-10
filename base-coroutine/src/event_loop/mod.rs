@@ -23,15 +23,18 @@ impl JoinHandle {
         JoinHandle(-1)
     }
 
-    pub fn timeout_join<R>(&self, dur: Duration) -> std::io::Result<Option<&'static mut R>> {
+    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
         self.timeout_at_join(timer_utils::get_timeout_time(dur))
     }
 
-    pub fn join<R>(self) -> std::io::Result<Option<&'static mut R>> {
+    pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
         self.timeout_at_join(u64::MAX)
     }
 
-    pub fn timeout_at_join<R>(&self, timeout_time: u64) -> std::io::Result<Option<&'static mut R>> {
+    pub fn timeout_at_join(
+        &self,
+        timeout_time: u64,
+    ) -> std::io::Result<Option<&'static mut c_void>> {
         if self.0 <= 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -47,10 +50,7 @@ impl JoinHandle {
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
             result = Scheduler::get_result(self.0 as usize);
         }
-        Ok(result
-            .unwrap()
-            .get_result()
-            .map(|ptr| unsafe { std::mem::transmute(ptr) }))
+        Ok(result.unwrap().get_result())
     }
 }
 
@@ -357,7 +357,7 @@ mod tests {
     fn timed_join_test() {
         let handle = EventLoop::submit(f3, val(3), 4096).expect("submit failed !");
         let error = handle
-            .timeout_join::<c_void>(std::time::Duration::from_nanos(0))
+            .timeout_join(std::time::Duration::from_nanos(0))
             .unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
         assert_eq!(
