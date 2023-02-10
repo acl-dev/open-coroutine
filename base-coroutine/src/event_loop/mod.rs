@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[repr(C)]
-pub struct JoinHandle(pub libc::c_long);
+pub struct JoinHandle(libc::c_long);
 
 impl JoinHandle {
     pub fn error() -> Self {
