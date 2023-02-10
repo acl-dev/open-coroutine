@@ -26,7 +26,7 @@ fn main() {
         None,
         4096,
     );
-    let result = handle.join().unwrap().unwrap();
+    let result = handle.join().unwrap().unwrap() as *mut c_void as *mut i32;
     unsafe {
         assert_eq!(1, std::ptr::read_unaligned(result));
         assert!(!EXAMPLE_FLAG);
