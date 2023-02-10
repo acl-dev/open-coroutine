@@ -99,7 +99,7 @@ macro_rules! impl_simple_hook {
         let ns_time = ($timeout as Option<std::time::Duration>).map(|d|d.as_nanos() as u64).unwrap_or(u64::MAX);
         let timeout_time = timer_utils::add_timeout_time(ns_time);
         let _ = base_coroutine::EventLoop::round_robin_timeout_schedule(timeout_time);
-        base_coroutine::unbreakable!(($fn)($socket ,$($arg, )*))
+        base_coroutine::unbreakable!($fn($socket ,$($arg, )*))
     }};
 }
 
@@ -140,7 +140,7 @@ macro_rules! impl_read_hook {
         let co_id = event_loop.syscall();
         let mut r;
         loop {
-            r = base_coroutine::unbreakable!(($fn)($socket ,$($arg, )*));
+            r = base_coroutine::unbreakable!($fn($socket ,$($arg, )*));
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
@@ -179,7 +179,7 @@ macro_rules! impl_expected_read_hook {
         let mut received = 0;
         let mut r = 0;
         while received < $length {
-            r = base_coroutine::unbreakable!(($fn)(
+            r = base_coroutine::unbreakable!($fn(
                 $socket,
                 ($buffer as usize + received) as *mut libc::c_void,
                 $length - received
@@ -225,7 +225,7 @@ macro_rules! impl_expected_read_hook {
         let mut received = 0;
         let mut r = 0;
         while received < $length {
-            r = base_coroutine::unbreakable!(($fn)(
+            r = base_coroutine::unbreakable!($fn(
                 $socket,
                 ($buffer as usize + received) as *mut libc::c_void,
                 $length - received,
@@ -276,7 +276,7 @@ macro_rules! impl_write_hook {
         let co_id = event_loop.syscall();
         let mut r;
         loop {
-            r = base_coroutine::unbreakable!(($fn)($socket, $($arg, )*));
+            r = base_coroutine::unbreakable!($fn($socket, $($arg, )*));
             if r != -1 {
                 $crate::unix::common::reset_errno();
                 break;
@@ -315,7 +315,7 @@ macro_rules! impl_expected_write_hook {
         let mut sent = 0;
         let mut r = 0;
         while sent < $length {
-            r = base_coroutine::unbreakable!(($fn)(
+            r = base_coroutine::unbreakable!($fn(
                 $socket,
                 ($buffer as usize + sent) as *const libc::c_void,
                 $length - sent
@@ -361,7 +361,7 @@ macro_rules! impl_expected_write_hook {
         let mut sent = 0;
         let mut r = 0;
         while sent < $length {
-            r = base_coroutine::unbreakable!(($fn)(
+            r = base_coroutine::unbreakable!($fn(
                 $socket,
                 ($buffer as usize + sent) as *const libc::c_void,
                 $length - sent,
