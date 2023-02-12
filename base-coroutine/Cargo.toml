@@ -14,7 +14,7 @@ scopeguard = "1.1.0"
 num_cpus = "1.14.0"
 rayon = "1.6.1"
 object-collection = { version = "0.0.4", path = "../object-collection" }
-timer-utils = { version = "0.0.3", path = "../timer-utils" }
+timer-utils = { version = "0.0.4", path = "../timer-utils" }
 work-steal-queue = { version = "0.1.1", path = "../work-steal-queue" }
 
 [target."cfg(unix)".dependencies]
