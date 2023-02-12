@@ -14,7 +14,16 @@ pub fn page_size() -> usize {
     static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
     let mut ret = PAGE_SIZE.load(Ordering::Relaxed);
     if ret == 0 {
-        unsafe { ret = libc::sysconf(libc::_SC_PAGESIZE) as usize };
+        unsafe {
+            #[cfg(not(windows))]
+            ret = libc::sysconf(libc::_SC_PAGESIZE) as usize;
+            #[cfg(windows)]
+            {
+                let mut info = std::mem::zeroed();
+                windows_sys::Win32::System::SystemInformation::GetSystemInfo(&mut info);
+                ret = info.dwPageSize as usize
+            }
+        }
         PAGE_SIZE.store(ret, Ordering::Relaxed);
     }
     ret
