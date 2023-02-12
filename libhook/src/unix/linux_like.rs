@@ -1,5 +1,5 @@
-use base_coroutine::{epoll_event, EventLoop};
 use once_cell::sync::Lazy;
+use open_coroutine_core::{epoll_event, EventLoop};
 
 fn timeout_schedule(timeout: libc::c_int) -> libc::c_int {
     if timeout < 0 {

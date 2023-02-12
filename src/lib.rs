@@ -1,6 +1,6 @@
 use std::os::raw::c_void;
 
-pub use base_coroutine::*;
+pub use open_coroutine_core::*;
 
 pub use open_coroutine_macros::*;
 
@@ -31,18 +31,18 @@ pub fn init() {
 pub fn co<F, P, R: 'static>(f: F, param: Option<&'static mut P>, stack_size: usize) -> JoinHandle
 where
     F: FnOnce(
-            &'static Yielder<Option<&'static mut P>, (), Option<&'static mut R>>,
+            &'static OpenYielder<Option<&'static mut P>, ()>,
             Option<&'static mut P>,
         ) -> Option<&'static mut R>
         + Copy,
 {
     extern "C" fn co_main<F, P: 'static, R: 'static>(
-        yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
+        yielder: &OpenYielder<Option<&'static mut c_void>, ()>,
         input: Option<&'static mut c_void>,
     ) -> Option<&'static mut c_void>
     where
         F: FnOnce(
-                &'static Yielder<Option<&'static mut P>, (), Option<&'static mut R>>,
+                &'static OpenYielder<Option<&'static mut P>, ()>,
                 Option<&'static mut P>,
             ) -> Option<&'static mut R>
             + Copy,
@@ -67,7 +67,7 @@ where
 #[macro_export]
 macro_rules! co {
     ( $f: expr , $param:expr $(,)? ) => {{
-        $crate::co($f, $param, base_coroutine::Stack::default_size())
+        $crate::co($f, $param, open_coroutine_core::Stack::default_size())
     }};
     ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{
         $crate::co($f, $param, $stack_size)
@@ -88,7 +88,7 @@ pub fn schedule() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{co, coroutine_crate, init, schedule, JoinHandle, UserFunc, Yielder};
+    use super::*;
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::os::raw::c_void;
@@ -170,7 +170,7 @@ mod tests {
     }
 
     extern "C" fn fx(
-        _yielder: &Yielder<Option<&'static mut c_void>, (), Option<&'static mut c_void>>,
+        _yielder: &OpenYielder<Option<&'static mut c_void>, ()>,
         input: Option<&'static mut c_void>,
     ) -> Option<&'static mut c_void> {
         match input {

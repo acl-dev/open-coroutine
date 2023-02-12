@@ -3,7 +3,6 @@ use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use timer_utils::TimerObjectList;
 
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
@@ -14,7 +13,8 @@ thread_local! {
 }
 
 pub(crate) struct Monitor {
-    task: TimerObjectList,
+    #[cfg(all(unix, feature = "preemptive-schedule"))]
+    task: timer_utils::TimerList<libc::pthread_t>,
     flag: AtomicBool,
 }
 
@@ -23,25 +23,28 @@ unsafe impl Send for Monitor {}
 unsafe impl Sync for Monitor {}
 
 impl Monitor {
+    fn register_handler(sigurg_handler: libc::sighandler_t) {
+        unsafe {
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_sigaction = sigurg_handler;
+            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
+            act.sa_flags = libc::SA_RESTART;
+            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+        }
+    }
+
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
-        unsafe {
+        {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                let yielder = crate::Coroutine::<
-                    &'static mut libc::c_void,
-                    &'static mut libc::c_void,
-                >::yielder();
+                let yielder = crate::OpenYielder::<&'static mut libc::c_void, ()>::yielder();
                 if !yielder.is_null() {
                     //挂起当前协程
                     unsafe { (*yielder).suspend(()) };
                 }
             }
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         }
         //通过这种方式来初始化monitor线程
         MONITOR.get_or_init(|| {
@@ -57,7 +60,8 @@ impl Monitor {
             })
         });
         Monitor {
-            task: TimerObjectList::new(),
+            #[cfg(all(unix, feature = "preemptive-schedule"))]
+            task: timer_utils::TimerList::new(),
             flag: AtomicBool::new(true),
         }
     }
@@ -81,9 +85,7 @@ impl Monitor {
             }
             for p in entry.iter() {
                 unsafe {
-                    let pointer = std::ptr::read_unaligned(p);
-                    let pthread =
-                        std::ptr::read_unaligned(pointer as *mut _ as *mut libc::pthread_t);
+                    let pthread = std::ptr::read_unaligned(p);
                     libc::pthread_kill(pthread, libc::SIGURG);
                 }
             }
@@ -99,12 +101,12 @@ impl Monitor {
         }
     }
 
-    pub(crate) fn clean_task(time: u64) {
-        if let Some(_entry) = Monitor::global().task.get_entry(time) {
-            #[cfg(all(unix, feature = "preemptive-schedule"))]
+    pub(crate) fn clean_task(_time: u64) {
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
+        if let Some(entry) = Monitor::global().task.get_entry(_time) {
             unsafe {
-                let mut pthread = libc::pthread_self();
-                _entry.remove_raw(&mut pthread as *mut _ as *mut libc::c_void);
+                let pthread = libc::pthread_self();
+                entry.remove(pthread);
             }
             Monitor::clean_signal_time();
         }
@@ -127,25 +129,15 @@ impl Monitor {
 
 #[cfg(all(test, unix, feature = "preemptive-schedule"))]
 mod tests {
-    use crate::monitor::Monitor;
+    use super::*;
     use std::time::Duration;
-
-    fn register_handler(sigurg_handler: libc::sighandler_t) {
-        unsafe {
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
-        }
-    }
 
     #[test]
     fn test() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg handled");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(10));
         Monitor::add_task(time);
         std::thread::sleep(Duration::from_millis(20));
@@ -157,7 +149,7 @@ mod tests {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg should not handle");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(500));
         Monitor::add_task(time);
         Monitor::clean_task(time);
@@ -169,7 +161,7 @@ mod tests {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg should not handle");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         shield!();
         let time = timer_utils::get_timeout_time(Duration::from_millis(1000));
         Monitor::add_task(time);

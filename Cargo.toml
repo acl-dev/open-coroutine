@@ -15,7 +15,7 @@ members = [
     "object-collection",
     "timer-utils",
     "work-steal-queue",
-    "base-coroutine",
+    "open-coroutine-core",
     "detour2",
     "libhook",
     "open-coroutine-macros",
@@ -23,7 +23,7 @@ members = [
 
 [dependencies]
 libc = "0.2.119"
-base-coroutine = { version = "0.2.0", features = ["full"], path = "base-coroutine" }
+open-coroutine-core = { version = "0.3.0", features = ["full"], path = "open-coroutine-core" }
 open-coroutine-macros = { version = "0.1.0", path = "open-coroutine-macros" }
 
 [dev-dependencies]

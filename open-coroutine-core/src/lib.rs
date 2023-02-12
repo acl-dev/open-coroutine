@@ -1,35 +1,14 @@
 // export defer
 pub use scopeguard::*;
-
-pub use coroutine::*;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "l4re",
-    target_os = "android",
-    target_os = "emscripten"
-))]
-pub use epoll::*;
-pub use event_loop::event::*;
-pub use event_loop::interest::*;
-pub use event_loop::*;
-pub use scheduler::*;
-pub use stack::{Stack, StackError};
 pub use work_steal_queue::*;
 
 #[allow(dead_code)]
-mod id;
-
-#[allow(dead_code)]
-mod stack;
-
-#[allow(dead_code)]
-mod context;
-
-#[allow(dead_code)]
 pub mod coroutine;
+pub use coroutine::*;
 
 #[allow(dead_code)]
 pub mod scheduler;
+pub use scheduler::*;
 
 #[cfg(unix)]
 #[macro_export]
@@ -63,6 +42,9 @@ mod monitor;
 
 #[allow(dead_code)]
 pub mod event_loop;
+pub use event_loop::event::*;
+pub use event_loop::interest::*;
+pub use event_loop::*;
 
 #[cfg(any(
     target_os = "linux",
@@ -72,3 +54,10 @@ pub mod event_loop;
 ))]
 #[allow(dead_code)]
 pub mod epoll;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
+pub use epoll::*;

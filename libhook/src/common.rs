@@ -1,5 +1,5 @@
-use base_coroutine::coroutine::UserFunc;
-use base_coroutine::{EventLoop, JoinHandle};
+use open_coroutine_core::coroutine::UserFunc;
+use open_coroutine_core::{EventLoop, JoinHandle, OpenYielder};
 use std::os::raw::c_void;
 
 #[no_mangle]
@@ -15,13 +15,16 @@ pub extern "C" fn coroutine_crate(
     param: &'static mut c_void,
     stack_size: usize,
 ) -> JoinHandle {
-    match EventLoop::submit(f, param, stack_size) {
+    match EventLoop::submit(
+        move |_yielder, input| {
+            let yielder = OpenYielder::<&'static mut c_void, ()>::yielder();
+            unsafe { f(Box::leak(Box::from_raw(yielder)), input) }
+        },
+        param,
+        stack_size,
+    ) {
         Ok(handle) => handle,
-        Err(_) => {
-            //we had handled NULL in JoinHandle
-            #[allow(invalid_value)]
-            JoinHandle(unsafe { std::mem::transmute(0usize) })
-        }
+        Err(_) => JoinHandle::error(),
     }
 }
 
