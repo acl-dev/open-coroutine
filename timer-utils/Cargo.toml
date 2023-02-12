@@ -8,4 +8,4 @@ repository = "https://github.com/acl-dev/open-coroutine/tree/dev/timer-utils"
 license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
-object-collection = { version = "0.0.4", path = "../object-collection" }
+object-collection = { version = "0.0.5", path = "../object-collection" }
