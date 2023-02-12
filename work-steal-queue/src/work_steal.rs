@@ -121,7 +121,7 @@ pub struct LocalQueue<'l, T: Debug> {
 impl<T: Debug> Drop for LocalQueue<'_, T> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
-            assert!(self.pop_front().is_none(), "local queue not empty");
+            assert!(self.queue.pop().is_none(), "local queue not empty");
         }
     }
 }
