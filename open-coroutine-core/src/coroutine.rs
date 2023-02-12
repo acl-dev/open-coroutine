@@ -3,11 +3,22 @@ use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 use crate::monitor::Monitor;
 pub use corosensei::stack::*;
 pub use corosensei::*;
+
+pub fn page_size() -> usize {
+    static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
+    let mut ret = PAGE_SIZE.load(Ordering::Relaxed);
+    if ret == 0 {
+        unsafe { ret = libc::sysconf(libc::_SC_PAGESIZE) as usize };
+        PAGE_SIZE.store(ret, Ordering::Relaxed);
+    }
+    ret
+}
 
 pub type UserFunc<'a, Param, Yield, Return> =
     extern "C" fn(&'a OpenYielder<Param, Yield>, Param) -> Return;
