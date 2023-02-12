@@ -67,7 +67,7 @@ where
 #[macro_export]
 macro_rules! co {
     ( $f: expr , $param:expr $(,)? ) => {{
-        const PAGESIZE = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+        const PAGESIZE: usize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
         $crate::co($f, $param, PAGESIZE)
     }};
     ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{
