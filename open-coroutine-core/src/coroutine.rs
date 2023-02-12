@@ -15,13 +15,14 @@ pub fn page_size() -> usize {
     let mut ret = PAGE_SIZE.load(Ordering::Relaxed);
     if ret == 0 {
         unsafe {
-            #[cfg(not(windows))]
-            ret = libc::sysconf(libc::_SC_PAGESIZE) as usize;
-            #[cfg(windows)]
-            {
-                let mut info = std::mem::zeroed();
-                windows_sys::Win32::System::SystemInformation::GetSystemInfo(&mut info);
-                ret = info.dwPageSize as usize
+            cfg_if::cfg_if! {
+                if #[cfg(windows)] {
+                    let mut info = std::mem::zeroed();
+                    windows_sys::Win32::System::SystemInformation::GetSystemInfo(&mut info);
+                    ret = info.dwPageSize as usize
+                } else {
+                    ret = libc::sysconf(libc::_SC_PAGESIZE) as usize;
+                }
             }
         }
         PAGE_SIZE.store(ret, Ordering::Relaxed);
