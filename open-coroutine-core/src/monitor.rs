@@ -23,6 +23,7 @@ unsafe impl Send for Monitor {}
 unsafe impl Sync for Monitor {}
 
 impl Monitor {
+    #[cfg(unix)]
     fn register_handler(sigurg_handler: libc::sighandler_t) {
         unsafe {
             let mut act: libc::sigaction = std::mem::zeroed();
