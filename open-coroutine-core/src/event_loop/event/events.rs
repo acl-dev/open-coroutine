@@ -52,7 +52,7 @@ pub struct Events {
 ///
 /// # use std::error::Error;
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// use base_coroutine::{Events, Poll};
+/// use open_coroutine_core::{Events, Poll};
 /// use std::time::Duration;
 ///
 /// let mut events = Events::with_capacity(1024);
@@ -80,7 +80,7 @@ impl Events {
     /// # Examples
     ///
     /// ```
-    /// use base_coroutine::Events;
+    /// use open_coroutine_core::Events;
     ///
     /// let events = Events::with_capacity(1024);
     /// assert_eq!(1024, events.capacity());
@@ -94,7 +94,7 @@ impl Events {
     /// Returns the number of `Event` values that `self` can hold.
     ///
     /// ```
-    /// use base_coroutine::Events;
+    /// use open_coroutine_core::Events;
     ///
     /// let events = Events::with_capacity(1024);
     /// assert_eq!(1024, events.capacity());
@@ -108,7 +108,7 @@ impl Events {
     /// # Examples
     ///
     /// ```
-    /// use base_coroutine::Events;
+    /// use open_coroutine_core::Events;
     ///
     /// let events = Events::with_capacity(1024);
     /// assert!(events.is_empty());
@@ -123,7 +123,7 @@ impl Events {
     ///
     /// # use std::error::Error;
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// use base_coroutine::{Events, Poll};
+    /// use open_coroutine_core::{Events, Poll};
     /// use std::time::Duration;
     ///
     /// let mut events = Events::with_capacity(1024);
@@ -157,7 +157,7 @@ impl Events {
     ///
     /// # use std::error::Error;
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// use base_coroutine::{Events, Poll};
+    /// use open_coroutine_core::{Events, Poll};
     /// use std::time::Duration;
     ///
     /// let mut events = Events::with_capacity(1024);

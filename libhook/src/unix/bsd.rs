@@ -1,5 +1,5 @@
-use base_coroutine::EventLoop;
 use once_cell::sync::Lazy;
+use open_coroutine_core::EventLoop;
 use std::time::Duration;
 
 static KEVENT: Lazy<
