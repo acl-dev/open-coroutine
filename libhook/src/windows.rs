@@ -1,5 +1,5 @@
-use base_coroutine::EventLoop;
 use detour2::static_detour;
+use open_coroutine_core::EventLoop;
 use std::error::Error;
 use std::os::raw::c_void;
 use std::{ffi::CString, iter, mem};

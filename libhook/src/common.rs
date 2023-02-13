@@ -1,5 +1,5 @@
-use base_coroutine::coroutine::UserFunc;
-use base_coroutine::{EventLoop, JoinHandle};
+use open_coroutine_core::coroutine::UserFunc;
+use open_coroutine_core::{EventLoop, JoinHandle};
 use std::os::raw::c_void;
 
 #[no_mangle]
