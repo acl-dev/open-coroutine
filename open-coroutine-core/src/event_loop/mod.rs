@@ -11,16 +11,23 @@ use crate::{OpenYielder, SchedulableCoroutine, Scheduler};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[repr(C)]
-pub struct JoinHandle(&'static str);
+pub struct JoinHandle(*const c_char);
 
 impl JoinHandle {
+    pub(crate) fn new(string: &str) -> Self {
+        let boxed: &'static mut CString = Box::leak(Box::from(CString::new(string).unwrap()));
+        let cstr: &'static CStr = boxed.as_c_str();
+        JoinHandle(cstr.as_ptr())
+    }
+
     pub fn error() -> Self {
-        JoinHandle("")
+        JoinHandle::new("")
     }
 
     pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
@@ -31,29 +38,31 @@ impl JoinHandle {
         &self,
         timeout_time: u64,
     ) -> std::io::Result<Option<&'static mut c_void>> {
-        if self.0.is_empty() {
+        let co_name = unsafe { CStr::from_ptr(self.0).to_str().unwrap() };
+        if co_name.is_empty() {
             return Ok(None);
         }
-        let mut result = Scheduler::get_result(self.0);
+        let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             if timeout_time <= timer_utils::now() {
                 //timeout
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
-            result = Scheduler::get_result(self.0);
+            result = Scheduler::get_result(co_name);
         }
         Ok(result.unwrap().get_result())
     }
 
     pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
-        if self.0.is_empty() {
+        let co_name = unsafe { CStr::from_ptr(self.0).to_str().unwrap() };
+        if co_name.is_empty() {
             return Ok(None);
         }
-        let mut result = Scheduler::get_result(self.0);
+        let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             EventLoop::round_robin_schedule()?;
-            result = Scheduler::get_result(self.0);
+            result = Scheduler::get_result(co_name);
         }
         Ok(result.unwrap().get_result())
     }
@@ -117,7 +126,7 @@ impl<'a> EventLoop<'a> {
     {
         EventLoop::next_scheduler()
             .submit(f, param, size)
-            .map(JoinHandle)
+            .map(JoinHandle::new)
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {

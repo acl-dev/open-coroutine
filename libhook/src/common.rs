@@ -9,8 +9,6 @@ pub extern "C" fn init_hook() {
 }
 
 ///创建协程
-/// fixme
-#[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn coroutine_crate(
     f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
@@ -31,8 +29,6 @@ pub extern "C" fn coroutine_crate(
 }
 
 ///等待协程完成
-/// fixme
-#[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn coroutine_join(handle: JoinHandle) -> libc::c_long {
     match handle.join() {
