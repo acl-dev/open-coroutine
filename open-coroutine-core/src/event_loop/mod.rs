@@ -261,13 +261,11 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
-        if self
+        while self
             .waiting
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_err()
-        {
-            return Ok(());
-        }
+        {}
         let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout).map_err(|e| {
             self.waiting.store(false, Ordering::Relaxed);

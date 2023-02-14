@@ -126,13 +126,11 @@ impl Scheduler {
     }
 
     pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<()> {
-        if self
+        while self
             .scheduling
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_err()
-        {
-            return Ok(());
-        }
+        {}
         Scheduler::init_timeout_time(timeout_time);
         extern "C" fn main_context_func(
             yielder: &Yielder<*mut Scheduler, (), ()>,
@@ -241,6 +239,13 @@ impl Scheduler {
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
             if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
+                if let Some(current) = SchedulableCoroutine::current() {
+                    let current_co_id = current.get_id();
+                    if current_co_id == co_id {
+                        //当前协程已经在执行，不需要再回调
+                        return Ok(());
+                    }
+                }
                 self.ready.push_back(&mut *co);
             }
         }
