@@ -241,6 +241,13 @@ impl Scheduler {
     pub(crate) fn resume(&mut self, co_id: usize) -> std::io::Result<()> {
         unsafe {
             if let Some(co) = SYSTEM_CALL_TABLE.remove(&co_id) {
+                if let Some(current) = SchedulableCoroutine::current() {
+                    let current_co_id = current.get_id();
+                    if current_co_id == co_id {
+                        //当前协程已经在执行，不需要再回调
+                        return Ok(());
+                    }
+                }
                 self.ready.push_back(&mut *co);
             }
         }

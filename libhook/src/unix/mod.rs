@@ -71,18 +71,8 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
                 return 0;
             }
         };
-        if let Ok(()) = open_coroutine_core::EventLoop::next()
-            .wait(Some(std::time::Duration::from_nanos(left_time)))
-        {
-            if !rmtp.is_null() {
-                unsafe {
-                    (*rmtp).tv_sec = 0;
-                    (*rmtp).tv_nsec = 0;
-                }
-            }
-            crate::unix::common::reset_errno();
-            return 0;
-        }
+        let _ = open_coroutine_core::EventLoop::next()
+            .wait(Some(std::time::Duration::from_nanos(left_time)));
     }
 }
 

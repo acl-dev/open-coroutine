@@ -117,12 +117,8 @@ macro_rules! impl_sleep_hook {
                     return 0;
                 }
             };
-            if let Ok(()) = open_coroutine_core::EventLoop::next()
-                .wait(Some(std::time::Duration::from_nanos(left_time)))
-            {
-                $crate::unix::common::reset_errno();
-                return 0;
-            }
+            let _ = open_coroutine_core::EventLoop::next()
+                .wait(Some(std::time::Duration::from_nanos(left_time)));
         }
     }};
 }
