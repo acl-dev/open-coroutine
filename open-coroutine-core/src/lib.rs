@@ -14,6 +14,8 @@ pub use event_loop::interest::*;
 pub use event_loop::*;
 pub use scheduler::*;
 pub use stack::{Stack, StackError};
+#[cfg(feature = "stack-trace")]
+pub use stack_trace::*;
 pub use work_steal_queue::*;
 
 #[allow(dead_code)]
@@ -61,9 +63,6 @@ macro_rules! unbreakable {
 #[allow(dead_code)]
 mod monitor;
 
-#[allow(dead_code)]
-pub mod event_loop;
-
 #[cfg(any(
     target_os = "linux",
     target_os = "l4re",
@@ -72,3 +71,10 @@ pub mod event_loop;
 ))]
 #[allow(dead_code)]
 pub mod epoll;
+
+#[allow(dead_code)]
+pub mod event_loop;
+
+#[allow(dead_code)]
+#[cfg(feature = "stack-trace")]
+pub mod stack_trace;

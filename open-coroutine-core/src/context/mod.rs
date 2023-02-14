@@ -76,6 +76,9 @@ impl Context {
     /// this context have to be dropped properly when the last context is dropped.
     #[inline(always)]
     pub unsafe fn resume(&self, data: usize) -> Transfer {
+        #[cfg(feature = "stack-trace")]
+        crate::stack_trace::add_backtrace();
+        //actually, we call the jump_fcontext function
         jump_fcontext(self.0, data)
     }
 }
