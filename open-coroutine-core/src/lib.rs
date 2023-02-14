@@ -19,9 +19,6 @@ pub use stack_trace::*;
 pub use work_steal_queue::*;
 
 #[allow(dead_code)]
-mod id;
-
-#[allow(dead_code)]
 mod stack;
 
 #[allow(dead_code)]
