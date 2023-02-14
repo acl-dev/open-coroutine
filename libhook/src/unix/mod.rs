@@ -71,8 +71,8 @@ pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timesp
                 return 0;
             }
         };
-        if let Ok(()) =
-            base_coroutine::EventLoop::next().wait(Some(std::time::Duration::from_nanos(left_time)))
+        if let Ok(()) = open_coroutine_core::EventLoop::next()
+            .wait(Some(std::time::Duration::from_nanos(left_time)))
         {
             if !rmtp.is_null() {
                 unsafe {
@@ -102,7 +102,7 @@ pub extern "C" fn connect(
     if blocking {
         set_non_blocking(socket, true);
     }
-    let event_loop = base_coroutine::EventLoop::next();
+    let event_loop = open_coroutine_core::EventLoop::next();
     let co_id = event_loop.syscall();
     let mut r;
     loop {
@@ -165,7 +165,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> = in
 
 #[no_mangle]
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
-    let _ = base_coroutine::EventLoop::round_robin_schedule();
+    let _ = open_coroutine_core::EventLoop::round_robin_schedule();
     //unnecessary non blocking impl for listen
     (Lazy::force(&LISTEN))(socket, backlog)
 }
@@ -191,12 +191,12 @@ static SHUTDOWN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> =
 
 #[no_mangle]
 pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int {
-    let _ = base_coroutine::EventLoop::round_robin_schedule();
+    let _ = open_coroutine_core::EventLoop::round_robin_schedule();
     //取消对fd的监听
     match how {
-        libc::SHUT_RD => base_coroutine::EventLoop::round_robin_del_read_event(socket),
-        libc::SHUT_WR => base_coroutine::EventLoop::round_robin_del_write_event(socket),
-        libc::SHUT_RDWR => base_coroutine::EventLoop::round_robin_del_event(socket),
+        libc::SHUT_RD => open_coroutine_core::EventLoop::round_robin_del_read_event(socket),
+        libc::SHUT_WR => open_coroutine_core::EventLoop::round_robin_del_write_event(socket),
+        libc::SHUT_RDWR => open_coroutine_core::EventLoop::round_robin_del_event(socket),
         _ => {
             crate::unix::common::set_errno(libc::EINVAL);
             return -1;
@@ -223,7 +223,7 @@ pub extern "C" fn poll(
     let mut r;
     // just check select every x ms
     loop {
-        r = base_coroutine::unbreakable!(Lazy::force(&POLL)(fds, nfds, 0));
+        r = open_coroutine_core::unbreakable!(Lazy::force(&POLL)(fds, nfds, 0));
         if r != 0 || t == 0 {
             break;
         }
@@ -283,7 +283,7 @@ pub extern "C" fn select(
     let mut r;
     // just check poll every x ms
     loop {
-        r = base_coroutine::unbreakable!(Lazy::force(&SELECT)(
+        r = open_coroutine_core::unbreakable!(Lazy::force(&SELECT)(
             nfds, readfds, writefds, errorfds, &mut o
         ));
         if r != 0 || t == 0 {

@@ -1,6 +1,6 @@
 use std::os::raw::c_void;
 
-pub use base_coroutine::*;
+pub use open_coroutine_core::*;
 
 pub use open_coroutine_macros::*;
 
@@ -67,7 +67,7 @@ where
 #[macro_export]
 macro_rules! co {
     ( $f: expr , $param:expr $(,)? ) => {{
-        $crate::co($f, $param, base_coroutine::Stack::default_size())
+        $crate::co($f, $param, open_coroutine_core::Stack::default_size())
     }};
     ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{
         $crate::co($f, $param, $stack_size)
