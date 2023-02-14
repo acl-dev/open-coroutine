@@ -220,7 +220,8 @@ impl<'a> EventLoop<'a> {
     pub fn syscall(&self) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
             let co_id = co.get_id();
-            self.scheduler.syscall(co_id, co);
+            let yielder = SchedulableCoroutine::yielder();
+            unsafe { (*yielder).syscall(()) };
             return co_id;
         }
         0

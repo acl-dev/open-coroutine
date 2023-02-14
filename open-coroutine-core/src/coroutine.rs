@@ -93,6 +93,11 @@ impl<'a, Param, Yield, Return> Yielder<'a, Param, Yield, Return> {
     pub(crate) fn clean_delay() {
         DELAY_TIME.with(|boxed| *boxed.borrow_mut() = 0)
     }
+
+    pub(crate) extern "C" fn syscall(&self, val: Yield) -> Param {
+        OpenCoroutine::<Param, Yield, Return>::init_syscall_flag();
+        self.suspend(val)
+    }
 }
 
 /// Value returned from resuming a coroutine.
@@ -132,6 +137,7 @@ pub type Coroutine<Input, Return> = OpenCoroutine<'static, Input, (), Return>;
 thread_local! {
     static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static YIELDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
+    static SYSCALL_FLAG: Box<RefCell<bool>> = Box::new(RefCell::new(false));
 }
 
 #[repr(C)]
@@ -307,6 +313,20 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 
     fn clean_current() {
         COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null())
+    }
+
+    fn init_syscall_flag() {
+        SYSCALL_FLAG.with(|boxed| {
+            *boxed.borrow_mut() = true;
+        });
+    }
+
+    pub(crate) fn syscall_flag() -> bool {
+        SYSCALL_FLAG.with(|boxed| *boxed.borrow_mut())
+    }
+
+    pub(crate) fn clean_syscall_flag() {
+        SYSCALL_FLAG.with(|boxed| *boxed.borrow_mut() = false)
     }
 }
 
