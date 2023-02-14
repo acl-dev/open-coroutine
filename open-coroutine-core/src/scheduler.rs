@@ -41,9 +41,6 @@ pub struct Scheduler {
 
 impl Drop for Scheduler {
     fn drop(&mut self) {
-        while !self.ready.is_empty() {
-            self.try_schedule().unwrap();
-        }
         assert!(
             self.ready.is_empty(),
             "there are still tasks to be carried out !"
