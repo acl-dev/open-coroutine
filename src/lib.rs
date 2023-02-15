@@ -380,4 +380,77 @@ mod tests {
             }
         }
     }
+
+    unsafe fn co_client_main(port: u16, server_started: Arc<AtomicBool>) {
+        //等服务端起来
+        while !server_started.load(Ordering::Acquire) {}
+        let _ = co(
+            |_yielder, input: Option<&'static mut c_void>| {
+                //invoke by libc::connect
+                let _ = co_crate(fx, Some(&mut *(13usize as *mut c_void)), 4096);
+                let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
+                let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
+                    .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
+                let mut data: [u8; 512] = std::mem::zeroed();
+                data[511] = b'\n';
+                let mut buffer: Vec<u8> = Vec::with_capacity(512);
+                for _ in 0..3 {
+                    //invoke by libc::send
+                    let _ = co_crate(fx, Some(&mut *(14usize as *mut c_void)), 4096);
+                    //写入stream流，如果写入失败，提示“写入失败”
+                    assert_eq!(512, stream.write(&data).expect("Failed to write!"));
+
+                    //invoke by libc::recv
+                    let _ = co_crate(fx, Some(&mut *(15usize as *mut c_void)), 4096);
+                    let mut reader = BufReader::new(&stream);
+                    //一直读到换行为止（b'\n'中的b表示字节），读到buffer里面
+                    assert_eq!(
+                        512,
+                        reader
+                            .read_until(b'\n', &mut buffer)
+                            .expect("Failed to read into buffer")
+                    );
+                    assert_eq!(&data, &buffer as &[u8]);
+                    buffer.clear();
+                }
+                //发送终止符
+                assert_eq!(1, stream.write(&[b'e']).expect("Failed to write!"));
+                println!("coroutine client closed");
+                input
+            },
+            None,
+            4096,
+        )
+        .join();
+    }
+
+    #[test]
+    fn hook_test_co_client() -> std::io::Result<()> {
+        let port = 8899;
+        let server_started = Arc::new(AtomicBool::new(false));
+        let clone = server_started.clone();
+        let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let server_finished = Arc::clone(&server_finished_pair);
+        unsafe {
+            std::thread::spawn(move || crate_server(port, clone, server_finished_pair));
+            std::thread::spawn(move || co_client_main(port, server_started));
+
+            let (lock, cvar) = &*server_finished;
+            let result = cvar
+                .wait_timeout_while(
+                    lock.lock().unwrap(),
+                    Duration::from_secs(30),
+                    |&mut pending| pending,
+                )
+                .unwrap();
+            if result.1.timed_out() {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "The coroutine client was not completed within the specified time",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
 }
