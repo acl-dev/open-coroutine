@@ -4,7 +4,8 @@ use crate::stack::Stack;
 use object_collection::{ObjectList, ObjectMap};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
+use std::collections::HashMap;
+use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -28,6 +29,8 @@ static mut SYSTEM_CALL_TABLE: Lazy<ObjectMap<usize>> = Lazy::new(ObjectMap::new)
 static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new);
 
 static QUEUE: Lazy<WorkStealQueue<&'static mut c_void>> = Lazy::new(WorkStealQueue::default);
+
+static mut RESULT_TABLE: Lazy<HashMap<&CStr, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -104,7 +107,7 @@ impl Scheduler {
         f: UserFunc<&'static mut c_void, (), &'static mut c_void>,
         val: &'static mut c_void,
         size: usize,
-    ) -> std::io::Result<&'static SchedulableCoroutine> {
+    ) -> std::io::Result<*const c_char> {
         let coroutine = Coroutine::with_name(
             format!("{:?}@{:?}", self.name, Uuid::new_v4()),
             f,
@@ -114,9 +117,10 @@ impl Scheduler {
         coroutine.set_status(Status::Ready);
         coroutine.set_scheduler(self);
         let ptr = Box::leak(Box::new(coroutine));
+        let p = ptr.get_name().as_ptr();
         self.ready
             .push_back(unsafe { &mut *(ptr as *mut _ as *mut c_void) });
-        Ok(ptr)
+        Ok(p)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -275,6 +279,18 @@ impl Scheduler {
 
     pub fn get_name(&self) -> &CStr {
         &self.name
+    }
+
+    pub(crate) fn save_result(co: SchedulableCoroutine) {
+        unsafe {
+            assert!(RESULT_TABLE
+                .insert(Box::leak(Box::from(co.get_name())), co)
+                .is_none())
+        };
+    }
+
+    pub fn get_result(co_name: &'static CStr) -> Option<SchedulableCoroutine> {
+        unsafe { RESULT_TABLE.remove(&co_name) }
     }
 }
 

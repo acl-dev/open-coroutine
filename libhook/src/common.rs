@@ -17,11 +17,7 @@ pub extern "C" fn coroutine_crate(
 ) -> JoinHandle {
     match EventLoop::submit(f, param, stack_size) {
         Ok(handle) => handle,
-        Err(_) => {
-            //we had handled NULL in JoinHandle
-            #[allow(invalid_value)]
-            JoinHandle(unsafe { std::mem::transmute(0usize) })
-        }
+        Err(_) => JoinHandle::error(),
     }
 }
 

@@ -11,14 +11,19 @@ use crate::{SchedulableCoroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::ffi::c_char;
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[repr(C)]
-pub struct JoinHandle(pub &'static c_void);
+pub struct JoinHandle(*const c_char);
 
 impl JoinHandle {
+    pub fn error() -> Self {
+        JoinHandle(std::ptr::null())
+    }
+
     pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
         self.timeout_at_join(timer_utils::get_timeout_time(dur))
     }
@@ -30,26 +35,30 @@ impl JoinHandle {
         if self.0 as *const c_void as usize == 0 {
             return Ok(None);
         }
-        let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
-        while !result.is_finished() {
+        let co_name = unsafe { std::ffi::CStr::from_ptr(self.0) };
+        let mut result = Scheduler::get_result(co_name);
+        while result.is_none() {
             if timeout_time <= timer_utils::now() {
                 //timeout
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
             }
             EventLoop::round_robin_timeout_schedule(timeout_time)?;
+            result = Scheduler::get_result(co_name);
         }
-        Ok(result.get_result())
+        Ok(result.unwrap().get_result())
     }
 
     pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
         if self.0 as *const c_void as usize == 0 {
             return Ok(None);
         }
-        let result = unsafe { &*(self.0 as *const _ as *const SchedulableCoroutine) };
-        while !result.is_finished() {
+        let co_name = unsafe { std::ffi::CStr::from_ptr(self.0) };
+        let mut result = Scheduler::get_result(co_name);
+        while result.is_none() {
             EventLoop::round_robin_schedule()?;
+            result = Scheduler::get_result(co_name);
         }
-        Ok(result.get_result())
+        Ok(result.unwrap().get_result())
     }
 }
 
@@ -108,7 +117,7 @@ impl<'a> EventLoop<'a> {
     ) -> std::io::Result<JoinHandle> {
         EventLoop::next_scheduler()
             .submit(f, param, size)
-            .map(|co| JoinHandle(unsafe { std::mem::transmute(co) }))
+            .map(JoinHandle)
     }
 
     pub fn round_robin_schedule() -> std::io::Result<()> {
