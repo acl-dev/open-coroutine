@@ -1,14 +1,15 @@
 use crate::context::{Context, Transfer};
-use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::scheduler::Scheduler;
 use crate::stack::ProtectedFixedSizeStack;
 use crate::stack::StackError::{ExceedsMaximumSize, IoError};
 use std::cell::{Cell, RefCell};
+use std::ffi::{CStr, CString};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::os::raw::c_void;
+use uuid::Uuid;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -136,7 +137,7 @@ thread_local! {
 
 #[repr(C)]
 pub struct OpenCoroutine<'a, Param, Yield, Return> {
-    id: usize,
+    name: Box<CStr>,
     sp: RefCell<Transfer>,
     stack: ProtectedFixedSizeStack,
     status: Cell<Status>,
@@ -191,17 +192,24 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         param: Param,
         size: usize,
     ) -> std::io::Result<Self> {
+        OpenCoroutine::with_name(Uuid::new_v4().to_string(), proc, param, size)
+    }
+
+    pub fn with_name(
+        name: impl Into<Vec<u8>>,
+        proc: UserFunc<'a, Param, Yield, Return>,
+        param: Param,
+        size: usize,
+    ) -> std::io::Result<Self> {
         let stack = ProtectedFixedSizeStack::new(size).map_err(|e| match e {
             ExceedsMaximumSize(size) => std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "Requested more than max size of ".to_owned()
-                    + &size.to_string()
-                    + " bytes for a stack",
+                format!("Requested more than max size of {size} bytes for a stack"),
             ),
             IoError(e) => e,
         })?;
         Ok(OpenCoroutine {
-            id: IdGenerator::next_coroutine_id(),
+            name: CString::new(name).unwrap().into_boxed_c_str(),
             sp: RefCell::new(Transfer::new(
                 unsafe {
                     Context::new(
@@ -240,7 +248,11 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     }
 
     pub fn get_id(&self) -> usize {
-        self.id
+        self.name.as_ptr() as *const _ as *const c_void as usize
+    }
+
+    pub fn get_name(&self) -> &CStr {
+        &self.name
     }
 
     pub fn get_status(&self) -> Status {
@@ -313,7 +325,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
 impl<'a, Param, Yield, Return> Debug for OpenCoroutine<'a, Param, Yield, Return> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenCoroutine")
-            .field("id", &self.id)
+            .field("name", &self.name)
             .field("status", &self.status)
             .field("sp", &self.sp)
             .field("stack", &self.stack)

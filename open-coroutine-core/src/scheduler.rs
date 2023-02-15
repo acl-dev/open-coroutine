@@ -1,14 +1,15 @@
 use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFunc, Yielder};
-use crate::id::IdGenerator;
 use crate::monitor::Monitor;
 use crate::stack::Stack;
 use object_collection::{ObjectList, ObjectMap};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use timer_utils::TimerObjectList;
+use uuid::Uuid;
 use work_steal_queue::{LocalQueue, WorkStealQueue};
 
 thread_local! {
@@ -31,17 +32,30 @@ static QUEUE: Lazy<WorkStealQueue<&'static mut c_void>> = Lazy::new(WorkStealQue
 #[repr(C)]
 #[derive(Debug)]
 pub struct Scheduler {
-    id: usize,
+    name: Box<CStr>,
     ready: LocalQueue<'static, &'static mut c_void>,
     //not support for now
     copy_stack: ObjectList,
     scheduling: AtomicBool,
 }
 
+impl Drop for Scheduler {
+    fn drop(&mut self) {
+        assert!(
+            self.ready.is_empty(),
+            "there are still tasks to be carried out !"
+        );
+    }
+}
+
 impl Scheduler {
     pub fn new() -> Self {
+        Scheduler::with_name(Uuid::new_v4().to_string())
+    }
+
+    pub fn with_name(name: impl Into<Vec<u8>>) -> Self {
         Scheduler {
-            id: IdGenerator::next_scheduler_id(),
+            name: CString::new(name).unwrap().into_boxed_c_str(),
             ready: QUEUE.local_queue(),
             copy_stack: ObjectList::new(),
             scheduling: AtomicBool::new(false),
@@ -91,7 +105,12 @@ impl Scheduler {
         val: &'static mut c_void,
         size: usize,
     ) -> std::io::Result<&'static SchedulableCoroutine> {
-        let coroutine = Coroutine::new(f, val, size)?;
+        let coroutine = Coroutine::with_name(
+            format!("{:?}@{:?}", self.name, Uuid::new_v4()),
+            f,
+            val,
+            size,
+        )?;
         coroutine.set_status(Status::Ready);
         coroutine.set_scheduler(self);
         let ptr = Box::leak(Box::new(coroutine));
@@ -252,6 +271,10 @@ impl Scheduler {
             }
         }
         Ok(())
+    }
+
+    pub fn get_name(&self) -> &CStr {
+        &self.name
     }
 }
 

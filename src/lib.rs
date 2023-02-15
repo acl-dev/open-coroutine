@@ -192,8 +192,8 @@ mod tests {
         let _ = co_crate(fx, Some(&mut *(1usize as *mut c_void)), 4096);
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
-        let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
-            .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
+        let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+            .expect(&format!("bind to 127.0.0.1:{port} failed !"));
         server_started.store(true, Ordering::Release);
         //invoke by libc::accept
         let _ = co_crate(fx, Some(&mut *(2usize as *mut c_void)), 4096);
@@ -236,7 +236,7 @@ mod tests {
         let _ = co_crate(fx, Some(&mut *(3usize as *mut c_void)), 4096);
         let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
         let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-            .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
+            .expect(&format!("connect to 127.0.0.1:{port} failed !"));
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
@@ -303,8 +303,8 @@ mod tests {
         let _ = co_crate(fx, Some(&mut *(11usize as *mut c_void)), 4096);
         let mut data: [u8; 512] = std::mem::zeroed();
         data[511] = b'\n';
-        let listener = TcpListener::bind("127.0.0.1:".to_owned() + &port.to_string())
-            .expect(&*("bind to 127.0.0.1:".to_owned() + &port.to_string() + " failed !"));
+        let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+            .expect(&format!("bind to 127.0.0.1:{port} failed !"));
         server_started.store(true, Ordering::Release);
         //invoke by libc::accept
         let _ = co_crate(fx, Some(&mut *(12usize as *mut c_void)), 4096);
