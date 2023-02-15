@@ -194,9 +194,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         let stack = ProtectedFixedSizeStack::new(size).map_err(|e| match e {
             ExceedsMaximumSize(size) => std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "Requested more than max size of ".to_owned()
-                    + &size.to_string()
-                    + " bytes for a stack",
+                format!("Requested more than max size of {size} bytes for a stack"),
             ),
             IoError(e) => e,
         })?;

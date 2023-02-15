@@ -81,9 +81,9 @@ pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
 macro_rules! init_hook {
     ( $symbol:literal ) => {{
         once_cell::sync::Lazy::new(|| unsafe {
-            let symbol = std::ffi::CString::new(String::from($symbol)).expect(&String::from(
-                "can not transfer \"".to_owned() + $symbol + "\" to CString",
-            ));
+            let symbol = $symbol;
+            let symbol = std::ffi::CString::new(String::from(symbol))
+                .expect(&format!("can not transfer \"{symbol}\" to CString"));
             let ptr = libc::dlsym(libc::RTLD_NEXT, symbol.as_ptr());
             if ptr.is_null() {
                 panic!("system {} not found !", $symbol);
