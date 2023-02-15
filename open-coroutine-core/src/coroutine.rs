@@ -192,11 +192,11 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         param: Param,
         size: usize,
     ) -> std::io::Result<Self> {
-        OpenCoroutine::with_name(&Uuid::new_v4().to_string(), proc, param, size)
+        OpenCoroutine::with_name(Uuid::new_v4().to_string(), proc, param, size)
     }
 
     pub fn with_name(
-        name: &str,
+        name: impl Into<Vec<u8>>,
         proc: UserFunc<'a, Param, Yield, Return>,
         param: Param,
         size: usize,
