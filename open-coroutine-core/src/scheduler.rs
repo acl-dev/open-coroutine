@@ -30,7 +30,7 @@ static mut SUSPEND_TABLE: Lazy<TimerObjectList> = Lazy::new(TimerObjectList::new
 
 static QUEUE: Lazy<WorkStealQueue<&'static mut c_void>> = Lazy::new(WorkStealQueue::default);
 
-static mut RESULT_TABLE: Lazy<HashMap<&CStr, SchedulableCoroutine>> = Lazy::new(HashMap::new);
+static mut RESULT_TABLE: Lazy<HashMap<&CStr, &SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -281,7 +281,7 @@ impl Scheduler {
         &self.name
     }
 
-    pub(crate) fn save_result(co: SchedulableCoroutine) {
+    pub(crate) fn save_result(co: &'static SchedulableCoroutine) {
         unsafe {
             assert!(RESULT_TABLE
                 .insert(Box::leak(Box::from(co.get_name())), co)
@@ -289,7 +289,7 @@ impl Scheduler {
         };
     }
 
-    pub fn get_result(co_name: &'static CStr) -> Option<SchedulableCoroutine> {
+    pub fn get_result(co_name: &'static CStr) -> Option<&SchedulableCoroutine> {
         unsafe { RESULT_TABLE.remove(&co_name) }
     }
 }

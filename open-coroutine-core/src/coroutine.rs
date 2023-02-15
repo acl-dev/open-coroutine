@@ -177,7 +177,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
             Monitor::clean_task(Monitor::signal_time());
             if let Some(scheduler) = coroutine.get_scheduler() {
                 *coroutine.result.borrow_mut() = MaybeUninit::new(ManuallyDrop::new(result));
-                Scheduler::save_result(std::ptr::read_unaligned(std::mem::transmute(coroutine)));
+                Scheduler::save_result(std::mem::transmute(coroutine));
                 //执行下一个子协程
                 (*scheduler).do_schedule();
             } else {

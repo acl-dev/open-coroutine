@@ -11,7 +11,7 @@ use crate::{SchedulableCoroutine, Scheduler, UserFunc};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::ffi::c_char;
+use std::ffi::{c_char, CStr};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -35,7 +35,7 @@ impl JoinHandle {
         if self.0 as *const c_void as usize == 0 {
             return Ok(None);
         }
-        let co_name = unsafe { std::ffi::CStr::from_ptr(self.0) };
+        let co_name: &'static CStr = unsafe { CStr::from_ptr(self.0) };
         let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             if timeout_time <= timer_utils::now() {
@@ -52,7 +52,7 @@ impl JoinHandle {
         if self.0 as *const c_void as usize == 0 {
             return Ok(None);
         }
-        let co_name = unsafe { std::ffi::CStr::from_ptr(self.0) };
+        let co_name: &'static CStr = unsafe { CStr::from_ptr(self.0) };
         let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             EventLoop::round_robin_schedule()?;
