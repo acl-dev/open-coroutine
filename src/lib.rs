@@ -88,7 +88,9 @@ pub fn schedule() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{co, coroutine_crate, init, schedule, JoinHandle, UserFunc, Yielder};
+    use crate::{
+        co, coroutine_crate, init, schedule, timed_schedule, JoinHandle, UserFunc, Yielder,
+    };
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::os::raw::c_void;
@@ -390,7 +392,7 @@ mod tests {
                 let _ = co_crate(fx, Some(&mut *(13usize as *mut c_void)), 4096);
                 let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
                 let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-                    .expect(&*("failed to 127.0.0.1:".to_owned() + &port.to_string() + " !"));
+                    .expect(&format!("connect to 127.0.0.1:{port} failed !"));
                 let mut data: [u8; 512] = std::mem::zeroed();
                 data[511] = b'\n';
                 let mut buffer: Vec<u8> = Vec::with_capacity(512);
@@ -420,8 +422,8 @@ mod tests {
             },
             None,
             4096,
-        )
-        .join();
+        );
+        assert_eq!(timed_schedule(20_000_000_000), 0);
     }
 
     #[test]
