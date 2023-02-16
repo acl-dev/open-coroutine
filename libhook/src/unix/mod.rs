@@ -96,7 +96,7 @@ pub extern "C" fn connect(
     let co_id = event_loop.syscall();
     let mut r;
     loop {
-        r = (Lazy::force(&CONNECT))(socket, address, len);
+        r = open_coroutine_core::unbreakable!((Lazy::force(&CONNECT))(socket, address, len));
         if r == 0 {
             reset_errno();
             break;
@@ -157,7 +157,7 @@ static LISTEN: Lazy<extern "C" fn(libc::c_int, libc::c_int) -> libc::c_int> = in
 pub extern "C" fn listen(socket: libc::c_int, backlog: libc::c_int) -> libc::c_int {
     let _ = open_coroutine_core::EventLoop::round_robin_schedule();
     //unnecessary non blocking impl for listen
-    (Lazy::force(&LISTEN))(socket, backlog)
+    open_coroutine_core::unbreakable!((Lazy::force(&LISTEN))(socket, backlog))
 }
 
 static ACCEPT: Lazy<
@@ -192,7 +192,7 @@ pub extern "C" fn shutdown(socket: libc::c_int, how: libc::c_int) -> libc::c_int
             return -1;
         }
     }
-    (Lazy::force(&SHUTDOWN))(socket, how)
+    open_coroutine_core::unbreakable!((Lazy::force(&SHUTDOWN))(socket, how))
 }
 
 static POLL: Lazy<extern "C" fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int> =
