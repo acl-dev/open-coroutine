@@ -41,25 +41,23 @@ pub extern "C" fn reset_errno() {
 }
 
 pub extern "C" fn set_errno(errno: libc::c_int) {
-    unsafe { errno_location().write(errno) }
+    open_coroutine_core::unbreakable!(errno_location().write(errno))
 }
 
 pub extern "C" fn set_non_blocking(socket: libc::c_int, on: bool) -> bool {
-    unsafe {
-        let flags = libc::fcntl(socket, libc::F_GETFL);
-        if flags < 0 {
-            return false;
-        }
-        libc::fcntl(
-            socket,
-            libc::F_SETFL,
-            if on {
-                flags | libc::O_NONBLOCK
-            } else {
-                flags & !libc::O_NONBLOCK
-            },
-        ) == 0
+    let flags = open_coroutine_core::unbreakable!(libc::fcntl(socket, libc::F_GETFL));
+    if flags < 0 {
+        return false;
     }
+    open_coroutine_core::unbreakable!(libc::fcntl(
+        socket,
+        libc::F_SETFL,
+        if on {
+            flags | libc::O_NONBLOCK
+        } else {
+            flags & !libc::O_NONBLOCK
+        },
+    )) == 0
 }
 
 pub extern "C" fn is_blocking(socket: libc::c_int) -> bool {
@@ -67,13 +65,11 @@ pub extern "C" fn is_blocking(socket: libc::c_int) -> bool {
 }
 
 pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
-    unsafe {
-        let flags = libc::fcntl(socket, libc::F_GETFL);
-        if flags < 0 {
-            return false;
-        }
-        (flags & libc::O_NONBLOCK) != 0
+    let flags = open_coroutine_core::unbreakable!(libc::fcntl(socket, libc::F_GETFL));
+    if flags < 0 {
+        return false;
     }
+    (flags & libc::O_NONBLOCK) != 0
 }
 
 /// check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
