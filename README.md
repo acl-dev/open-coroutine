@@ -48,7 +48,7 @@ Still under development, please `do not` use this library in the `production` en
     - [ ] msgsnd
 
   </details>
-- [ ] use rust `Generator` as low_level stack less coroutine
+- [ ] use `genawaiter` as low_level stack less coroutine
 - [x] ~~consider use `corosensei` as low_level coroutine(not the perfect choice)~~
 - [x] support back trace
 - [ ] support `#[open_coroutine::join]` macro to wait coroutines
