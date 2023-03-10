@@ -1,32 +1,17 @@
-#![feature(generators, generator_trait)]
-
-use std::ops::{Generator, GeneratorState};
-use std::pin::Pin;
+use genawaiter::sync::gen;
+use genawaiter::yield_;
 
 fn main() {
-    let mut generator1 = || {
-        yield 1;
-        "foo"
-    };
-    let mut generator2 = || {
-        yield 2;
-        "ha"
-    };
+    let odd_numbers_less_than_ten = gen!({
+        let mut n = 1;
+        while n < 10 {
+            yield_!(n); // Suspend a function at any point with a value.
+            n += 2;
+        }
+    });
 
-    match Pin::new(&mut generator1).resume(()) {
-        GeneratorState::Yielded(1) => {}
-        _ => panic!("unexpected return from resume"),
-    }
-    match Pin::new(&mut generator2).resume(()) {
-        GeneratorState::Yielded(2) => {}
-        _ => panic!("unexpected return from resume"),
-    }
-    match Pin::new(&mut generator1).resume(()) {
-        GeneratorState::Complete("foo") => {}
-        _ => panic!("unexpected return from resume"),
-    }
-    match Pin::new(&mut generator2).resume(()) {
-        GeneratorState::Complete("ha") => {}
-        _ => panic!("unexpected return from resume"),
+    // Generators can be used as ordinary iterators.
+    for num in odd_numbers_less_than_ten {
+        println!("{}", num);
     }
 }

@@ -8,6 +8,7 @@ repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-
 license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
+genawaiter = "0.99.1"
 libc = "0.2.137"
 once_cell = "1.13.0"
 num_cpus = "1.14.0"
