@@ -82,10 +82,20 @@ mod tests {
 
     #[test]
     fn test_return() {
+        let co: Coroutine<'_, i32, (), _> = co!({});
+        assert_eq!(GeneratorState::Complete(()), co.resume());
+    }
+
+    #[test]
+    fn test_yield() {
         let co: Coroutine<'_, i32, (), _> = co!({
             yield_!(1);
+            yield_!(2);
+            yield_!(3);
         });
         assert_eq!(GeneratorState::Yielded(1), co.resume());
+        assert_eq!(GeneratorState::Yielded(2), co.resume());
+        assert_eq!(GeneratorState::Yielded(3), co.resume());
         assert_eq!(GeneratorState::Complete(()), co.resume());
     }
 }
