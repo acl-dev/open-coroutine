@@ -126,14 +126,14 @@ mod tests {
 
     #[test]
     fn test_return() {
-        let co: Coroutine<'_, i32, (), _> = co!(|_| async move {});
+        let co: Coroutine<'_, (), _, _> = co!(|_| async move {});
         assert_eq!(GeneratorState::Complete(()), co.resume());
     }
 
     #[test]
     fn test_yield() {
         let s = "hello";
-        let co: Coroutine<'_, i32, _, _> = co!(|co: Co<_, ()>| async move {
+        let co = co!(|co: Co<_, ()>| async move {
             co.yield_(10).await;
             println!("{}", s);
             co.yield_(20).await;
