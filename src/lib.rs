@@ -9,7 +9,7 @@
     missing_debug_implementations,
     // missing_docs, // TODO: add documents
     single_use_lifetimes, // TODO: fix lifetime names only used once
-    trivial_casts, // TODO: remove trivial casts in code
+    // trivial_casts,
     trivial_numeric_casts,
     // unreachable_pub, allow clippy::redundant_pub_crate lint instead
     // unsafe_code,
