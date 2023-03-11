@@ -4,12 +4,8 @@ use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use uuid::Uuid;
 
-pub use genawaiter::{
-    sync::{Co, Gen},
-    GeneratorState,
-};
+pub use genawaiter::{stack::Co, GeneratorState};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -57,37 +53,40 @@ fn take_result<R>() -> Option<R> {
 #[repr(C)]
 pub struct Coroutine<'a, Y, R, F: Future> {
     name: &'a str,
-    sp: RefCell<Gen<Y, (), F>>,
+    sp: RefCell<genawaiter::stack::Gen<'a, Y, (), F>>,
     status: Cell<Status>,
     result: PhantomData<R>,
 }
 
 #[macro_export]
 macro_rules! co {
-    ($name:literal, $func:expr) => {{
-        let gen = Gen::new(|co| async move {
-            let result = ($func)(co).await;
-            init_result(result);
-        });
-        Coroutine {
-            name: Box::leak(Box::from($name)),
-            sp: RefCell::new(gen),
+    ($name:ident, $func:expr $(,)?) => {
+        // Safety: The goal here is to ensure the safety invariants of `Gen::new`, i.e.,
+        // the lifetime of the `Co` argument (in `$producer`) must not outlive `shelf`
+        // or `generator`.
+        //
+        // We create two variables, `shelf` and `generator`, which cannot be named by
+        // user-land code (because of macro hygiene). Because they are declared in the
+        // same scope, and cannot be dropped before the end of the scope (because they
+        // cannot be named), they have equivalent lifetimes. The type signature of
+        // `Gen::new` ties the lifetime of `co` to that of `shelf`. This means it has
+        // the same lifetime as `generator`, and so the invariant of `Gen::new` cannot
+        // be violated.
+        let shelf = Box::leak(Box::new(genawaiter::stack::Shelf::new()));
+        let generator = unsafe {
+            genawaiter::stack::Gen::new(shelf, |co| async move {
+                let result = ($func)(co).await;
+                init_result(result);
+            })
+        };
+        let mut coroutine = Coroutine {
+            name: Box::leak(Box::from(uuid::Uuid::new_v4().to_string())),
+            sp: RefCell::new(generator),
             status: Cell::new(Status::Created),
             result: Default::default(),
-        }
-    }};
-    ($func:expr) => {{
-        let gen = Gen::new(|co| async move {
-            let result = ($func)(co).await;
-            init_result(result);
-        });
-        Coroutine {
-            name: Box::leak(Box::from(Uuid::new_v4().to_string())),
-            sp: RefCell::new(gen),
-            status: Cell::new(Status::Created),
-            result: Default::default(),
-        }
-    }};
+        };
+        let $name = &mut coroutine;
+    };
 }
 
 impl<Y, R, F: Future> Coroutine<'_, Y, R, F> {
@@ -123,24 +122,43 @@ impl<Y, R, F: Future> Debug for Coroutine<'_, Y, R, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use genawaiter::stack::let_gen_using;
+
+    #[test]
+    fn base() {
+        let s = "1";
+        let f = || async move {
+            print!("{} ", s);
+            "2"
+        };
+        let_gen_using!(gen, |co| async move {
+            co.yield_(10).await;
+            println!("{}", f().await);
+            co.yield_(20).await;
+        });
+        assert_eq!(gen.resume(), GeneratorState::Yielded(10));
+        assert_eq!(gen.resume(), GeneratorState::Yielded(20));
+        assert_eq!(gen.resume(), GeneratorState::Complete(()));
+    }
 
     #[test]
     fn test_return() {
-        let co: Coroutine<'_, (), _, _> = co!(|_| async move {});
+        co!(co, |_| async move {});
+        let co = co as &mut Coroutine<'_, (), _, _>;
         assert_eq!(GeneratorState::Complete(()), co.resume());
     }
 
     #[test]
     fn test_yield() {
         let s = "hello";
-        let co = co!(|co: Co<_, ()>| async move {
+        co!(c, |co: Co<'static, _, _>| async move {
             co.yield_(10).await;
             println!("{}", s);
             co.yield_(20).await;
             "world"
         });
-        assert_eq!(co.resume(), GeneratorState::Yielded(10));
-        assert_eq!(co.resume(), GeneratorState::Yielded(20));
-        assert_eq!(co.resume(), GeneratorState::Complete("world"));
+        assert_eq!(c.resume(), GeneratorState::Yielded(10));
+        assert_eq!(c.resume(), GeneratorState::Yielded(20));
+        assert_eq!(c.resume(), GeneratorState::Complete("world"));
     }
 }
