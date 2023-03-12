@@ -2,8 +2,9 @@ use crate::coroutine::suspend::Suspender;
 use crate::scheduler::Scheduler;
 use std::cell::{Cell, RefCell};
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::marker::PhantomData;
+use std::ops::DerefMut;
+use std::pin::Pin;
 
 use genawaiter::stack::Gen;
 pub use genawaiter::{stack::Co, GeneratorState};
@@ -30,9 +31,12 @@ pub enum State {
 }
 
 #[repr(C)]
-pub struct Coroutine<'c, 's, Y, R, F: Future> {
+pub struct Coroutine<'c, 's, Y, R, F>
+where
+    F: genawaiter::Coroutine<Yield = Y, Resume = (), Return = ()>,
+{
     name: &'c str,
-    sp: RefCell<Gen<'c, Y, (), F>>,
+    sp: RefCell<F>,
     state: Cell<State>,
     result: PhantomData<R>,
     scheduler: RefCell<Option<&'c Scheduler<'s>>>,
@@ -75,8 +79,11 @@ macro_rules! co {
     };
 }
 
-impl<'c, 's, Y, R, F: Future> Coroutine<'c, 's, Y, R, F> {
-    fn new(name: Box<str>, generator: Gen<'c, Y, (), F>) -> Self {
+impl<'c, 's, Y, R, F> Coroutine<'c, 's, Y, R, F>
+where
+    F: genawaiter::Coroutine<Yield = Y, Resume = (), Return = ()> + Unpin,
+{
+    fn new(name: Box<str>, generator: F) -> Self {
         Coroutine {
             name: Box::leak(name),
             sp: RefCell::new(generator),
@@ -88,8 +95,9 @@ impl<'c, 's, Y, R, F: Future> Coroutine<'c, 's, Y, R, F> {
 
     pub fn resume(&self) -> GeneratorState<Y, R> {
         self.set_state(State::Running);
-        let state = self.sp.borrow_mut().resume();
-        match state {
+        let mut binding = self.sp.borrow_mut();
+        let sp = Pin::new(binding.deref_mut());
+        match sp.resume_with(()) {
             GeneratorState::Yielded(y) => {
                 if Suspender::<Y, R>::syscall_flag() {
                     self.set_state(State::SystemCall);
@@ -128,7 +136,10 @@ impl<'c, 's, Y, R, F: Future> Coroutine<'c, 's, Y, R, F> {
     }
 }
 
-impl<Y, R, F: Future> Debug for Coroutine<'_, '_, Y, R, F> {
+impl<Y, R, F> Debug for Coroutine<'_, '_, Y, R, F>
+where
+    F: genawaiter::Coroutine<Yield = Y, Resume = (), Return = ()>,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name)
