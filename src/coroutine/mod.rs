@@ -1,10 +1,11 @@
+use crate::coroutine::suspend::Suspender;
+use crate::scheduler::Scheduler;
 use std::cell::{Cell, RefCell};
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
 
 pub use genawaiter::{stack::Co, GeneratorState};
-pub use suspend::*;
 
 mod result;
 
@@ -28,11 +29,12 @@ pub enum State {
 }
 
 #[repr(C)]
-pub struct Coroutine<'a, Y, R, F: Future> {
-    name: &'a str,
-    sp: RefCell<genawaiter::stack::Gen<'a, Y, (), F>>,
+pub struct Coroutine<'c, 's, Y, R, F: Future> {
+    name: &'c str,
+    sp: RefCell<genawaiter::stack::Gen<'c, Y, (), F>>,
     state: Cell<State>,
     result: PhantomData<R>,
+    scheduler: RefCell<Option<&'c Scheduler<'s>>>,
 }
 
 #[macro_export]
@@ -61,12 +63,13 @@ macro_rules! co {
             sp: RefCell::new(generator),
             state: Cell::new(State::Created),
             result: Default::default(),
+            scheduler: RefCell::new(None),
         };
         let $name = &mut coroutine;
     };
 }
 
-impl<Y, R, F: Future> Coroutine<'_, Y, R, F> {
+impl<'c, 's, Y, R, F: Future> Coroutine<'c, 's, Y, R, F> {
     pub fn resume(&self) -> GeneratorState<Y, R> {
         self.set_state(State::Running);
         let state = self.sp.borrow_mut().resume();
@@ -91,9 +94,17 @@ impl<Y, R, F: Future> Coroutine<'_, Y, R, F> {
     pub(crate) fn set_state(&self, state: State) {
         self.state.set(state);
     }
+
+    pub fn get_scheduler(&self) -> Option<&'c Scheduler<'s>> {
+        *self.scheduler.borrow()
+    }
+
+    pub(crate) fn set_scheduler(&self, scheduler: &'s Scheduler<'s>) -> Option<&'c Scheduler<'s>> {
+        self.scheduler.replace(Some(scheduler))
+    }
 }
 
-impl<Y, R, F: Future> Debug for Coroutine<'_, Y, R, F> {
+impl<Y, R, F: Future> Debug for Coroutine<'_, '_, Y, R, F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name)
@@ -127,7 +138,7 @@ mod tests {
     #[test]
     fn test_return() {
         co!(co, |_| async move {});
-        let co = co as &mut Coroutine<'_, (), _, _>;
+        let co = co as &mut Coroutine<'_, '_, (), _, _>;
         assert_eq!(GeneratorState::Complete(()), co.resume());
     }
 
