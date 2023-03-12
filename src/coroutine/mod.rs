@@ -5,6 +5,7 @@ use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
 
+use genawaiter::stack::Gen;
 pub use genawaiter::{stack::Co, GeneratorState};
 
 mod result;
@@ -31,7 +32,7 @@ pub enum State {
 #[repr(C)]
 pub struct Coroutine<'c, 's, Y, R, F: Future> {
     name: &'c str,
-    sp: RefCell<genawaiter::stack::Gen<'c, Y, (), F>>,
+    sp: RefCell<Gen<'c, Y, (), F>>,
     state: Cell<State>,
     result: PhantomData<R>,
     scheduler: RefCell<Option<&'c Scheduler<'s>>>,
@@ -39,37 +40,52 @@ pub struct Coroutine<'c, 's, Y, R, F: Future> {
 
 #[macro_export]
 macro_rules! co {
-    ($name:ident, $func:expr $(,)?) => {
-        // Safety: The goal here is to ensure the safety invariants of `Gen::new`, i.e.,
-        // the lifetime of the `Co` argument (in `$producer`) must not outlive `shelf`
-        // or `generator`.
-        //
-        // We create two variables, `shelf` and `generator`, which cannot be named by
-        // user-land code (because of macro hygiene). Because they are declared in the
-        // same scope, and cannot be dropped before the end of the scope (because they
-        // cannot be named), they have equivalent lifetimes. The type signature of
-        // `Gen::new` ties the lifetime of `co` to that of `shelf`. This means it has
-        // the same lifetime as `generator`, and so the invariant of `Gen::new` cannot
-        // be violated.
+    // Safety: The goal here is to ensure the safety invariants of `Gen::new`, i.e.,
+    // the lifetime of the `Co` argument (in `$producer`) must not outlive `shelf`
+    // or `generator`.
+    //
+    // We create two variables, `shelf` and `generator`, which cannot be named by
+    // user-land code (because of macro hygiene). Because they are declared in the
+    // same scope, and cannot be dropped before the end of the scope (because they
+    // cannot be named), they have equivalent lifetimes. The type signature of
+    // `Gen::new` ties the lifetime of `co` to that of `shelf`. This means it has
+    // the same lifetime as `generator`, and so the invariant of `Gen::new` cannot
+    // be violated.
+    ($var_name:ident, $func:expr $(,)?) => {
         let shelf = Box::leak(Box::new(genawaiter::stack::Shelf::new()));
         let generator = unsafe {
-            genawaiter::stack::Gen::new(shelf, |co| async move {
+            Gen::new(shelf, |co| async move {
                 let result = ($func)(Suspender::new(co)).await;
                 result::init_result(result);
             })
         };
-        let mut coroutine = Coroutine {
-            name: Box::leak(Box::from(uuid::Uuid::new_v4().to_string())),
-            sp: RefCell::new(generator),
-            state: Cell::new(State::Created),
-            result: Default::default(),
-            scheduler: RefCell::new(None),
+        let mut coroutine = Coroutine::new(Box::from(uuid::Uuid::new_v4().to_string()), generator);
+        let $var_name = &mut coroutine;
+    };
+    ($var_name:ident, $name:literal, $func:expr $(,)?) => {
+        let shelf = Box::leak(Box::new(genawaiter::stack::Shelf::new()));
+        let generator = unsafe {
+            Gen::new(shelf, |co| async move {
+                let result = ($func)(Suspender::new(co)).await;
+                result::init_result(result);
+            })
         };
-        let $name = &mut coroutine;
+        let mut coroutine = Coroutine::new(Box::from($name), generator);
+        let $var_name = &mut coroutine;
     };
 }
 
 impl<'c, 's, Y, R, F: Future> Coroutine<'c, 's, Y, R, F> {
+    fn new(name: Box<str>, generator: Gen<'c, Y, (), F>) -> Self {
+        Coroutine {
+            name: Box::leak(name),
+            sp: RefCell::new(generator),
+            state: Cell::new(State::Created),
+            result: Default::default(),
+            scheduler: RefCell::new(None),
+        }
+    }
+
     pub fn resume(&self) -> GeneratorState<Y, R> {
         self.set_state(State::Running);
         let state = self.sp.borrow_mut().resume();
@@ -89,6 +105,14 @@ impl<'c, 's, Y, R, F: Future> Coroutine<'c, 's, Y, R, F> {
                 GeneratorState::Complete(result::take_result().unwrap())
             }
         }
+    }
+
+    pub fn get_name(&self) -> &str {
+        self.name
+    }
+
+    pub fn get_state(&self) -> State {
+        self.state.get()
     }
 
     pub(crate) fn set_state(&self, state: State) {
@@ -145,7 +169,7 @@ mod tests {
     #[test]
     fn test_yield() {
         let s = "hello";
-        co!(c, |co: Suspender<'static, _, _>| async move {
+        co!(c, "test", |co: Suspender<'static, _, _>| async move {
             co.suspend(10).await;
             println!("{}", s);
             co.suspend(20).await;
@@ -154,5 +178,6 @@ mod tests {
         assert_eq!(c.resume(), GeneratorState::Yielded(10));
         assert_eq!(c.resume(), GeneratorState::Yielded(20));
         assert_eq!(c.resume(), GeneratorState::Complete("world"));
+        assert_eq!(c.get_name(), "test");
     }
 }
