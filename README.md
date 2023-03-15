@@ -48,8 +48,8 @@ Still under development, please `do not` use this library in the `production` en
     - [ ] msgsnd
 
   </details>
-- [ ] use `genawaiter` as low_level stack less coroutine
-- [x] ~~consider use `corosensei` as low_level coroutine(not the perfect choice)~~
+- [x] ~~use `genawaiter` as low_level stack less coroutine ([it can not pas preemptive_schedule test](https://github.com/dragon-zhang/open-coroutine-core/tree/schedule))~~
+- [ ] consider use `corosensei` as low_level coroutine
 - [x] support back trace
 - [ ] support `#[open_coroutine::join]` macro to wait coroutines
 - [x] support `#[open_coroutine::co]` macro

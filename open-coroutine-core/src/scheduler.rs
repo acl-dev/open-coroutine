@@ -385,33 +385,51 @@ mod tests {
     fn preemptive_schedule() -> std::io::Result<()> {
         use std::sync::{Arc, Condvar, Mutex};
         static mut TEST_FLAG: bool = true;
+        static mut TEST_FLAG2: bool = true;
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
         let handler = thread::spawn(move || {
             let mut scheduler = Scheduler::new();
+
             extern "C" fn f1(
                 _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
                 _input: &'static mut c_void,
             ) -> &'static mut c_void {
                 unsafe {
                     while TEST_FLAG {
-                        println!("loop");
+                        println!("loop1");
                         std::thread::sleep(Duration::from_millis(10));
                     }
                 }
                 null()
             }
             scheduler.submit(f1, null(), 4096).expect("submit failed !");
+
             extern "C" fn f2(
                 _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
                 _input: &'static mut c_void,
             ) -> &'static mut c_void {
                 unsafe {
+                    while TEST_FLAG2 {
+                        println!("loop2");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
                     TEST_FLAG = false;
                 }
                 null()
             }
             scheduler.submit(f2, null(), 4096).expect("submit failed !");
+
+            extern "C" fn f3(
+                _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
+                _input: &'static mut c_void,
+            ) -> &'static mut c_void {
+                unsafe {
+                    TEST_FLAG2 = false;
+                }
+                null()
+            }
+            scheduler.submit(f3, null(), 4096).expect("submit failed !");
             scheduler.try_schedule().expect("try_schedule failed !");
 
             let (lock, cvar) = &*pair2;
