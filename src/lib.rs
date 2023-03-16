@@ -27,7 +27,6 @@
     clippy::pedantic,
     // clippy::nursery, // It's still under development
     clippy::cargo,
-    unreachable_pub,
 )]
 #![allow(
     // Some explicitly allowed Clippy lints, must have clear reason to allow
@@ -51,5 +50,3 @@
 pub mod coroutine;
 
 pub mod scheduler;
-
-pub mod event_loop;
