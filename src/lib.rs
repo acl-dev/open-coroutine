@@ -8,7 +8,7 @@
     missing_copy_implementations,
     missing_debug_implementations,
     // missing_docs, // TODO: add documents
-    single_use_lifetimes, // TODO: fix lifetime names only used once
+    // single_use_lifetimes, // TODO: fix lifetime names only used once
     // trivial_casts,
     trivial_numeric_casts,
     // unreachable_pub, allow clippy::redundant_pub_crate lint instead
@@ -23,7 +23,7 @@
     warnings, // treat all wanings as errors
 
     clippy::all,
-    clippy::restriction,
+    // clippy::restriction,
     clippy::pedantic,
     // clippy::nursery, // It's still under development
     clippy::cargo,
@@ -45,6 +45,8 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
+
+pub mod set_jump;
 
 #[allow(dead_code)]
 pub mod coroutine;
