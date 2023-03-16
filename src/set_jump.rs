@@ -12,6 +12,7 @@ const _JBLEN: usize = 10 + 16 + 2;
 
 pub type JmpBuf = [libc::c_int; _JBLEN];
 
+/// todo 用汇编实现
 extern "C" {
 
     pub fn setjmp(env: *mut JmpBuf) -> libc::c_int;
