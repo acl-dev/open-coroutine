@@ -1,4 +1,4 @@
-use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, Status, UserFunc, Yielder};
+use crate::coroutine::{Coroutine, CoroutineResult, OpenCoroutine, State, UserFunc, Yielder};
 use crate::monitor::Monitor;
 use crate::stack::Stack;
 use object_collection::{ObjectList, ObjectMap};
@@ -111,7 +111,7 @@ impl Scheduler {
             val,
             size,
         )?;
-        coroutine.set_status(Status::Ready);
+        coroutine.set_state(State::Ready);
         coroutine.set_scheduler(self);
         let ptr = Box::leak(Box::new(coroutine));
         self.ready
@@ -200,7 +200,7 @@ impl Scheduler {
                             Yielder::<&'static mut c_void, (), &'static mut c_void>::delay_time();
                         if delay_time > 0 {
                             //挂起协程到时间轮
-                            coroutine.set_status(Status::Suspend);
+                            coroutine.set_state(State::Suspend);
                             unsafe {
                                 SUSPEND_TABLE.insert_raw(
                                     timer_utils::add_timeout_time(delay_time),
@@ -237,7 +237,7 @@ impl Scheduler {
                         for _ in 0..entry.len() {
                             if let Some(pointer) = entry.pop_front_raw() {
                                 let coroutine = &mut *(pointer as *mut SchedulableCoroutine);
-                                coroutine.set_status(Status::Ready);
+                                coroutine.set_state(State::Ready);
                                 //把到时间的协程加入就绪队列
                                 self.ready.push_back(&mut *pointer);
                             }
@@ -253,7 +253,7 @@ impl Scheduler {
         if co_id == 0 {
             return;
         }
-        co.set_status(Status::SystemCall);
+        co.set_state(State::SystemCall);
         unsafe { SYSTEM_CALL_TABLE.insert(co_id, std::ptr::read_unaligned(co)) };
     }
 

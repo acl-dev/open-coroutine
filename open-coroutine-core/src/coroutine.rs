@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Status {
+pub enum State {
     ///协程被创建
     Created,
     ///等待运行
@@ -26,10 +26,8 @@ pub enum Status {
     SystemCall,
     ///栈扩/缩容时
     CopyStack,
-    ///调用用户函数完成，但未退出
+    ///调用用户函数完成
     Finished,
-    ///已退出
-    Exited,
 }
 
 #[repr(transparent)]
@@ -140,7 +138,7 @@ pub struct OpenCoroutine<'a, Param, Yield, Return> {
     name: Box<CStr>,
     sp: RefCell<Transfer>,
     stack: ProtectedFixedSizeStack,
-    status: Cell<Status>,
+    state: Cell<State>,
     //用户函数
     proc: UserFunc<'a, Param, Yield, Return>,
     marker: PhantomData<&'a extern "C" fn(Param) -> CoroutineResult<Yield, Return>>,
@@ -165,11 +163,11 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         };
         OpenCoroutine::init_yielder(&yielder);
         unsafe {
-            coroutine.set_status(Status::Running);
+            coroutine.set_state(State::Running);
             let proc = coroutine.proc;
             let param = std::ptr::read_unaligned(coroutine.param.as_ptr());
             let result = proc(&yielder, param);
-            coroutine.set_status(Status::Finished);
+            coroutine.set_state(State::Finished);
             OpenCoroutine::<Param, Yield, Return>::clean_current();
             OpenCoroutine::<Param, Yield, Return>::clean_yielder();
             //还没执行到10ms就返回了，此时需要清理signal
@@ -220,7 +218,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
                 0,
             )),
             stack,
-            status: Cell::new(Status::Created),
+            state: Cell::new(State::Created),
             proc,
             marker: Default::default(),
             param: RefCell::new(param),
@@ -235,7 +233,7 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
     }
 
     pub fn resume(&self) -> CoroutineResult<Yield, Return> {
-        self.set_status(Status::Ready);
+        self.set_state(State::Ready);
         OpenCoroutine::init_current(self);
         unsafe {
             let transfer = self.sp.borrow().context.resume(self as *const _ as usize);
@@ -255,16 +253,16 @@ impl<'a, Param, Yield, Return> OpenCoroutine<'a, Param, Yield, Return> {
         &self.name
     }
 
-    pub fn get_status(&self) -> Status {
-        self.status.get()
+    pub fn get_state(&self) -> State {
+        self.state.get()
     }
 
-    pub fn set_status(&self, status: Status) {
-        self.status.set(status);
+    pub fn set_state(&self, state: State) {
+        self.state.set(state);
     }
 
     pub fn is_finished(&self) -> bool {
-        self.get_status() == Status::Finished
+        self.get_state() == State::Finished
     }
 
     pub fn get_result(&self) -> Option<Return> {
@@ -326,17 +324,11 @@ impl<'a, Param, Yield, Return> Debug for OpenCoroutine<'a, Param, Yield, Return>
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenCoroutine")
             .field("name", &self.name)
-            .field("status", &self.status)
+            .field("state", &self.state)
             .field("sp", &self.sp)
             .field("stack", &self.stack)
             .field("scheduler", &self.scheduler)
             .finish()
-    }
-}
-
-impl<'a, Param, Yield, Return> Drop for OpenCoroutine<'a, Param, Yield, Return> {
-    fn drop(&mut self) {
-        self.status.set(Status::Exited);
     }
 }
 
