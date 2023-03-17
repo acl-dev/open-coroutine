@@ -46,8 +46,6 @@
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
 
-pub mod set_jump;
-
 #[allow(dead_code)]
 pub mod coroutine;
 

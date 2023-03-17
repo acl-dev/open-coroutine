@@ -1,26 +1,57 @@
-use crate::set_jump::{longjmp, setjmp, JmpBuf};
+use crate::coroutine::set_jmp::{longjmp, setjmp, JmpBuf};
+use std::cell::RefCell;
+use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 
 pub struct Context {
-    f: Rc<Box<dyn FnOnce(&mut Context)>>,
+    f: Rc<Box<dyn FnOnce()>>,
     from: JmpBuf,
     point: JmpBuf,
     point_init: bool,
     called: bool,
 }
 
+thread_local! {
+    static CONTEXT: Box<RefCell<*mut c_void>> = Box::new(RefCell::new(std::ptr::null_mut()));
+}
+
 impl Context {
-    pub fn new(f: impl FnOnce(&mut Context) + 'static) -> Self {
-        unsafe {
-            Context {
-                f: Rc::new(Box::new(f)),
-                from: std::mem::zeroed(),
-                point: std::mem::zeroed(),
-                point_init: false,
-                called: false,
-            }
+    pub fn new<R>(f: impl FnOnce(&mut Context) -> R + 'static) -> Self {
+        Context {
+            f: Rc::new(Box::new(move || {
+                let context = Context::current().expect("should have a context");
+                let _ = f(context);
+                Context::clean_current();
+                context.suspend();
+            })),
+            from: unsafe { std::mem::zeroed() },
+            point: unsafe { std::mem::zeroed() },
+            point_init: false,
+            called: false,
         }
+    }
+
+    #[allow(clippy::pedantic)]
+    fn init_current(coroutine: &mut Context) {
+        CONTEXT.with(|boxed| {
+            *boxed.borrow_mut() = coroutine as *mut _ as *mut c_void;
+        });
+    }
+
+    pub(crate) fn current<'a>() -> Option<&'a mut Context> {
+        CONTEXT.with(|boxed| {
+            let ptr = *boxed.borrow_mut();
+            if ptr.is_null() {
+                None
+            } else {
+                Some(unsafe { &mut *(ptr.cast::<Context>()) })
+            }
+        })
+    }
+
+    fn clean_current() {
+        CONTEXT.with(|boxed| *boxed.borrow_mut() = std::ptr::null_mut());
     }
 
     pub fn resume(&mut self) {
@@ -31,7 +62,8 @@ impl Context {
                     unreachable!();
                 } else if !self.called {
                     self.called = true;
-                    (std::ptr::read_unaligned(self.f.as_ref()))(self);
+                    Context::init_current(self);
+                    (std::ptr::read_unaligned(self.f.as_ref()))();
                 }
             }
         }
@@ -64,21 +96,16 @@ mod tests {
     #[test]
     fn test() {
         let str = "first time through";
-        let user_func = move |s: &mut Context| {
+        let mut context = Context::new(move |c| {
             println!("{}", str);
-            s.suspend();
+            c.suspend();
             println!("second time through");
-            s.suspend();
+            c.suspend();
             println!("third time through");
             1
-        };
-
-        let mut suspender = Context::new(move |s| {
-            let _ = user_func(s);
-            s.suspend();
         });
-        suspender.resume();
-        suspender.resume();
-        suspender.resume();
+        context.resume();
+        context.resume();
+        context.resume();
     }
 }
