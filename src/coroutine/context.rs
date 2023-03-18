@@ -2,56 +2,64 @@ use crate::coroutine::set_jmp::{longjmp, setjmp, JmpBuf};
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 
-pub struct Context {
+pub struct Context<R> {
     f: Rc<Box<dyn FnOnce()>>,
     from: RefCell<JmpBuf>,
     point: RefCell<JmpBuf>,
     point_init: Cell<bool>,
     called: Cell<bool>,
+    result: RefCell<MaybeUninit<R>>,
 }
 
 thread_local! {
     static CONTEXT: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
 }
 
-impl Context {
-    pub fn new<R>(f: impl FnOnce(&Context) -> R + 'static) -> Self {
+impl<R> Context<R> {
+    pub fn new(f: impl FnOnce(&Context<R>) -> R + 'static) -> Self {
         Context {
             f: Rc::new(Box::new(move || {
                 let context = Context::current().expect("should have a context");
-                let _ = f(context);
-                Context::clean_current();
+                let r = f(context);
+                let _ = context.result.replace(MaybeUninit::new(r));
+                Context::<R>::clean_current();
                 context.suspend();
             })),
             from: unsafe { std::mem::zeroed() },
             point: unsafe { std::mem::zeroed() },
             point_init: Cell::new(false),
             called: Cell::new(false),
+            result: RefCell::new(MaybeUninit::uninit()),
         }
     }
 
     #[allow(clippy::pedantic)]
-    fn init_current(coroutine: &Context) {
+    fn init_current(coroutine: &Context<R>) {
         CONTEXT.with(|boxed| {
             *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
         });
     }
 
-    pub(crate) fn current<'a>() -> Option<&'a Context> {
+    pub(crate) fn current<'a>() -> Option<&'a Context<R>> {
         CONTEXT.with(|boxed| {
             let ptr = *boxed.borrow_mut();
             if ptr.is_null() {
                 None
             } else {
-                Some(unsafe { &*(ptr.cast::<Context>()) })
+                Some(unsafe { &*(ptr.cast::<Context<R>>()) })
             }
         })
     }
 
     fn clean_current() {
         CONTEXT.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
+    }
+
+    pub fn get_result(&self) -> MaybeUninit<R> {
+        self.result.replace(MaybeUninit::uninit())
     }
 
     pub fn resume(&self) {
@@ -80,7 +88,7 @@ impl Context {
     }
 }
 
-impl Debug for Context {
+impl<R> Debug for Context<R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Suspender")
             .field("from", &self.from)
@@ -107,5 +115,6 @@ mod tests {
         context.resume();
         context.resume();
         context.resume();
+        assert_eq!(unsafe { context.get_result().assume_init() }, 1);
     }
 }

@@ -15,8 +15,6 @@ pub enum State {
     Suspend(u64),
     ///执行系统调用
     SystemCall,
-    ///栈扩/缩容时
-    CopyStack,
     ///执行用户函数完成
     Finished,
 }
