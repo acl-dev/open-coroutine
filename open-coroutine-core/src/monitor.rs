@@ -13,7 +13,7 @@ thread_local! {
     static SIGNAL_TIME: Box<RefCell<u64>> = Box::new(RefCell::new(0));
 }
 
-pub(crate) struct Monitor {
+pub struct Monitor {
     task: TimerObjectList,
     flag: AtomicBool,
 }
@@ -23,7 +23,7 @@ unsafe impl Send for Monitor {}
 unsafe impl Sync for Monitor {}
 
 impl Monitor {
-    pub(crate) fn signum() -> libc::c_int {
+    pub fn signum() -> libc::c_int {
         cfg_if::cfg_if! {
             if #[cfg(any(target_os = "linux",
                          target_os = "l4re",
@@ -52,7 +52,7 @@ impl Monitor {
 
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
-        unsafe {
+        {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
                 let yielder = crate::Coroutine::<

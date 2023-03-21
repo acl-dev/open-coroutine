@@ -67,7 +67,7 @@ macro_rules! unbreakable {
 }
 
 #[allow(dead_code)]
-mod monitor;
+pub mod monitor;
 
 #[cfg(any(
     target_os = "linux",
