@@ -23,6 +23,7 @@ unsafe impl Send for Monitor {}
 unsafe impl Sync for Monitor {}
 
 impl Monitor {
+    #[cfg(unix)]
     pub fn signum() -> libc::c_int {
         cfg_if::cfg_if! {
             if #[cfg(any(target_os = "linux",
@@ -150,7 +151,6 @@ impl Monitor {
 
 #[cfg(all(test, unix, feature = "preemptive-schedule"))]
 mod tests {
-    use super::*;
     use crate::monitor::Monitor;
     use std::time::Duration;
 
@@ -159,7 +159,7 @@ mod tests {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg handled");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(10));
         Monitor::add_task(time);
         std::thread::sleep(Duration::from_millis(20));
@@ -171,7 +171,7 @@ mod tests {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg should not handle");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(500));
         Monitor::add_task(time);
         Monitor::clean_task(time);
@@ -183,7 +183,7 @@ mod tests {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
             println!("sigurg should not handle");
         }
-        register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         shield!();
         let time = timer_utils::get_timeout_time(Duration::from_millis(1000));
         Monitor::add_task(time);
