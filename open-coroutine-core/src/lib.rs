@@ -39,9 +39,15 @@ macro_rules! shield {
     () => {{
         unsafe {
             let mut set: libc::sigset_t = std::mem::zeroed();
-            libc::sigaddset(&mut set, libc::SIGURG);
+            assert_eq!(
+                libc::sigaddset(&mut set, $crate::monitor::Monitor::signum()),
+                0
+            );
             let mut oldset: libc::sigset_t = std::mem::zeroed();
-            libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset);
+            assert_eq!(
+                libc::pthread_sigmask(libc::SIG_SETMASK, &set, &mut oldset),
+                0
+            );
             oldset
         }
     }};

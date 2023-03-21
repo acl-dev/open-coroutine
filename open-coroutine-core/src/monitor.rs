@@ -23,6 +23,33 @@ unsafe impl Send for Monitor {}
 unsafe impl Sync for Monitor {}
 
 impl Monitor {
+    pub(crate) fn signum() -> libc::c_int {
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_os = "linux",
+                         target_os = "l4re",
+                         target_os = "android",
+                         target_os = "emscripten"))] {
+                libc::SIGRTMIN()
+            } else {
+                libc::SIGURG
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn register_handler(sigurg_handler: libc::sighandler_t) {
+        unsafe {
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_sigaction = sigurg_handler;
+            assert_eq!(libc::sigaddset(&mut act.sa_mask, Monitor::signum()), 0);
+            act.sa_flags = libc::SA_RESTART;
+            assert_eq!(
+                libc::sigaction(Monitor::signum(), &act, std::ptr::null_mut()),
+                0
+            );
+        }
+    }
+
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         unsafe {
@@ -37,11 +64,7 @@ impl Monitor {
                     unsafe { (*yielder).suspend(()) };
                 }
             }
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler as libc::sighandler_t;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
+            Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         }
         //通过这种方式来初始化monitor线程
         MONITOR.get_or_init(|| {
@@ -127,18 +150,9 @@ impl Monitor {
 
 #[cfg(all(test, unix, feature = "preemptive-schedule"))]
 mod tests {
+    use super::*;
     use crate::monitor::Monitor;
     use std::time::Duration;
-
-    fn register_handler(sigurg_handler: libc::sighandler_t) {
-        unsafe {
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler;
-            libc::sigaddset(&mut act.sa_mask, libc::SIGURG);
-            act.sa_flags = libc::SA_RESTART;
-            libc::sigaction(libc::SIGURG, &act, std::ptr::null_mut());
-        }
-    }
 
     #[test]
     fn test() {
