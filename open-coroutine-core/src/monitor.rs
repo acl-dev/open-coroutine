@@ -25,16 +25,17 @@ unsafe impl Sync for Monitor {}
 impl Monitor {
     #[cfg(unix)]
     pub fn signum() -> libc::c_int {
-        cfg_if::cfg_if! {
-            if #[cfg(any(target_os = "linux",
-                         target_os = "l4re",
-                         target_os = "android",
-                         target_os = "emscripten"))] {
-                libc::SIGRTMIN()
-            } else {
-                libc::SIGURG
-            }
-        }
+        // cfg_if::cfg_if! {
+        //     if #[cfg(any(target_os = "linux",
+        //                  target_os = "l4re",
+        //                  target_os = "android",
+        //                  target_os = "emscripten"))] {
+        //         libc::SIGRTMIN()
+        //     } else {
+        //         libc::SIGURG
+        //     }
+        // }
+        libc::SIGURG
     }
 
     #[cfg(unix)]

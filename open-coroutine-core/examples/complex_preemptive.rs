@@ -8,8 +8,8 @@ fn null() -> &'static mut c_void {
 }
 
 fn main() -> std::io::Result<()> {
-    static mut TEST_FLAG: bool = true;
-    static mut TEST_FLAG2: bool = true;
+    static mut COMPLEX_TEST_FLAG: bool = true;
+    static mut COMPLEX_TEST_FLAG2: bool = true;
     let pair = Arc::new((Mutex::new(true), Condvar::new()));
     let pair2 = Arc::clone(&pair);
     let handler = std::thread::spawn(move || {
@@ -20,7 +20,7 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine1 launched");
-            while unsafe { TEST_FLAG } {
+            while unsafe { COMPLEX_TEST_FLAG } {
                 println!("loop1");
                 std::thread::sleep(Duration::from_millis(10));
             }
@@ -34,12 +34,12 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine2 launched");
-            while unsafe { TEST_FLAG2 } {
+            while unsafe { COMPLEX_TEST_FLAG2 } {
                 println!("loop2");
                 std::thread::sleep(Duration::from_millis(10));
             }
             println!("loop2 end");
-            unsafe { TEST_FLAG = false };
+            unsafe { COMPLEX_TEST_FLAG = false };
             null()
         }
         scheduler.submit(f2, null(), 4096).expect("submit failed !");
@@ -49,7 +49,7 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine3 launched");
-            unsafe { TEST_FLAG2 = false };
+            unsafe { COMPLEX_TEST_FLAG2 = false };
             null()
         }
         scheduler.submit(f3, null(), 4096).expect("submit failed !");
@@ -79,7 +79,7 @@ fn main() -> std::io::Result<()> {
     } else {
         unsafe {
             handler.join().unwrap();
-            assert!(!TEST_FLAG);
+            assert!(!COMPLEX_TEST_FLAG);
         }
         Ok(())
     }
