@@ -71,6 +71,10 @@ jobs:
         with:
           command: run
           args: --example hello --release
+      - name: Run cargo release preemptive example in single thread
+        run: |
+          cd ${{ github.workspace }}/open-coroutine-core
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
       - name: Run cargo release preemptive example
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release"
 
@@ -108,6 +112,10 @@ jobs:
         with:
           command: run
           args: --example hello --release
+      - name: Run cargo release preemptive example in single thread
+        run: |
+          cd ${{ github.workspace }}/open-coroutine-core
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
       - name: Run cargo release preemptive example
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release"
 

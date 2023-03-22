@@ -43,7 +43,10 @@ impl Monitor {
             let mut act: libc::sigaction = std::mem::zeroed();
             act.sa_sigaction = sigurg_handler;
             assert_eq!(libc::sigaddset(&mut act.sa_mask, Monitor::signum()), 0);
-            act.sa_flags = libc::SA_RESTART;
+            // SA_NODEFER：默认情况下，当信号函数运行时，内核将阻塞（不可重入）给定的信号，
+            // 直至当次处理完毕才开始下一次的信号处理。但是设置该标记之后，那么信号函数
+            // 将不会被阻塞，此时需要注意函数的可重入安全性。
+            act.sa_flags = libc::SA_RESTART | libc::SA_NODEFER;
             assert_eq!(
                 libc::sigaction(Monitor::signum(), &act, std::ptr::null_mut()),
                 0
