@@ -19,10 +19,12 @@ fn main() -> std::io::Result<()> {
             _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
+            println!("coroutine1 launched");
             while unsafe { TEST_FLAG } {
                 println!("loop1");
                 std::thread::sleep(Duration::from_millis(10));
             }
+            println!("loop1 end");
             null()
         }
         scheduler.submit(f1, null(), 4096).expect("submit failed !");
@@ -31,10 +33,12 @@ fn main() -> std::io::Result<()> {
             _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
+            println!("coroutine2 launched");
             while unsafe { TEST_FLAG2 } {
                 println!("loop2");
                 std::thread::sleep(Duration::from_millis(10));
             }
+            println!("loop2 end");
             unsafe { TEST_FLAG = false };
             null()
         }
@@ -44,6 +48,7 @@ fn main() -> std::io::Result<()> {
             _yielder: &Yielder<&'static mut c_void, (), &'static mut c_void>,
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
+            println!("coroutine3 launched");
             unsafe { TEST_FLAG2 = false };
             null()
         }
