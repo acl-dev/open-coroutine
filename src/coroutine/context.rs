@@ -59,8 +59,12 @@ impl<R> Context<R> {
         CONTEXT.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
     }
 
+    pub fn is_finished(&self) -> bool {
+        self.finished.get()
+    }
+
     pub fn get_result(&self) -> Option<R> {
-        if self.finished.get() {
+        if self.is_finished() {
             Some(unsafe { self.result.replace(MaybeUninit::uninit()).assume_init() })
         } else {
             None
