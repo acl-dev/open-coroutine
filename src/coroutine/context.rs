@@ -9,8 +9,8 @@ pub struct Context<R> {
     f: Rc<Box<dyn FnOnce()>>,
     from: RefCell<JmpBuf>,
     point: RefCell<JmpBuf>,
-    point_init: Cell<bool>,
-    called: Cell<bool>,
+    started: Cell<bool>,
+    finished: Cell<bool>,
     result: RefCell<MaybeUninit<R>>,
 }
 
@@ -25,13 +25,14 @@ impl<R> Context<R> {
                 let context = Context::current().expect("should have a context");
                 let r = f(context);
                 let _ = context.result.replace(MaybeUninit::new(r));
+                assert!(!context.finished.replace(true));
                 Context::<R>::clean_current();
                 context.suspend();
             })),
             from: unsafe { std::mem::zeroed() },
             point: unsafe { std::mem::zeroed() },
-            point_init: Cell::new(false),
-            called: Cell::new(false),
+            started: Cell::new(false),
+            finished: Cell::new(false),
             result: RefCell::new(MaybeUninit::uninit()),
         }
     }
@@ -58,18 +59,22 @@ impl<R> Context<R> {
         CONTEXT.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
     }
 
-    pub fn get_result(&self) -> MaybeUninit<R> {
-        self.result.replace(MaybeUninit::uninit())
+    pub fn get_result(&self) -> Option<R> {
+        if self.finished.get() {
+            Some(unsafe { self.result.replace(MaybeUninit::uninit()).assume_init() })
+        } else {
+            None
+        }
     }
 
     pub fn resume(&self) {
         unsafe {
             if setjmp(self.from.as_ptr()) == 0 {
-                if self.point_init.get() {
+                if self.started.get() {
                     longjmp(self.point.as_ptr(), 1);
                     unreachable!();
-                } else if !self.called.get() {
-                    self.called.set(true);
+                } else {
+                    self.started.set(true);
                     Context::init_current(self);
                     (std::ptr::read_unaligned(self.f.as_ref()))();
                 }
@@ -80,7 +85,6 @@ impl<R> Context<R> {
     pub fn suspend(&self) {
         unsafe {
             if setjmp(self.point.as_ptr()) == 0 {
-                self.point_init.set(true);
                 longjmp(self.from.as_ptr(), 1);
                 unreachable!();
             }
@@ -114,7 +118,8 @@ mod tests {
         });
         context.resume();
         context.resume();
+        assert_eq!(context.get_result(), None);
         context.resume();
-        assert_eq!(unsafe { context.get_result().assume_init() }, 1);
+        assert_eq!(context.get_result(), Some(1));
     }
 }
