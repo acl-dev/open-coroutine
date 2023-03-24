@@ -1,8 +1,9 @@
-use crate::coroutine::context::Context;
+use crate::coroutine::context::{Context, GeneratorState};
 use crate::scheduler::Scheduler;
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
+use std::mem::{ManuallyDrop, MaybeUninit};
 
 pub mod set_jmp;
 
@@ -10,7 +11,7 @@ pub mod context;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum State {
+pub enum CoroutineState {
     ///协程被创建
     Created,
     ///等待运行
@@ -28,8 +29,9 @@ pub enum State {
 #[repr(C)]
 pub struct ScopedCoroutine<'c, 's, R> {
     name: &'c str,
-    sp: Context<R>,
-    state: Cell<State>,
+    sp: Context<'c, R>,
+    state: Cell<CoroutineState>,
+    result: RefCell<MaybeUninit<ManuallyDrop<R>>>,
     scheduler: RefCell<Option<&'c Scheduler<'s>>>,
 }
 
@@ -64,7 +66,8 @@ impl<'c, R: 'static> ScopedCoroutine<'c, '_, R> {
                 ScopedCoroutine::<R>::clean_current();
                 r
             }),
-            state: Cell::new(State::Created),
+            state: Cell::new(CoroutineState::Created),
+            result: RefCell::new(MaybeUninit::uninit()),
             scheduler: RefCell::new(None),
         }
     }
@@ -98,19 +101,29 @@ impl<'c, 's, R> ScopedCoroutine<'c, 's, R> {
         COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
     }
 
-    pub fn resume(&self) {
-        if !self.sp.is_finished() {
-            self.set_state(State::Running);
-            ScopedCoroutine::init_current(self);
-            self.sp.resume();
-            if self.sp.is_finished() {
-                self.set_state(State::Finished);
+    pub fn resume(&self) -> CoroutineState {
+        if self.sp.is_finished() {
+            return CoroutineState::Finished;
+        }
+        self.set_state(CoroutineState::Running);
+        ScopedCoroutine::init_current(self);
+        match self.sp.resume() {
+            GeneratorState::Complete(r) => {
+                let state = CoroutineState::Finished;
+                self.set_state(state);
+                let _ = self.result.replace(MaybeUninit::new(ManuallyDrop::new(r)));
+                state
+            }
+            GeneratorState::Yielded => {
+                let state = CoroutineState::Suspend(0);
+                self.set_state(state);
+                state
             }
         }
     }
 
     pub fn suspend(&self) {
-        self.set_state(State::Suspend(0));
+        self.set_state(CoroutineState::Suspend(0));
         ScopedCoroutine::<R>::clean_current();
         self.sp.suspend();
         ScopedCoroutine::<R>::init_current(self);
@@ -120,21 +133,24 @@ impl<'c, 's, R> ScopedCoroutine<'c, 's, R> {
         self.name
     }
 
-    pub fn get_state(&self) -> State {
+    pub fn get_state(&self) -> CoroutineState {
         self.state.get()
     }
 
-    pub(crate) fn set_state(&self, state: State) {
+    pub(crate) fn set_state(&self, state: CoroutineState) {
         self.state.set(state);
     }
 
     pub fn is_finished(&self) -> bool {
-        self.get_state() == State::Finished
+        self.get_state() == CoroutineState::Finished
     }
 
     pub fn get_result(&self) -> Option<R> {
         if self.is_finished() {
-            self.sp.get_result()
+            unsafe {
+                let mut m = self.result.borrow().assume_init_read();
+                Some(ManuallyDrop::take(&mut m))
+            }
         } else {
             None
         }
@@ -158,8 +174,8 @@ mod tests {
         let co = co!(|_| {
             println!("test_return");
         });
-        co.resume();
-        assert!(co.is_finished());
+        assert_eq!(CoroutineState::Finished, co.resume());
+        assert_eq!(Some(()), co.get_result());
     }
 
     #[test]
@@ -168,16 +184,17 @@ mod tests {
             println!("test_yield_once");
             co.suspend();
         });
-        co.resume();
-        assert!(!co.is_finished());
+        assert_eq!(CoroutineState::Suspend(0), co.resume());
+        assert_eq!(None, co.get_result());
     }
 
     #[test]
     fn test_current() {
         assert!(ScopedCoroutine::<()>::current().is_none());
-        let co: ScopedCoroutine<_> = co!(|_| async move {
+        let co = co!(|_| {
             assert!(ScopedCoroutine::<()>::current().is_some());
         });
-        co.resume();
+        assert_eq!(CoroutineState::Finished, co.resume());
+        assert_eq!(Some(()), co.get_result());
     }
 }
