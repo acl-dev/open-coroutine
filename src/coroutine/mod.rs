@@ -1,13 +1,34 @@
-use crate::coroutine::context::{Context, GeneratorState};
+use crate::coroutine::suspender::Suspender;
 use crate::scheduler::Scheduler;
+use corosensei::stack::DefaultStack;
+use corosensei::ScopedCoroutine;
 use std::cell::{Cell, RefCell};
-use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub mod set_jmp;
+pub mod suspender;
 
-pub mod context;
+#[allow(clippy::pedantic)]
+pub fn page_size() -> usize {
+    static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
+    let mut ret = PAGE_SIZE.load(Ordering::Relaxed);
+    if ret == 0 {
+        unsafe {
+            cfg_if::cfg_if! {
+                if #[cfg(windows)] {
+                    let mut info = std::mem::zeroed();
+                    windows_sys::Win32::System::SystemInformation::GetSystemInfo(&mut info);
+                    ret = info.dwPageSize as usize
+                } else {
+                    ret = libc::sysconf(libc::_SC_PAGESIZE) as usize;
+                }
+            }
+        }
+        PAGE_SIZE.store(ret, Ordering::Relaxed);
+    }
+    ret
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -18,183 +39,85 @@ pub enum CoroutineState {
     Ready,
     ///运行中
     Running,
-    ///被挂起，参数为延迟的时间，单位ns
+    ///被挂起，参数为开始执行的时间戳
     Suspend(u64),
     ///执行系统调用
     SystemCall,
+    ///栈扩/缩容时
+    CopyStack,
     ///执行用户函数完成
     Finished,
 }
 
 #[repr(C)]
-pub struct ScopedCoroutine<'c, 's, R> {
+pub struct Coroutine<'c, 's, Param, Yield, Return> {
     name: &'c str,
-    sp: Context<'c, R>,
-    state: Cell<CoroutineState>,
-    result: RefCell<MaybeUninit<ManuallyDrop<R>>>,
+    sp: RefCell<ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>>,
+    status: Cell<CoroutineState>,
+    //调用用户函数的参数
+    param: RefCell<Param>,
+    //调用用户函数的返回值
+    result: RefCell<MaybeUninit<ManuallyDrop<Return>>>,
     scheduler: RefCell<Option<&'c Scheduler<'s>>>,
-}
-
-unsafe impl<R> Send for ScopedCoroutine<'_, '_, R> {}
-
-impl<R> Debug for ScopedCoroutine<'_, '_, R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Coroutine")
-            .field("name", &self.name)
-            .field("state", &self.state)
-            .finish()
-    }
 }
 
 #[macro_export]
 macro_rules! co {
-    ($f:expr $(,)?) => {
-        $crate::coroutine::ScopedCoroutine::new(Box::from(uuid::Uuid::new_v4().to_string()), $f)
+    ($f:expr, $param:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(
+            Box::from(uuid::Uuid::new_v4().to_string()),
+            $f,
+            $param,
+            page_size(),
+        )
     };
-    ($name:literal, $f:expr $(,)?) => {
-        $crate::coroutine::ScopedCoroutine::new(Box::from($name), $f)
+    ($f:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(
+            Box::from(uuid::Uuid::new_v4().to_string()),
+            $f,
+            (),
+            page_size(),
+        )
+    };
+    ($name:literal, $f:expr, $param:expr, $size:literal $(,)?) => {
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $param, $size)
+    };
+    ($name:literal, $f:expr, $param:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $param, page_size())
     };
 }
 
-impl<'c, R: 'static> ScopedCoroutine<'c, '_, R> {
-    pub fn new(name: Box<str>, f: impl FnOnce(&ScopedCoroutine<R>) -> R + 'static) -> Self {
-        ScopedCoroutine {
+impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
+    pub fn new<F>(name: Box<str>, f: F, param: Param, size: usize) -> std::io::Result<Self>
+    where
+        F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
+        F: 'c,
+    {
+        let stack = DefaultStack::new(size)?;
+        let sp = ScopedCoroutine::with_stack(stack, |y, p| {
+            let suspender = Suspender::new(y);
+            Suspender::<Param, Yield>::init_current(&suspender);
+            let r = f(&suspender, p);
+            Suspender::<Param, Yield>::clean_current();
+            r
+        });
+        Ok(Coroutine {
             name: Box::leak(name),
-            sp: Context::new(move |_| {
-                let current = ScopedCoroutine::<R>::current().unwrap();
-                let r = f(current);
-                ScopedCoroutine::<R>::clean_current();
-                r
-            }),
-            state: Cell::new(CoroutineState::Created),
+            sp: RefCell::new(sp),
+            status: Cell::new(CoroutineState::Created),
+            param: RefCell::new(param),
             result: RefCell::new(MaybeUninit::uninit()),
             scheduler: RefCell::new(None),
-        }
-    }
-}
-
-thread_local! {
-    static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
-}
-
-impl<'c, 's, R> ScopedCoroutine<'c, 's, R> {
-    #[allow(clippy::pedantic)]
-    fn init_current(coroutine: &ScopedCoroutine<'c, 's, R>) {
-        COROUTINE.with(|boxed| {
-            *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
-        });
-    }
-
-    #[must_use]
-    pub fn current() -> Option<&'c ScopedCoroutine<'c, 's, R>> {
-        COROUTINE.with(|boxed| {
-            let ptr = *boxed.borrow_mut();
-            if ptr.is_null() {
-                None
-            } else {
-                Some(unsafe { &*(ptr.cast::<ScopedCoroutine<'c, 's, R>>()) })
-            }
         })
     }
-
-    fn clean_current() {
-        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
-    }
-
-    pub fn resume(&self) -> CoroutineState {
-        if self.sp.is_finished() {
-            return CoroutineState::Finished;
-        }
-        self.set_state(CoroutineState::Running);
-        ScopedCoroutine::init_current(self);
-        match self.sp.resume() {
-            GeneratorState::Complete(r) => {
-                let state = CoroutineState::Finished;
-                self.set_state(state);
-                let _ = self.result.replace(MaybeUninit::new(ManuallyDrop::new(r)));
-                state
-            }
-            GeneratorState::Yielded => {
-                let state = CoroutineState::Suspend(0);
-                self.set_state(state);
-                state
-            }
-        }
-    }
-
-    pub fn suspend(&self) {
-        self.set_state(CoroutineState::Suspend(0));
-        ScopedCoroutine::<R>::clean_current();
-        self.sp.suspend();
-        ScopedCoroutine::<R>::init_current(self);
-    }
-
-    pub fn get_name(&self) -> &str {
-        self.name
-    }
-
-    pub fn get_state(&self) -> CoroutineState {
-        self.state.get()
-    }
-
-    pub(crate) fn set_state(&self, state: CoroutineState) {
-        self.state.set(state);
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self.get_state() == CoroutineState::Finished
-    }
-
-    pub fn get_result(&self) -> Option<R> {
-        if self.is_finished() {
-            unsafe {
-                let mut m = self.result.borrow().assume_init_read();
-                Some(ManuallyDrop::take(&mut m))
-            }
-        } else {
-            None
-        }
-    }
-
-    pub fn get_scheduler(&self) -> Option<&'c Scheduler<'s>> {
-        *self.scheduler.borrow()
-    }
-
-    pub(crate) fn set_scheduler(&self, scheduler: &'s Scheduler<'s>) -> Option<&'c Scheduler<'s>> {
-        self.scheduler.replace(Some(scheduler))
-    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_return() {
-        let co = co!(|_| {
-            println!("test_return");
-        });
-        assert_eq!(CoroutineState::Finished, co.resume());
-        assert_eq!(Some(()), co.get_result());
-    }
-
-    #[test]
-    fn test_yield_once() {
-        let co = co!(|co| {
-            println!("test_yield_once");
-            co.suspend();
-        });
-        assert_eq!(CoroutineState::Suspend(0), co.resume());
-        assert_eq!(None, co.get_result());
-    }
-
-    #[test]
-    fn test_current() {
-        assert!(ScopedCoroutine::<()>::current().is_none());
-        let co = co!(|_| {
-            assert!(ScopedCoroutine::<()>::current().is_some());
-        });
-        assert_eq!(CoroutineState::Finished, co.resume());
-        assert_eq!(Some(()), co.get_result());
+impl<'c, 's, Param, Yield, Return> Debug for Coroutine<'c, 's, Param, Yield, Return> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Coroutine")
+            .field("name", &self.name)
+            .field("status", &self.status)
+            .field("scheduler", &self.scheduler)
+            .finish()
     }
 }
