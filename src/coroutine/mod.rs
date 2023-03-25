@@ -1,8 +1,9 @@
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
-use corosensei::ScopedCoroutine;
+use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::{Cell, RefCell};
+use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -53,42 +54,48 @@ pub enum CoroutineState {
 pub struct Coroutine<'c, 's, Param, Yield, Return> {
     name: &'c str,
     sp: RefCell<ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>>,
-    status: Cell<CoroutineState>,
-    //调用用户函数的参数
-    param: RefCell<Param>,
+    state: Cell<CoroutineState>,
+    yields: RefCell<MaybeUninit<ManuallyDrop<Yield>>>,
     //调用用户函数的返回值
     result: RefCell<MaybeUninit<ManuallyDrop<Return>>>,
     scheduler: RefCell<Option<&'c Scheduler<'s>>>,
 }
 
+impl<'c, 's, Param, Yield, Return> Drop for Coroutine<'c, 's, Param, Yield, Return> {
+    fn drop(&mut self) {
+        let mut sp = self.sp.borrow_mut();
+        if sp.started() && !sp.done() {
+            unsafe { sp.force_reset() };
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! co {
-    ($f:expr, $param:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(
-            Box::from(uuid::Uuid::new_v4().to_string()),
-            $f,
-            $param,
-            page_size(),
-        )
-    };
     ($f:expr $(,)?) => {
         $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
             $f,
-            (),
-            page_size(),
+            $crate::coroutine::page_size(),
         )
+        .expect("create coroutine failed !")
     };
-    ($name:literal, $f:expr, $param:expr, $size:literal $(,)?) => {
-        $crate::coroutine::Coroutine::new(Box::from($name), $f, $param, $size)
+    ($name:literal, $f:expr, $size:literal $(,)?) => {
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $size)
+            .expect("create coroutine failed !")
     };
-    ($name:literal, $f:expr, $param:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(Box::from($name), $f, $param, page_size())
+    ($name:literal, $f:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $crate::coroutine::page_size())
+            .expect("create coroutine failed !")
     };
 }
 
+thread_local! {
+    static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
+}
+
 impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
-    pub fn new<F>(name: Box<str>, f: F, param: Param, size: usize) -> std::io::Result<Self>
+    pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
     where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
         F: 'c,
@@ -104,11 +111,110 @@ impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
         Ok(Coroutine {
             name: Box::leak(name),
             sp: RefCell::new(sp),
-            status: Cell::new(CoroutineState::Created),
-            param: RefCell::new(param),
+            state: Cell::new(CoroutineState::Created),
+            yields: RefCell::new(MaybeUninit::uninit()),
             result: RefCell::new(MaybeUninit::uninit()),
             scheduler: RefCell::new(None),
         })
+    }
+
+    #[allow(clippy::ptr_as_ptr)]
+    fn init_current(coroutine: &Coroutine<'c, 's, Param, Yield, Return>) {
+        COROUTINE.with(|boxed| {
+            *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
+        });
+    }
+
+    #[must_use]
+    pub fn current() -> Option<&'c Coroutine<'c, 's, Param, Yield, Return>> {
+        COROUTINE.with(|boxed| {
+            let ptr = *boxed.borrow_mut();
+            if ptr.is_null() {
+                None
+            } else {
+                Some(unsafe { &*(ptr).cast::<Coroutine<'c, 's, Param, Yield, Return>>() })
+            }
+        })
+    }
+
+    fn clean_current() {
+        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
+    }
+
+    pub fn get_name(&self) -> &str {
+        self.name
+    }
+
+    pub fn get_state(&self) -> CoroutineState {
+        self.state.get()
+    }
+
+    pub fn set_state(&self, state: CoroutineState) {
+        self.state.set(state);
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.get_state() == CoroutineState::Finished
+    }
+
+    pub fn get_result(&self) -> Option<Return> {
+        if self.is_finished() {
+            unsafe {
+                let mut m = self.result.borrow().assume_init_read();
+                Some(ManuallyDrop::take(&mut m))
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_yield(&self) -> Option<Yield> {
+        match self.get_state() {
+            CoroutineState::Suspend(_) => unsafe {
+                let mut m = self.yields.borrow().assume_init_read();
+                Some(ManuallyDrop::take(&mut m))
+            },
+            _ => None,
+        }
+    }
+
+    pub fn get_scheduler(&self) -> Option<&'c Scheduler<'s>> {
+        *self.scheduler.borrow()
+    }
+
+    pub(crate) fn set_scheduler(&self, scheduler: &'s Scheduler<'s>) -> Option<&'c Scheduler<'s>> {
+        self.scheduler.replace(Some(scheduler))
+    }
+
+    pub fn resume_with(&self, arg: Param) -> CoroutineState {
+        if self.is_finished() {
+            return CoroutineState::Finished;
+        }
+        self.set_state(CoroutineState::Running);
+        Coroutine::<Param, Yield, Return>::init_current(self);
+        let state = match self.sp.borrow_mut().resume(arg) {
+            CoroutineResult::Return(r) => {
+                let state = CoroutineState::Finished;
+                self.set_state(state);
+                let _ = self.result.replace(MaybeUninit::new(ManuallyDrop::new(r)));
+                state
+            }
+            CoroutineResult::Yield(y) => {
+                let state = CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
+                self.set_state(state);
+                let _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
+                Suspender::<Yield, Param>::clean_timestamp();
+                state
+            }
+        };
+        Coroutine::<Param, Yield, Return>::clean_current();
+        state
+    }
+}
+
+impl<'c, 's, Yield, Return> Coroutine<'c, 's, (), Yield, Return> {
+    pub fn resume(&self) -> CoroutineState {
+        self.resume_with(())
     }
 }
 
@@ -116,8 +222,61 @@ impl<'c, 's, Param, Yield, Return> Debug for Coroutine<'c, 's, Param, Yield, Ret
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name)
-            .field("status", &self.status)
+            .field("status", &self.state)
             .field("scheduler", &self.scheduler)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_return() {
+        let coroutine = co!(|_s: &Suspender<'_, i32, ()>, param| {
+            assert_eq!(0, param);
+            1
+        });
+        assert_eq!(CoroutineState::Finished, coroutine.resume_with(0));
+        assert_eq!(Some(1), coroutine.get_result());
+    }
+
+    #[test]
+    fn test_yield_once() {
+        let coroutine = co!(|yielder, param| {
+            assert_eq!(1, param);
+            let _ = yielder.suspend_with(2);
+        });
+        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(Some(2), coroutine.get_yield());
+    }
+
+    #[test]
+    fn test_yield() {
+        let coroutine = co!(|yielder, input| {
+            assert_eq!(1, input);
+            assert_eq!(3, yielder.suspend_with(2));
+            assert_eq!(5, yielder.suspend_with(4));
+            6
+        });
+        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(Some(2), coroutine.get_yield());
+        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(3));
+        assert_eq!(Some(4), coroutine.get_yield());
+        assert_eq!(CoroutineState::Finished, coroutine.resume_with(5));
+        assert_eq!(Some(6), coroutine.get_result());
+    }
+
+    #[test]
+    fn test_current() {
+        assert!(Coroutine::<i32, i32, i32>::current().is_none());
+        let coroutine = co!(|_yielder: &Suspender<'_, i32, i32>, input| {
+            assert_eq!(0, input);
+            assert!(Coroutine::<i32, i32, i32>::current().is_some());
+            1
+        });
+        assert_eq!(CoroutineState::Finished, coroutine.resume_with(0));
+        assert_eq!(Some(1), coroutine.get_result());
     }
 }
