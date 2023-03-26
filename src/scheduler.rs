@@ -1,5 +1,6 @@
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{page_size, Coroutine, CoroutineState};
+use crate::monitor::Monitor;
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
 use once_cell::sync::Lazy;
@@ -43,6 +44,7 @@ impl Drop for Scheduler {
 }
 
 impl Scheduler {
+    #[must_use]
     pub fn new() -> Self {
         Self::with_name(Box::from(Uuid::new_v4().to_string()))
     }
@@ -110,8 +112,8 @@ impl Scheduler {
             match self.ready.pop_front() {
                 Some(coroutine) => {
                     let _ = coroutine.set_scheduler(self);
-                    // let start = timer_utils::get_timeout_time(Duration::from_millis(10));
-                    // Monitor::add_task(start);
+                    let start = timer_utils::get_timeout_time(Duration::from_millis(10));
+                    Monitor::add_task(start);
                     match coroutine.resume() {
                         CoroutineState::Suspend(timestamp) => {
                             if timestamp > 0 {
@@ -136,7 +138,7 @@ impl Scheduler {
                     };
                     //还没执行到10ms就主动yield或者执行完毕了，此时需要清理signal
                     //否则下一个协程执行不到10ms就会被抢占调度
-                    // Monitor::clean_task(start);
+                    Monitor::clean_task(start);
                 }
                 None => return left_time,
             }
@@ -145,14 +147,6 @@ impl Scheduler {
 
     pub fn get_result(co_name: &'static str) -> Option<SchedulableCoroutine> {
         unsafe { RESULT_TABLE.remove(&co_name) }
-    }
-
-    pub fn next_invoke_time() -> u64 {
-        if let Some(entry) = unsafe { SUSPEND_TABLE.front() } {
-            entry.get_time()
-        } else {
-            0
-        }
     }
 }
 
@@ -228,14 +222,12 @@ mod tests {
             let scheduler = Box::leak(Box::new(Scheduler::new()));
             let _ = scheduler.submit(|_, _| {
                 while unsafe { TEST_FLAG1 } {
-                    println!("loop1");
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 result(1)
             });
             let _ = scheduler.submit(|_, _| {
                 while unsafe { TEST_FLAG2 } {
-                    println!("loop2");
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 unsafe { TEST_FLAG1 = false };

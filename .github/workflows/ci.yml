@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lints:
+    name: Run cargo fmt and cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      - name: cargo fmt --check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
+
+  linux:
+    name: Test ${{ matrix.rust }} on ubuntu-latest
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - nightly
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install Rust (${{ matrix.rust }})
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run cargo clean
+        run: |
+          cd ${{ github.workspace }}
+          /home/runner/.cargo/bin/cargo clean
+      - name: Run cargo release test compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --all --no-run
+      - name: Run cargo release test
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo test --release --all"
+      - name: Run cargo release preemptive example
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release"
+
+  macos:
+    name: Test ${{ matrix.rust }} on macOS-latest
+    runs-on: macOS-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - nightly
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install Rust (${{ matrix.rust }})
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run cargo clean
+        run: |
+          cd ${{ github.workspace }}
+          /Users/runner/.cargo/bin/cargo clean
+      - name: Run cargo release test compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --all --no-run
+      - name: Run cargo release test
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo test --release --all"
+      - name: Run cargo release hello example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --example hello --release
+      - name: Run cargo release preemptive example in single thread
+        run: |
+          cd ${{ github.workspace }}/open-coroutine-core
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
+      - name: Run cargo release preemptive example
+        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release"
