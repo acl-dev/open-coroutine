@@ -53,7 +53,7 @@ pub enum CoroutineState {
 #[repr(C)]
 pub struct Coroutine<'c, 's, Param, Yield, Return> {
     name: &'c str,
-    sp: RefCell<ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>>,
+    sp: RefCell<ScopedCoroutine<'c, Param, Yield, (), DefaultStack>>,
     state: Cell<CoroutineState>,
     yields: RefCell<MaybeUninit<ManuallyDrop<Yield>>>,
     //调用用户函数的返回值
@@ -69,6 +69,8 @@ impl<'c, 's, Param, Yield, Return> Drop for Coroutine<'c, 's, Param, Yield, Retu
         }
     }
 }
+
+unsafe impl<'c, 's, Param, Yield, Return> Send for Coroutine<'c, 's, Param, Yield, Return> {}
 
 #[macro_export]
 macro_rules! co {
@@ -106,7 +108,12 @@ impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
             Suspender::<Param, Yield>::init_current(&suspender);
             let r = f(&suspender, p);
             Suspender::<Param, Yield>::clean_current();
-            r
+            let current = Coroutine::<Param, Yield, Return>::current().unwrap();
+            current.set_state(CoroutineState::Finished);
+            let _ = current
+                .result
+                .replace(MaybeUninit::new(ManuallyDrop::new(r)));
+            if let Some(_scheduler) = current.get_scheduler() {}
         });
         Ok(Coroutine {
             name: Box::leak(name),
@@ -193,12 +200,7 @@ impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
         self.set_state(CoroutineState::Running);
         Coroutine::<Param, Yield, Return>::init_current(self);
         let state = match self.sp.borrow_mut().resume(arg) {
-            CoroutineResult::Return(r) => {
-                let state = CoroutineState::Finished;
-                self.set_state(state);
-                let _ = self.result.replace(MaybeUninit::new(ManuallyDrop::new(r)));
-                state
-            }
+            CoroutineResult::Return(_) => CoroutineState::Finished,
             CoroutineResult::Yield(y) => {
                 let state = CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
                 self.set_state(state);
