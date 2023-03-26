@@ -47,7 +47,7 @@ windows-sys = { version = "0.45.0", features = [
 backtrace = "0.3.67"
 
 [features]
-default = []
+default = ["preemptive-schedule"]
 
 # Provide preemptive scheduling implementation.
 # Not enable for default.
