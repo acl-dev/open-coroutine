@@ -51,17 +51,17 @@ pub enum CoroutineState {
 }
 
 #[repr(C)]
-pub struct Coroutine<'c, 's, Param, Yield, Return> {
+pub struct Coroutine<'c, Param, Yield, Return> {
     name: &'c str,
     sp: RefCell<ScopedCoroutine<'c, Param, Yield, (), DefaultStack>>,
     state: Cell<CoroutineState>,
     yields: RefCell<MaybeUninit<ManuallyDrop<Yield>>>,
     //调用用户函数的返回值
     result: RefCell<MaybeUninit<ManuallyDrop<Return>>>,
-    scheduler: RefCell<Option<&'c Scheduler<'s>>>,
+    scheduler: RefCell<Option<*const Scheduler>>,
 }
 
-impl<'c, 's, Param, Yield, Return> Drop for Coroutine<'c, 's, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return> {
     fn drop(&mut self) {
         let mut sp = self.sp.borrow_mut();
         if sp.started() && !sp.done() {
@@ -70,7 +70,7 @@ impl<'c, 's, Param, Yield, Return> Drop for Coroutine<'c, 's, Param, Yield, Retu
     }
 }
 
-unsafe impl<'c, 's, Param, Yield, Return> Send for Coroutine<'c, 's, Param, Yield, Return> {}
+unsafe impl<'c, Param, Yield, Return> Send for Coroutine<'c, Param, Yield, Return> {}
 
 #[macro_export]
 macro_rules! co {
@@ -96,7 +96,7 @@ thread_local! {
     static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
 }
 
-impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
     where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
@@ -126,20 +126,20 @@ impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
     }
 
     #[allow(clippy::ptr_as_ptr)]
-    fn init_current(coroutine: &Coroutine<'c, 's, Param, Yield, Return>) {
+    fn init_current(coroutine: &Coroutine<'c, Param, Yield, Return>) {
         COROUTINE.with(|boxed| {
             *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
         });
     }
 
     #[must_use]
-    pub fn current() -> Option<&'c Coroutine<'c, 's, Param, Yield, Return>> {
+    pub fn current() -> Option<&'c Coroutine<'c, Param, Yield, Return>> {
         COROUTINE.with(|boxed| {
             let ptr = *boxed.borrow_mut();
             if ptr.is_null() {
                 None
             } else {
-                Some(unsafe { &*(ptr).cast::<Coroutine<'c, 's, Param, Yield, Return>>() })
+                Some(unsafe { &*(ptr).cast::<Coroutine<'c, Param, Yield, Return>>() })
             }
         })
     }
@@ -185,11 +185,11 @@ impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
         }
     }
 
-    pub fn get_scheduler(&self) -> Option<&'c Scheduler<'s>> {
+    pub fn get_scheduler(&self) -> Option<*const Scheduler> {
         *self.scheduler.borrow()
     }
 
-    pub(crate) fn set_scheduler(&self, scheduler: &'s Scheduler<'s>) -> Option<&'c Scheduler<'s>> {
+    pub(crate) fn set_scheduler(&self, scheduler: &Scheduler) -> Option<*const Scheduler> {
         self.scheduler.replace(Some(scheduler))
     }
 
@@ -214,13 +214,13 @@ impl<'c, 's, Param, Yield, Return> Coroutine<'c, 's, Param, Yield, Return> {
     }
 }
 
-impl<'c, 's, Yield, Return> Coroutine<'c, 's, (), Yield, Return> {
+impl<'c, Yield, Return> Coroutine<'c, (), Yield, Return> {
     pub fn resume(&self) -> CoroutineState {
         self.resume_with(())
     }
 }
 
-impl<'c, 's, Param, Yield, Return> Debug for Coroutine<'c, 's, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name)

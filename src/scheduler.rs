@@ -14,7 +14,7 @@ use work_steal_queue::{LocalQueue, WorkStealQueue};
 type RootCoroutine<'a> = ScopedCoroutine<'a, (), (), (), DefaultStack>;
 
 /// 用户协程
-pub type SchedulableCoroutine = Coroutine<'static, 'static, (), (), &'static mut c_void>;
+pub type SchedulableCoroutine = Coroutine<'static, (), (), &'static mut c_void>;
 
 static QUEUE: Lazy<WorkStealQueue<SchedulableCoroutine>> = Lazy::new(WorkStealQueue::default);
 
@@ -28,12 +28,12 @@ static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(H
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct Scheduler<'s> {
-    name: &'s str,
+pub struct Scheduler {
+    name: &'static str,
     ready: LocalQueue<'static, SchedulableCoroutine>,
 }
 
-impl Drop for Scheduler<'_> {
+impl Drop for Scheduler {
     fn drop(&mut self) {
         assert!(
             self.ready.is_empty(),
@@ -42,19 +42,31 @@ impl Drop for Scheduler<'_> {
     }
 }
 
-impl<'s> Scheduler<'s> {
+impl Scheduler {
     pub fn new() -> Self {
+        Self::with_name(Box::from(Uuid::new_v4().to_string()))
+    }
+
+    pub fn with_name(name: Box<str>) -> Self {
         Scheduler {
-            name: Box::leak(Box::from(Uuid::new_v4().to_string())),
+            name: Box::leak(name),
             ready: QUEUE.local_queue(),
         }
     }
 
-    pub fn with_name(name: &'s str) -> Self {
-        Scheduler {
-            name: Box::leak(Box::from(name)),
-            ready: QUEUE.local_queue(),
-        }
+    pub fn submit(
+        &self,
+        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+    ) -> std::io::Result<&'static str> {
+        let coroutine = SchedulableCoroutine::new(
+            Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
+            f,
+            page_size(),
+        )?;
+        coroutine.set_state(CoroutineState::Ready);
+        let co_name = Box::leak(Box::from(coroutine.get_name()));
+        self.ready.push_back(coroutine);
+        Ok(co_name)
     }
 
     fn check_ready(&self) {
@@ -80,44 +92,15 @@ impl<'s> Scheduler<'s> {
         }
     }
 
-    pub fn get_result(co_name: &'static str) -> Option<SchedulableCoroutine> {
-        unsafe { RESULT_TABLE.remove(&co_name) }
-    }
-
-    pub fn next_invoke_time() -> u64 {
-        if let Some(entry) = unsafe { SUSPEND_TABLE.front() } {
-            entry.get_time()
-        } else {
-            0
-        }
-    }
-}
-
-impl Scheduler<'static> {
-    pub fn submit(
-        &'static self,
-        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
-    ) -> std::io::Result<&'static str> {
-        let coroutine = SchedulableCoroutine::new(
-            Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
-            f,
-            page_size(),
-        )?;
-        coroutine.set_state(CoroutineState::Ready);
-        let co_name = Box::leak(Box::from(coroutine.get_name()));
-        self.ready.push_back(coroutine);
-        Ok(co_name)
-    }
-
-    pub fn try_schedule(&'static self) {
+    pub fn try_schedule(&self) {
         let _ = self.try_timeout_schedule(Duration::MAX.as_secs());
     }
 
-    pub fn try_timed_schedule(&'static self, time: Duration) -> u64 {
+    pub fn try_timed_schedule(&self, time: Duration) -> u64 {
         self.try_timeout_schedule(timer_utils::get_timeout_time(time))
     }
 
-    pub fn try_timeout_schedule(&'static self, timeout_time: u64) -> u64 {
+    pub fn try_timeout_schedule(&self, timeout_time: u64) -> u64 {
         loop {
             let left_time = timeout_time.saturating_sub(timer_utils::now());
             if left_time == 0 {
@@ -159,9 +142,21 @@ impl Scheduler<'static> {
             }
         }
     }
+
+    pub fn get_result(co_name: &'static str) -> Option<SchedulableCoroutine> {
+        unsafe { RESULT_TABLE.remove(&co_name) }
+    }
+
+    pub fn next_invoke_time() -> u64 {
+        if let Some(entry) = unsafe { SUSPEND_TABLE.front() } {
+            entry.get_time()
+        } else {
+            0
+        }
+    }
 }
 
-impl<'s> Default for Scheduler<'s> {
+impl Default for Scheduler {
     fn default() -> Self {
         Self::new()
     }
@@ -177,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let scheduler = Box::leak(Box::new(Scheduler::new()));
+        let scheduler = Scheduler::new();
         let _ = scheduler.submit(|_, _| {
             println!("1");
             result(1)
@@ -191,7 +186,7 @@ mod tests {
 
     #[test]
     fn with_suspend() {
-        let scheduler = Box::leak(Box::new(Scheduler::new()));
+        let scheduler = Scheduler::new();
         let _ = scheduler.submit(|suspender, _| {
             println!("[coroutine1] suspend");
             suspender.suspend();
@@ -209,7 +204,7 @@ mod tests {
 
     #[test]
     fn with_delay() {
-        let scheduler = Box::leak(Box::new(Scheduler::new()));
+        let scheduler = Scheduler::new();
         let _ = scheduler.submit(|suspender, _| {
             println!("[coroutine] delay");
             suspender.delay(Duration::from_millis(100));
