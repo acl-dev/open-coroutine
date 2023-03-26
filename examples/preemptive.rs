@@ -14,28 +14,28 @@ fn main() -> std::io::Result<()> {
     let pair2 = Arc::clone(&pair);
     let handler = std::thread::spawn(move || {
         let scheduler = Scheduler::new();
-        let _ = scheduler.submit(|_| async move {
+        let _ = scheduler.submit(|_, _| {
             println!("coroutine1 launched");
             while unsafe { TEST_FLAG1 } {
                 println!("loop1");
                 std::thread::sleep(Duration::from_millis(10));
             }
             println!("loop1 end");
-            unsafe { TEST_FLAG2 = false };
             result(1)
         });
-        let _ = scheduler.submit(|_| async move {
+        let _ = scheduler.submit(|_, _| {
             println!("coroutine2 launched");
             while unsafe { TEST_FLAG2 } {
                 println!("loop2");
                 std::thread::sleep(Duration::from_millis(10));
             }
             println!("loop2 end");
+            unsafe { TEST_FLAG1 = false };
             result(2)
         });
-        let _ = scheduler.submit(|_| async move {
+        let _ = scheduler.submit(|_, _| {
             println!("coroutine3 launched");
-            unsafe { TEST_FLAG1 = false };
+            unsafe { TEST_FLAG2 = false };
             result(3)
         });
         scheduler.try_schedule();
