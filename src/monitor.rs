@@ -1,5 +1,4 @@
-use once_cell::sync::OnceCell;
-use once_cell::unsync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -52,11 +51,9 @@ impl Monitor {
         {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                println!("sigurg_handler before yield");
                 if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
                     s.suspend();
                 }
-                println!("sigurg_handler after yield");
             }
             Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         }
