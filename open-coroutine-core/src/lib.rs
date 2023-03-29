@@ -66,6 +66,8 @@ macro_rules! unbreakable {
     }};
 }
 
+pub(crate) mod defer;
+
 #[allow(dead_code)]
 pub mod monitor;
 

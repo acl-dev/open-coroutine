@@ -60,14 +60,16 @@ impl Monitor {
         {
             extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                let yielder = crate::Coroutine::<
-                    &'static mut libc::c_void,
-                    &'static mut libc::c_void,
-                >::yielder();
-                if !yielder.is_null() {
-                    //挂起当前协程
-                    unsafe { (*yielder).suspend(()) };
-                }
+                crate::defer::defer(|| {
+                    let yielder = crate::Coroutine::<
+                        &'static mut libc::c_void,
+                        &'static mut libc::c_void,
+                    >::yielder();
+                    if !yielder.is_null() {
+                        //挂起当前协程
+                        unsafe { (*yielder).suspend(()) };
+                    }
+                });
             }
             Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         }
