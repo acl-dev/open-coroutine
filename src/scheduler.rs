@@ -179,6 +179,19 @@ mod tests {
     }
 
     #[test]
+    fn test_backtrace() {
+        let scheduler = Scheduler::new();
+        let _ = scheduler.submit(|_, _| {
+            result(1)
+        });
+        let _ = scheduler.submit(|_, _| {
+            println!("{:?}", backtrace::Backtrace::new());
+            result(2)
+        });
+        scheduler.try_schedule();
+    }
+
+    #[test]
     fn with_suspend() {
         let scheduler = Scheduler::new();
         let _ = scheduler.submit(|suspender, _| {
