@@ -63,6 +63,7 @@ pub struct Coroutine<'c, Param, Yield, Return> {
 
 impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return> {
     fn drop(&mut self) {
+        //for test_yield case
         let mut sp = self.sp.borrow_mut();
         if sp.started() && !sp.done() {
             unsafe { sp.force_reset() };
@@ -280,5 +281,20 @@ mod tests {
         });
         assert_eq!(CoroutineState::Finished, coroutine.resume_with(0));
         assert_eq!(Some(1), coroutine.get_result());
+    }
+
+    #[test]
+    fn test_backtrace() {
+        let coroutine = co!(|yielder, input| {
+            assert_eq!(1, input);
+            println!("{:?}", backtrace::Backtrace::new());
+            assert_eq!(3, yielder.suspend_with(2));
+            println!("{:?}", backtrace::Backtrace::new());
+            4
+        });
+        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(Some(2), coroutine.get_yield());
+        assert_eq!(CoroutineState::Finished, coroutine.resume_with(3));
+        assert_eq!(Some(4), coroutine.get_result());
     }
 }
