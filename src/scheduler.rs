@@ -63,7 +63,7 @@ impl Scheduler {
         let coroutine = SchedulableCoroutine::new(
             Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
             f,
-            page_size(),
+            page_size() * 4,
         )?;
         coroutine.set_state(CoroutineState::Ready);
         let co_name = Box::leak(Box::from(coroutine.get_name()));
@@ -181,9 +181,7 @@ mod tests {
     #[test]
     fn test_backtrace() {
         let scheduler = Scheduler::new();
-        let _ = scheduler.submit(|_, _| {
-            result(1)
-        });
+        let _ = scheduler.submit(|_, _| result(1));
         let _ = scheduler.submit(|_, _| {
             println!("{:?}", backtrace::Backtrace::new());
             result(2)
