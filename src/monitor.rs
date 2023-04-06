@@ -38,7 +38,7 @@ impl Monitor {
             // SA_NODEFER：默认情况下，当信号函数运行时，内核将阻塞（不可重入）给定的信号，
             // 直至当次处理完毕才开始下一次的信号处理。但是设置该标记之后，那么信号函数
             // 将不会被阻塞，此时需要注意函数的可重入安全性。
-            act.sa_flags = libc::SA_RESTART | libc::SA_NODEFER;
+            act.sa_flags = libc::SA_SIGINFO | libc::SA_RESTART | libc::SA_NODEFER;
             assert_eq!(
                 0,
                 libc::sigaction(Monitor::signum(), &act, std::ptr::null_mut())
@@ -49,10 +49,51 @@ impl Monitor {
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         {
-            extern "C" fn sigurg_handler(_signal: libc::c_int) {
-                // invoke by Monitor::signal()
+            extern "C" fn yields() {
                 if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
                     s.suspend();
+                }
+            }
+            extern "C" fn sigurg_handler(
+                _signal: libc::c_int,
+                _siginfo: &libc::siginfo_t,
+                context: &mut libc::ucontext_t,
+            ) {
+                // invoke by Monitor::signal()
+                // 在本方法结束后调用yields
+                cfg_if::cfg_if! {
+                    if #[cfg(all(
+                        any(target_os = "linux", target_os = "android"),
+                        target_arch = "x86_64",
+                    ))] {
+                        context.uc_mcontext.gregs[libc::REG_RIP as usize] = yields as usize;
+                    } else if #[cfg(all(
+                                any(target_os = "linux", target_os = "android"),
+                                target_arch = "x86",
+                    ))] {
+                        context.uc_mcontext.gregs[libc::REG_EIP as usize] = yields as i32;
+                    } else if #[cfg(all(
+                                any(target_os = "linux", target_os = "android"),
+                                target_arch = "aarch64",
+                    ))] {
+                        context.uc_mcontext.pc = yields as libc::c_ulong;
+                    } else if #[cfg(all(
+                                any(target_os = "linux", target_os = "android"),
+                                target_arch = "arm",
+                    ))] {
+                        context.uc_mcontext.arm_pc = yields as libc::c_ulong;
+                    } else if #[cfg(all(
+                                any(target_os = "linux", target_os = "android"),
+                                any(target_arch = "riscv64", target_arch = "riscv32"),
+                    ))] {
+                        context.uc_mcontext.__gregs[libc::REG_PC] = yields as libc::c_ulong;
+                    } else if #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))] {
+                        unsafe { (*context.uc_mcontext).__ss.__pc = yields as u64 };
+                    } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
+                        (*context.uc_mcontext).__ss.__rip = yields as u64;
+                    } else {
+                        compile_error!("Unsupported platform");
+                    }
                 }
             }
             Monitor::register_handler(sigurg_handler as libc::sighandler_t);

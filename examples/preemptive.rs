@@ -18,7 +18,7 @@ fn main() -> std::io::Result<()> {
             println!("coroutine1 launched");
             while unsafe { TEST_FLAG1 } {
                 println!("loop1");
-                std::thread::sleep(Duration::from_millis(10));
+                let _ = unsafe { libc::usleep(10_000) };
             }
             println!("loop1 end");
             result(1)
@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
             println!("coroutine2 launched");
             while unsafe { TEST_FLAG2 } {
                 println!("loop2");
-                std::thread::sleep(Duration::from_millis(10));
+                let _ = unsafe { libc::usleep(10_000) };
             }
             println!("loop2 end");
             unsafe { TEST_FLAG1 = false };
