@@ -54,7 +54,7 @@ impl Monitor {
                     s.suspend();
                 }
             }
-            extern "C" fn sigurg_handler(
+            unsafe extern "C" fn sigurg_handler(
                 _signal: libc::c_int,
                 _siginfo: &libc::siginfo_t,
                 context: &mut libc::ucontext_t,
@@ -66,7 +66,7 @@ impl Monitor {
                         any(target_os = "linux", target_os = "android"),
                         target_arch = "x86_64",
                     ))] {
-                        context.uc_mcontext.gregs[libc::REG_RIP as usize] = yields as usize;
+                        context.uc_mcontext.gregs[libc::REG_RIP as usize] = yields as i64;
                     } else if #[cfg(all(
                                 any(target_os = "linux", target_os = "android"),
                                 target_arch = "x86",
