@@ -31,7 +31,9 @@ pub fn page_size() -> usize {
     ret
 }
 
+#[must_use]
 pub fn min_stack_size() -> usize {
+    //min stack size for backtrace
     page_size() * 16
 }
 
@@ -79,6 +81,10 @@ unsafe impl<'c, Param, Yield, Return> Send for Coroutine<'c, Param, Yield, Retur
 
 #[macro_export]
 macro_rules! co {
+    ($f:expr, $size:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(Box::from(uuid::Uuid::new_v4().to_string()), $f, $size)
+            .expect("create coroutine failed !")
+    };
     ($f:expr $(,)?) => {
         $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
@@ -87,7 +93,7 @@ macro_rules! co {
         )
         .expect("create coroutine failed !")
     };
-    ($name:literal, $f:expr, $size:literal $(,)?) => {
+    ($name:literal, $f:expr, $size:expr $(,)?) => {
         $crate::coroutine::Coroutine::new(Box::from($name), $f, $size)
             .expect("create coroutine failed !")
     };
@@ -107,7 +113,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
         F: 'c,
     {
-        let stack = DefaultStack::new(size)?;
+        let stack = DefaultStack::new(size.max(min_stack_size()))?;
         let sp = ScopedCoroutine::with_stack(stack, |y, p| {
             let suspender = Suspender::new(y);
             Suspender::<Param, Yield>::init_current(&suspender);
