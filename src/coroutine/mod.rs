@@ -31,6 +31,10 @@ pub fn page_size() -> usize {
     ret
 }
 
+pub fn min_stack_size() -> usize {
+    page_size() * 16
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum CoroutineState {
@@ -79,7 +83,7 @@ macro_rules! co {
         $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
             $f,
-            $crate::coroutine::page_size() * 8,
+            $crate::coroutine::min_stack_size(),
         )
         .expect("create coroutine failed !")
     };
@@ -88,7 +92,7 @@ macro_rules! co {
             .expect("create coroutine failed !")
     };
     ($name:literal, $f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(Box::from($name), $f, $crate::coroutine::page_size() * 8)
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $crate::coroutine::min_stack_size())
             .expect("create coroutine failed !")
     };
 }

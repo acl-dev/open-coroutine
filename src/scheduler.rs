@@ -1,5 +1,5 @@
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::{page_size, Coroutine, CoroutineState};
+use crate::coroutine::{min_stack_size, Coroutine, CoroutineState};
 use crate::monitor::Monitor;
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
@@ -63,7 +63,7 @@ impl Scheduler {
         let coroutine = SchedulableCoroutine::new(
             Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
             f,
-            page_size() * 4,
+            min_stack_size(),
         )?;
         coroutine.set_state(CoroutineState::Ready);
         let co_name = Box::leak(Box::from(coroutine.get_name()));
@@ -178,7 +178,6 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[cfg(not(target_os = "macos"))]
     #[test]
     fn test_backtrace() {
         let scheduler = Scheduler::new();
