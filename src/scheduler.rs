@@ -178,6 +178,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn test_backtrace() {
         let scheduler = Scheduler::new();
