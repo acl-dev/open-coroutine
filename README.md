@@ -2,16 +2,18 @@
 
 ## This crate is a try to use `corosensei` as low_level coroutine
 
-## Problem1
+## ~~Problem1~~
 Can't use backtrace, you can see these in :
 
 src/coroutine/mod.rs:287
 
 src/scheduler.rs:182
 
-## Problem2
-Can't pass the complex preemptive schedule CI, see it in :
+Solved by increasing stack size.
 
-src/scheduler.rs:228
+## Problem2
+Can't pass the linux preemptive schedule CI(but pass the macos CI), see it in :
+
+examples/preemptive.rs
 
 Note: `monitor` mod register the `signal handler`.
