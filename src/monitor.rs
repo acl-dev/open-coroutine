@@ -54,6 +54,7 @@ impl Monitor {
                     s.suspend();
                 }
             }
+            #[deny(clippy::fn_to_numeric_cast)]
             unsafe extern "C" fn sigurg_handler(
                 _signal: libc::c_int,
                 _siginfo: &libc::siginfo_t,

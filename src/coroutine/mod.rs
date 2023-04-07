@@ -79,7 +79,7 @@ macro_rules! co {
         $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
             $f,
-            $crate::coroutine::page_size() * 128,
+            $crate::coroutine::page_size() * 4,
         )
         .expect("create coroutine failed !")
     };
@@ -88,12 +88,8 @@ macro_rules! co {
             .expect("create coroutine failed !")
     };
     ($name:literal, $f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(
-            Box::from($name),
-            $f,
-            $crate::coroutine::page_size() * 128,
-        )
-        .expect("create coroutine failed !")
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $crate::coroutine::page_size() * 4)
+            .expect("create coroutine failed !")
     };
 }
 

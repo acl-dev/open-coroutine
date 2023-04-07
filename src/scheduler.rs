@@ -233,14 +233,18 @@ mod tests {
         let handler = std::thread::spawn(move || {
             let scheduler = Box::leak(Box::new(Scheduler::new()));
             let _ = scheduler.submit(|_, _| {
-                while unsafe { TEST_FLAG1 } {
-                    std::thread::sleep(Duration::from_millis(10));
+                unsafe {
+                    while TEST_FLAG1 {
+                        let _ = libc::usleep(10_000);
+                    }
                 }
                 result(1)
             });
             let _ = scheduler.submit(|_, _| {
-                while unsafe { TEST_FLAG2 } {
-                    std::thread::sleep(Duration::from_millis(10));
+                unsafe {
+                    while TEST_FLAG2 {
+                        let _ = libc::usleep(10_000);
+                    }
                 }
                 unsafe { TEST_FLAG1 = false };
                 result(2)
