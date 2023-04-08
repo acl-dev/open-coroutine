@@ -20,9 +20,12 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine1 launched");
-            while unsafe { COMPLEX_TEST_FLAG } {
-                println!("loop1");
-                let _ = unsafe { libc::usleep(10_000) };
+            #[cfg(unix)]
+            unsafe {
+                while COMPLEX_TEST_FLAG {
+                    println!("loop1");
+                    let _ = libc::usleep(10_000);
+                }
             }
             println!("loop1 end");
             null()
@@ -34,9 +37,12 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine2 launched");
-            while unsafe { COMPLEX_TEST_FLAG2 } {
-                println!("loop2");
-                let _ = unsafe { libc::usleep(10_000) };
+            #[cfg(unix)]
+            unsafe {
+                while COMPLEX_TEST_FLAG2 {
+                    println!("loop2");
+                    let _ = libc::usleep(10_000);
+                }
             }
             println!("loop2 end");
             unsafe { COMPLEX_TEST_FLAG = false };
