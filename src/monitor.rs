@@ -89,7 +89,7 @@ impl Monitor {
                     ))] {
                         context.uc_mcontext.__gregs[libc::REG_PC] = yields as libc::c_ulong;
                     } else if #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))] {
-                        unsafe { (*context.uc_mcontext).__ss.__pc = yields as u64 };
+                        (*context.uc_mcontext).__ss.__pc = yields as u64;
                     } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
                         (*context.uc_mcontext).__ss.__rip = yields as u64;
                     } else {
