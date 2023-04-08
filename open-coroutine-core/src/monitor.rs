@@ -69,7 +69,7 @@ impl Monitor {
                 }
             }
             #[allow(clippy::fn_to_numeric_cast)]
-            extern "C" fn sigurg_handler(
+            unsafe extern "C" fn sigurg_handler(
                 _signal: libc::c_int,
                 _siginfo: &libc::siginfo_t,
                 context: &mut libc::ucontext_t,
@@ -103,7 +103,7 @@ impl Monitor {
                     ))] {
                         context.uc_mcontext.__gregs[libc::REG_PC] = yields as libc::c_ulong;
                     } else if #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))] {
-                        unsafe { (*context.uc_mcontext).__ss.__pc = yields as u64 };
+                        (*context.uc_mcontext).__ss.__pc = yields as u64;
                     } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
                         (*context.uc_mcontext).__ss.__rip = yields as u64;
                     } else {
