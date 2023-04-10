@@ -14,7 +14,7 @@ unsafe extern "C" fn signal_handler(signum: i32, _siginfo: &siginfo_t, context: 
             any(target_os = "linux", target_os = "android"),
             target_arch = "x86_64",
         ))] {
-            context.uc_mcontext.gregs[libc::REG_RIP as usize] = yields as i64;
+            context.uc_mcontext.gregs[libc::REG_RIP as usize] = std::mem::transmute(yields);
         } else if #[cfg(all(
                     any(target_os = "linux", target_os = "android"),
                     target_arch = "x86",
