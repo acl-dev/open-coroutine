@@ -14,7 +14,7 @@ unsafe extern "C" fn signal_handler(signum: i32, _siginfo: &siginfo_t, context: 
             any(target_os = "linux", target_os = "android"),
             target_arch = "x86_64",
         ))] {
-            context.uc_mcontext.gregs[libc::REG_RIP as usize] = yields as i64;
+            (*context.uc_link).uc_mcontext.gregs[libc::REG_RIP as usize] = yields as i64;
         } else if #[cfg(all(
                     any(target_os = "linux", target_os = "android"),
                     target_arch = "x86",
@@ -46,6 +46,7 @@ unsafe extern "C" fn signal_handler(signum: i32, _siginfo: &siginfo_t, context: 
     println!("Received signal {}", signum);
 }
 
+//RUSTFLAGS="--emit asm" cargo build --example change_pc --release 获取优化后的汇编代码
 fn main() {
     let handler = std::thread::spawn(|| unsafe {
         let mut sa: sigaction = std::mem::zeroed();
