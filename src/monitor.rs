@@ -35,10 +35,7 @@ impl Monitor {
             let mut act: libc::sigaction = std::mem::zeroed();
             act.sa_sigaction = sigurg_handler;
             assert_eq!(0, libc::sigaddset(&mut act.sa_mask, Monitor::signum()));
-            // SA_NODEFER：默认情况下，当信号函数运行时，内核将阻塞（不可重入）给定的信号，
-            // 直至当次处理完毕才开始下一次的信号处理。但是设置该标记之后，那么信号函数
-            // 将不会被阻塞，此时需要注意函数的可重入安全性。
-            act.sa_flags = libc::SA_SIGINFO | libc::SA_RESTART | libc::SA_NODEFER;
+            act.sa_flags = libc::SA_RESTART;
             assert_eq!(
                 0,
                 libc::sigaction(Monitor::signum(), &act, std::ptr::null_mut())
@@ -49,52 +46,27 @@ impl Monitor {
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         {
-            extern "C" fn yields() {
-                if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
-                    s.suspend();
-                }
-            }
             #[allow(clippy::fn_to_numeric_cast)]
-            unsafe extern "C" fn sigurg_handler(
-                _signal: libc::c_int,
-                _siginfo: &libc::siginfo_t,
-                context: &mut libc::ucontext_t,
-            ) {
+            unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
-                // 在本方法结束后调用yields
-                cfg_if::cfg_if! {
-                    if #[cfg(all(
-                        any(target_os = "linux", target_os = "android"),
-                        target_arch = "x86_64",
-                    ))] {
-                        context.uc_mcontext.gregs[libc::REG_RIP as usize] = yields as i64;
-                    } else if #[cfg(all(
-                                any(target_os = "linux", target_os = "android"),
-                                target_arch = "x86",
-                    ))] {
-                        context.uc_mcontext.gregs[libc::REG_EIP as usize] = yields as i32;
-                    } else if #[cfg(all(
-                                any(target_os = "linux", target_os = "android"),
-                                target_arch = "aarch64",
-                    ))] {
-                        context.uc_mcontext.pc = yields as libc::c_ulong;
-                    } else if #[cfg(all(
-                                any(target_os = "linux", target_os = "android"),
-                                target_arch = "arm",
-                    ))] {
-                        context.uc_mcontext.arm_pc = yields as libc::c_ulong;
-                    } else if #[cfg(all(
-                                any(target_os = "linux", target_os = "android"),
-                                any(target_arch = "riscv64", target_arch = "riscv32"),
-                    ))] {
-                        context.uc_mcontext.__gregs[libc::REG_PC] = yields as libc::c_ulong;
-                    } else if #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))] {
-                        (*context.uc_mcontext).__ss.__pc = yields as u64;
-                    } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
-                        (*context.uc_mcontext).__ss.__rip = yields as u64;
-                    } else {
-                        compile_error!("Unsupported platform");
-                    }
+                if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
+                    //获取当前信号屏蔽集
+                    let mut current_mask = libc::sigset_t::default();
+                    assert_eq!(
+                        0,
+                        libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
+                    );
+                    //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                    assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
+                    assert_eq!(
+                        0,
+                        libc::pthread_sigmask(
+                            libc::SIG_SETMASK,
+                            &current_mask,
+                            std::ptr::null_mut()
+                        )
+                    );
+                    s.suspend();
                 }
             }
             Monitor::register_handler(sigurg_handler as libc::sighandler_t);

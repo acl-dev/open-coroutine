@@ -66,8 +66,6 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo test --release --all"
-      - name: Run cargo release change_pc
-        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example change_pc --release"
       - name: Run cargo release preemptive example
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
 
@@ -100,7 +98,5 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo test --release --all"
-      - name: Run cargo release change_pc
-        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example change_pc --release"
       - name: Run cargo release preemptive example
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
