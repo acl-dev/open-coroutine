@@ -51,7 +51,7 @@ impl Monitor {
                 // invoke by Monitor::signal()
                 if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
                     //获取当前信号屏蔽集
-                    let mut current_mask = libc::sigset_t::default();
+                    let mut current_mask: libc::sigset_t = std::mem::zeroed();
                     assert_eq!(
                         0,
                         libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
