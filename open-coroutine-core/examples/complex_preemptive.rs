@@ -20,6 +20,7 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine1 launched");
+            #[cfg(unix)]
             unsafe {
                 while COMPLEX_TEST_FLAG {
                     println!("loop1");
@@ -36,6 +37,7 @@ fn main() -> std::io::Result<()> {
             _input: &'static mut c_void,
         ) -> &'static mut c_void {
             println!("coroutine2 launched");
+            #[cfg(unix)]
             unsafe {
                 while COMPLEX_TEST_FLAG2 {
                     println!("loop2");
