@@ -44,10 +44,7 @@ impl Monitor {
             let mut act: libc::sigaction = std::mem::zeroed();
             act.sa_sigaction = sigurg_handler;
             assert_eq!(libc::sigaddset(&mut act.sa_mask, Monitor::signum()), 0);
-            // SA_NODEFER：默认情况下，当信号函数运行时，内核将阻塞（不可重入）给定的信号，
-            // 直至当次处理完毕才开始下一次的信号处理。但是设置该标记之后，那么信号函数
-            // 将不会被阻塞，此时需要注意函数的可重入安全性。
-            act.sa_flags = libc::SA_RESTART | libc::SA_NODEFER;
+            act.sa_flags = libc::SA_RESTART;
             assert_eq!(
                 libc::sigaction(Monitor::signum(), &act, std::ptr::null_mut()),
                 0
@@ -58,15 +55,31 @@ impl Monitor {
     fn new() -> Self {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         {
-            extern "C" fn sigurg_handler(_signal: libc::c_int) {
+            unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
                 // invoke by Monitor::signal()
                 let yielder = crate::Coroutine::<
                     &'static mut libc::c_void,
                     &'static mut libc::c_void,
                 >::yielder();
                 if !yielder.is_null() {
+                    //获取当前信号屏蔽集
+                    let mut current_mask: libc::sigset_t = std::mem::zeroed();
+                    assert_eq!(
+                        0,
+                        libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
+                    );
+                    //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                    assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
+                    assert_eq!(
+                        0,
+                        libc::pthread_sigmask(
+                            libc::SIG_SETMASK,
+                            &current_mask,
+                            std::ptr::null_mut()
+                        )
+                    );
                     //挂起当前协程
-                    unsafe { (*yielder).suspend(()) };
+                    (*yielder).suspend(());
                 }
             }
             Monitor::register_handler(sigurg_handler as libc::sighandler_t);

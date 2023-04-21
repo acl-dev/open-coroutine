@@ -289,7 +289,6 @@ mod tests {
     use crate::coroutine::Yielder;
     use crate::scheduler::Scheduler;
     use std::os::raw::c_void;
-    use std::thread;
     use std::time::Duration;
 
     fn null() -> &'static mut c_void {
@@ -365,7 +364,7 @@ mod tests {
             .submit(delay, null(), 4096)
             .expect("submit failed !");
         scheduler.try_schedule().expect("try_schedule failed !");
-        thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(100));
         scheduler.try_schedule().expect("try_schedule failed !");
     }
 
@@ -388,7 +387,7 @@ mod tests {
         static mut TEST_FLAG2: bool = true;
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
-        let handler = thread::spawn(move || {
+        let handler = std::thread::spawn(move || {
             let mut scheduler = Scheduler::new();
 
             extern "C" fn f1(
@@ -398,7 +397,7 @@ mod tests {
                 unsafe {
                     while TEST_FLAG {
                         println!("loop1");
-                        std::thread::sleep(Duration::from_millis(10));
+                        let _ = libc::usleep(10_000);
                     }
                 }
                 null()
@@ -412,7 +411,7 @@ mod tests {
                 unsafe {
                     while TEST_FLAG2 {
                         println!("loop2");
-                        std::thread::sleep(Duration::from_millis(10));
+                        let _ = libc::usleep(10_000);
                     }
                     TEST_FLAG = false;
                 }
