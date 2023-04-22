@@ -97,7 +97,7 @@ impl Scheduler {
     }
 
     pub fn try_schedule(&self) {
-        let _ = self.try_timeout_schedule(Duration::MAX.as_secs());
+        _ = self.try_timeout_schedule(Duration::MAX.as_secs());
     }
 
     pub fn try_timed_schedule(&self, time: Duration) -> u64 {
@@ -113,7 +113,7 @@ impl Scheduler {
             self.check_ready();
             match self.ready.pop_front() {
                 Some(coroutine) => {
-                    let _ = coroutine.set_scheduler(self);
+                    _ = coroutine.set_scheduler(self);
                     cfg_if::cfg_if! {
                         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
                             let start = timer_utils::get_timeout_time(Duration::from_millis(10));
@@ -138,7 +138,7 @@ impl Scheduler {
                         }
                         CoroutineState::Finished => {
                             let name = Box::leak(Box::from(coroutine.get_name()));
-                            let _ = unsafe { RESULT_TABLE.insert(name, coroutine) };
+                            _ = unsafe { RESULT_TABLE.insert(name, coroutine) };
                         }
                         _ => unreachable!("should never execute to here"),
                     };
@@ -177,11 +177,11 @@ mod tests {
     #[test]
     fn test_simple() {
         let scheduler = Scheduler::new();
-        let _ = scheduler.submit(|_, _| {
+        _ = scheduler.submit(|_, _| {
             println!("1");
             result(1)
         });
-        let _ = scheduler.submit(|_, _| {
+        _ = scheduler.submit(|_, _| {
             println!("2");
             result(2)
         });
@@ -191,8 +191,8 @@ mod tests {
     #[test]
     fn test_backtrace() {
         let scheduler = Scheduler::new();
-        let _ = scheduler.submit(|_, _| result(1));
-        let _ = scheduler.submit(|_, _| {
+        _ = scheduler.submit(|_, _| result(1));
+        _ = scheduler.submit(|_, _| {
             println!("{:?}", backtrace::Backtrace::new());
             result(2)
         });
@@ -202,13 +202,13 @@ mod tests {
     #[test]
     fn with_suspend() {
         let scheduler = Scheduler::new();
-        let _ = scheduler.submit(|suspender, _| {
+        _ = scheduler.submit(|suspender, _| {
             println!("[coroutine1] suspend");
             suspender.suspend();
             println!("[coroutine1] back");
             result(1)
         });
-        let _ = scheduler.submit(|suspender, _| {
+        _ = scheduler.submit(|suspender, _| {
             println!("[coroutine2] suspend");
             suspender.suspend();
             println!("[coroutine2] back");
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn with_delay() {
         let scheduler = Scheduler::new();
-        let _ = scheduler.submit(|suspender, _| {
+        _ = scheduler.submit(|suspender, _| {
             println!("[coroutine] delay");
             suspender.delay(Duration::from_millis(100));
             println!("[coroutine] back");
@@ -241,24 +241,24 @@ mod tests {
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::spawn(move || {
             let scheduler = Box::leak(Box::new(Scheduler::new()));
-            let _ = scheduler.submit(|_, _| {
+            _ = scheduler.submit(|_, _| {
                 unsafe {
                     while TEST_FLAG1 {
-                        let _ = libc::usleep(10_000);
+                        _ = libc::usleep(10_000);
                     }
                 }
                 result(1)
             });
-            let _ = scheduler.submit(|_, _| {
+            _ = scheduler.submit(|_, _| {
                 unsafe {
                     while TEST_FLAG2 {
-                        let _ = libc::usleep(10_000);
+                        _ = libc::usleep(10_000);
                     }
                 }
                 unsafe { TEST_FLAG1 = false };
                 result(2)
             });
-            let _ = scheduler.submit(|_, _| {
+            _ = scheduler.submit(|_, _| {
                 unsafe { TEST_FLAG2 = false };
                 result(3)
             });

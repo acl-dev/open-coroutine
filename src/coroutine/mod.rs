@@ -125,7 +125,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             Suspender::<Param, Yield>::clean_current();
             let current = Coroutine::<Param, Yield, Return>::current().unwrap();
             current.set_state(CoroutineState::Finished);
-            let _ = current
+            _ = current
                 .result
                 .replace(MaybeUninit::new(ManuallyDrop::new(r)));
             if let Some(_scheduler) = current.get_scheduler() {}
@@ -219,7 +219,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             CoroutineResult::Yield(y) => {
                 let state = CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
                 self.set_state(state);
-                let _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
+                _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
                 Suspender::<Yield, Param>::clean_timestamp();
                 state
             }
@@ -283,7 +283,7 @@ mod tests {
     fn test_yield_once() {
         let coroutine = co!(|suspender, param| {
             assert_eq!(1, param);
-            let _ = suspender.suspend_with(2);
+            _ = suspender.suspend_with(2);
         });
         assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());

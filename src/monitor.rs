@@ -91,7 +91,7 @@ impl Monitor {
         }
         Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         //通过这种方式来初始化monitor线程
-        let _ = MONITOR.get_or_init(|| {
+        _ = MONITOR.get_or_init(|| {
             std::thread::spawn(|| {
                 let monitor = Monitor::global();
                 while monitor.flag.load(Ordering::Acquire) {
@@ -152,7 +152,7 @@ impl Monitor {
         if let Some(entry) = Monitor::global().task.get_entry(time) {
             unsafe {
                 let pthread = libc::pthread_self();
-                let _ = entry.remove(TaskNode {
+                _ = entry.remove(TaskNode {
                     pthread,
                     coroutine: None,
                 });
