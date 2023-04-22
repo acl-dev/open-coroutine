@@ -1,5 +1,5 @@
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::{min_stack_size, Coroutine, CoroutineState};
+use crate::coroutine::{Coroutine, CoroutineState};
 use crate::monitor::Monitor;
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
@@ -63,7 +63,7 @@ impl Scheduler {
         let coroutine = SchedulableCoroutine::new(
             Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
             f,
-            min_stack_size(),
+            crate::coroutine::default_stack_size(),
         )?;
         coroutine.set_state(CoroutineState::Ready);
         let co_name = Box::leak(Box::from(coroutine.get_name()));
@@ -221,7 +221,6 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[ignore]
     #[cfg(all(unix, feature = "preemptive-schedule"))]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {

@@ -32,9 +32,9 @@ pub fn page_size() -> usize {
 }
 
 #[must_use]
-pub fn min_stack_size() -> usize {
+pub fn default_stack_size() -> usize {
     //min stack size for backtrace
-    page_size() * 16
+    64 * 1024
 }
 
 #[repr(C)]
@@ -89,7 +89,7 @@ macro_rules! co {
         $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
             $f,
-            $crate::coroutine::min_stack_size(),
+            $crate::coroutine::default_stack_size(),
         )
         .expect("create coroutine failed !")
     };
@@ -98,8 +98,12 @@ macro_rules! co {
             .expect("create coroutine failed !")
     };
     ($name:literal, $f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(Box::from($name), $f, $crate::coroutine::min_stack_size())
-            .expect("create coroutine failed !")
+        $crate::coroutine::Coroutine::new(
+            Box::from($name),
+            $f,
+            $crate::coroutine::default_stack_size(),
+        )
+        .expect("create coroutine failed !")
     };
 }
 
@@ -113,7 +117,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
         F: 'c,
     {
-        let stack = DefaultStack::new(size.max(min_stack_size()))?;
+        let stack = DefaultStack::new(size.max(page_size()))?;
         let sp = ScopedCoroutine::with_stack(stack, |y, p| {
             let suspender = Suspender::new(y);
             Suspender::<Param, Yield>::init_current(&suspender);
@@ -257,9 +261,9 @@ mod tests {
 
     #[test]
     fn test_yield_once() {
-        let coroutine = co!(|yielder, param| {
+        let coroutine = co!(|suspender, param| {
             assert_eq!(1, param);
-            let _ = yielder.suspend_with(2);
+            let _ = suspender.suspend_with(2);
         });
         assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());
@@ -267,10 +271,10 @@ mod tests {
 
     #[test]
     fn test_yield() {
-        let coroutine = co!(|yielder, input| {
+        let coroutine = co!(|suspender, input| {
             assert_eq!(1, input);
-            assert_eq!(3, yielder.suspend_with(2));
-            assert_eq!(5, yielder.suspend_with(4));
+            assert_eq!(3, suspender.suspend_with(2));
+            assert_eq!(5, suspender.suspend_with(4));
             6
         });
         assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
@@ -284,7 +288,7 @@ mod tests {
     #[test]
     fn test_current() {
         assert!(Coroutine::<i32, i32, i32>::current().is_none());
-        let coroutine = co!(|_yielder: &Suspender<'_, i32, i32>, input| {
+        let coroutine = co!(|_: &Suspender<'_, i32, i32>, input| {
             assert_eq!(0, input);
             assert!(Coroutine::<i32, i32, i32>::current().is_some());
             1
@@ -295,10 +299,10 @@ mod tests {
 
     #[test]
     fn test_backtrace() {
-        let coroutine = co!(|yielder, input| {
+        let coroutine = co!(|suspender, input| {
             assert_eq!(1, input);
             println!("{:?}", backtrace::Backtrace::new());
-            assert_eq!(3, yielder.suspend_with(2));
+            assert_eq!(3, suspender.suspend_with(2));
             println!("{:?}", backtrace::Backtrace::new());
             4
         });

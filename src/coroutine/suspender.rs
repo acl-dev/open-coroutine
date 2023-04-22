@@ -18,9 +18,9 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     #[allow(clippy::ptr_as_ptr)]
-    pub(crate) fn init_current(yielder: &Suspender<Param, Yield>) {
+    pub(crate) fn init_current(suspender: &Suspender<Param, Yield>) {
         SUSPENDER.with(|boxed| {
-            *boxed.borrow_mut() = yielder as *const _ as *const c_void;
+            *boxed.borrow_mut() = suspender as *const _ as *const c_void;
         });
     }
 
