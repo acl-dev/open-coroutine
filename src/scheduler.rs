@@ -231,7 +231,6 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[ignore]
     #[cfg(all(unix, feature = "preemptive-schedule"))]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {
