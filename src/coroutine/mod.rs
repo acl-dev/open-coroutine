@@ -34,7 +34,7 @@ pub fn page_size() -> usize {
 #[must_use]
 pub fn default_stack_size() -> usize {
     //min stack size for backtrace
-    page_size() * 16
+    64 * 1024
 }
 
 #[repr(C)]

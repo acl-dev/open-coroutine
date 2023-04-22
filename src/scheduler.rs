@@ -231,7 +231,13 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[cfg(all(unix, feature = "preemptive-schedule"))]
+    #[cfg(all(
+        target_os = "linux",
+        target_os = "l4re",
+        target_os = "android",
+        target_os = "emscripten",
+        feature = "preemptive-schedule"
+    ))]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {
         use std::sync::{Arc, Condvar, Mutex};
