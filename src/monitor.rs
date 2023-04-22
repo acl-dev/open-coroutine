@@ -1,3 +1,5 @@
+use crate::coroutine::CoroutineState;
+use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::{Lazy, OnceCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -7,9 +9,33 @@ static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
 static MONITOR: OnceCell<JoinHandle<()>> = OnceCell::new();
 
+struct TaskNode {
+    pthread: libc::pthread_t,
+    coroutine: Option<*const SchedulableCoroutine>,
+}
+
+impl Eq for TaskNode {}
+
+impl PartialEq<Self> for TaskNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.pthread.eq(&other.pthread)
+    }
+}
+
+impl PartialOrd<Self> for TaskNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.pthread.partial_cmp(&other.pthread)
+    }
+}
+
+impl Ord for TaskNode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.pthread.cmp(&other.pthread)
+    }
+}
+
 pub(crate) struct Monitor {
-    #[cfg(all(unix, feature = "preemptive-schedule"))]
-    task: timer_utils::TimerList<libc::pthread_t>,
+    task: timer_utils::TimerList<TaskNode>,
     flag: AtomicBool,
 }
 
@@ -44,39 +70,31 @@ impl Monitor {
     }
 
     fn new() -> Self {
-        #[cfg(all(unix, feature = "preemptive-schedule"))]
-        {
-            #[allow(clippy::fn_to_numeric_cast)]
-            unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
-                // invoke by Monitor::signal()
-                if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
-                    //获取当前信号屏蔽集
-                    let mut current_mask: libc::sigset_t = std::mem::zeroed();
-                    assert_eq!(
-                        0,
-                        libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
-                    );
-                    //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
-                    assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
-                    assert_eq!(
-                        0,
-                        libc::pthread_sigmask(
-                            libc::SIG_SETMASK,
-                            &current_mask,
-                            std::ptr::null_mut()
-                        )
-                    );
-                    s.suspend();
-                }
+        #[allow(clippy::fn_to_numeric_cast)]
+        unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
+            // invoke by Monitor::signal()
+            if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
+                //获取当前信号屏蔽集
+                let mut current_mask: libc::sigset_t = std::mem::zeroed();
+                assert_eq!(
+                    0,
+                    libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
+                );
+                //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
+                assert_eq!(
+                    0,
+                    libc::pthread_sigmask(libc::SIG_SETMASK, &current_mask, std::ptr::null_mut())
+                );
+                s.suspend();
             }
-            Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         }
+        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         //通过这种方式来初始化monitor线程
         let _ = MONITOR.get_or_init(|| {
             std::thread::spawn(|| {
                 let monitor = Monitor::global();
                 while monitor.flag.load(Ordering::Acquire) {
-                    #[cfg(all(unix, feature = "preemptive-schedule"))]
                     monitor.signal();
                     //尽量至少wait 1ms
                     std::thread::sleep(Duration::from_millis(1));
@@ -84,7 +102,6 @@ impl Monitor {
             })
         });
         Monitor {
-            #[cfg(all(unix, feature = "preemptive-schedule"))]
             task: timer_utils::TimerList::new(),
             flag: AtomicBool::new(true),
         }
@@ -100,7 +117,6 @@ impl Monitor {
         Monitor::global().flag.store(false, Ordering::Release);
     }
 
-    #[cfg(all(unix, feature = "preemptive-schedule"))]
     fn signal(&mut self) {
         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
         for entry in self.task.iter() {
@@ -108,37 +124,44 @@ impl Monitor {
             if timer_utils::now() < exec_time {
                 break;
             }
-            for p in entry.iter() {
-                unsafe {
-                    let pthread = std::ptr::read_unaligned(p);
-                    assert_eq!(0, libc::pthread_kill(pthread, Monitor::signum()));
+            for node in entry.iter() {
+                if let Some(coroutine) = node.coroutine {
+                    unsafe {
+                        if CoroutineState::Running == (*coroutine).get_state() {
+                            //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
+                            //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
+                            assert_eq!(0, libc::pthread_kill(node.pthread, Monitor::signum()));
+                        }
+                    }
                 }
             }
         }
     }
 
     #[allow(unused_variables)]
-    pub(crate) fn add_task(time: u64) {
-        #[cfg(all(unix, feature = "preemptive-schedule"))]
+    pub(crate) fn add_task(time: u64, coroutine: Option<*const SchedulableCoroutine>) {
         unsafe {
             let pthread = libc::pthread_self();
-            Monitor::global().task.insert(time, pthread);
+            Monitor::global()
+                .task
+                .insert(time, TaskNode { pthread, coroutine });
         }
     }
 
-    #[allow(clippy::used_underscore_binding)]
-    pub(crate) fn clean_task(_time: u64) {
-        #[cfg(all(unix, feature = "preemptive-schedule"))]
-        if let Some(entry) = Monitor::global().task.get_entry(_time) {
+    pub(crate) fn clean_task(time: u64) {
+        if let Some(entry) = Monitor::global().task.get_entry(time) {
             unsafe {
                 let pthread = libc::pthread_self();
-                let _ = entry.remove(pthread);
+                let _ = entry.remove(TaskNode {
+                    pthread,
+                    coroutine: None,
+                });
             }
         }
     }
 }
 
-#[cfg(all(test, unix, feature = "preemptive-schedule"))]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::time::Duration;
@@ -151,7 +174,7 @@ mod tests {
         }
         Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(10));
-        Monitor::add_task(time);
+        Monitor::add_task(time, None);
         std::thread::sleep(Duration::from_millis(20));
         Monitor::clean_task(time);
     }
@@ -164,22 +187,8 @@ mod tests {
         }
         Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         let time = timer_utils::get_timeout_time(Duration::from_millis(100));
-        Monitor::add_task(time);
+        Monitor::add_task(time, None);
         Monitor::clean_task(time);
         std::thread::sleep(Duration::from_millis(200));
     }
-
-    // #[ignore]
-    // #[test]
-    // fn test_sigmask() {
-    //     extern "C" fn sigurg_handler(_signal: libc::c_int) {
-    //         println!("sigurg should not handle");
-    //     }
-    //     Monitor::register_handler(sigurg_handler as libc::sighandler_t);
-    //     let _ = shield!();
-    //     let time = timer_utils::get_timeout_time(Duration::from_millis(200));
-    //     Monitor::add_task(time);
-    //     std::thread::sleep(Duration::from_millis(300));
-    //     Monitor::clean_task(time);
-    // }
 }

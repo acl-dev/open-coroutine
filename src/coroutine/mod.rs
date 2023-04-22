@@ -245,6 +245,26 @@ impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return> {
     }
 }
 
+impl<'c, Param, Yield, Return> Eq for Coroutine<'c, Param, Yield, Return> {}
+
+impl<'c, Param, Yield, Return> PartialEq<Self> for Coroutine<'c, Param, Yield, Return> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(other.name)
+    }
+}
+
+impl<'c, Param, Yield, Return> PartialOrd<Self> for Coroutine<'c, Param, Yield, Return> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(other.name)
+    }
+}
+
+impl<'c, Param, Yield, Return> Ord for Coroutine<'c, Param, Yield, Return> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(other.name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

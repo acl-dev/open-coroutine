@@ -1,6 +1,5 @@
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineState};
-use crate::monitor::Monitor;
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
 use once_cell::sync::Lazy;
@@ -12,6 +11,7 @@ use uuid::Uuid;
 use work_steal_queue::{LocalQueue, WorkStealQueue};
 
 /// 源协程
+#[allow(dead_code)]
 type RootCoroutine<'a> = ScopedCoroutine<'a, (), (), (), DefaultStack>;
 
 /// 用户协程
@@ -21,8 +21,10 @@ static QUEUE: Lazy<WorkStealQueue<SchedulableCoroutine>> = Lazy::new(WorkStealQu
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::new);
 
+#[allow(dead_code)]
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
+#[allow(dead_code)]
 static mut COPY_STACK_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
@@ -112,8 +114,12 @@ impl Scheduler {
             match self.ready.pop_front() {
                 Some(coroutine) => {
                     let _ = coroutine.set_scheduler(self);
-                    let start = timer_utils::get_timeout_time(Duration::from_millis(10));
-                    Monitor::add_task(start);
+                    cfg_if::cfg_if! {
+                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+                            let start = timer_utils::get_timeout_time(Duration::from_millis(10));
+                            crate::monitor::Monitor::add_task(start, Some(&coroutine));
+                        }
+                    }
                     match coroutine.resume() {
                         CoroutineState::Suspend(timestamp) => {
                             if timestamp > 0 {
@@ -136,9 +142,13 @@ impl Scheduler {
                         }
                         _ => unreachable!("should never execute to here"),
                     };
-                    //还没执行到10ms就主动yield或者执行完毕了，此时需要清理signal
-                    //否则下一个协程执行不到10ms就会被抢占调度
-                    Monitor::clean_task(start);
+                    cfg_if::cfg_if! {
+                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+                            //还没执行到10ms就主动yield或者执行完毕了，此时需要清理任务
+                            //否则下一个协程执行不到10ms就会被抢占调度
+                            crate::monitor::Monitor::clean_task(start);
+                        }
+                    }
                 }
                 None => return left_time,
             }

@@ -47,7 +47,7 @@
 )]
 pub mod coroutine;
 
-#[allow(dead_code)]
 pub mod scheduler;
 
+#[cfg(all(unix, feature = "preemptive-schedule"))]
 mod monitor;
