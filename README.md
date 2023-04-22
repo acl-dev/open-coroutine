@@ -17,3 +17,5 @@ Can't pass the linux preemptive schedule CI(but pass the macos CI), see it in :
 examples/preemptive.rs
 
 Note: `monitor` mod register the `signal handler`.
+
+Solved by changing pthread sigmask when handling signal.
