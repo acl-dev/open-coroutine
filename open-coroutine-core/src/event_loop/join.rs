@@ -20,7 +20,7 @@ impl JoinHandle {
     }
 
     pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
-        self.timeout_at_join(timer_utils::get_timeout_time(dur))
+        self.timeout_at_join(open_coroutine_timer::get_timeout_time(dur))
     }
 
     pub fn timeout_at_join(
@@ -35,7 +35,7 @@ impl JoinHandle {
         let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             let left_time = timeout_time
-                .saturating_sub(timer_utils::now())
+                .saturating_sub(open_coroutine_timer::now())
                 .min(10_000_000);
             if left_time == 0 {
                 //timeout

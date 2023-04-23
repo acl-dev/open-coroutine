@@ -2,6 +2,7 @@ use crate::coroutine::CoroutineState;
 use crate::event_loop::EventLoops;
 use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::{Lazy, OnceCell};
+use open_coroutine_timer::TimerList;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -36,7 +37,7 @@ impl Ord for TaskNode {
 }
 
 pub(crate) struct Monitor {
-    task: timer_utils::TimerList<TaskNode>,
+    task: TimerList<TaskNode>,
     flag: AtomicBool,
 }
 
@@ -104,7 +105,7 @@ impl Monitor {
             })
         });
         Monitor {
-            task: timer_utils::TimerList::new(),
+            task: TimerList::new(),
             flag: AtomicBool::new(true),
         }
     }
@@ -121,7 +122,7 @@ impl Monitor {
         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
         for entry in self.task.iter() {
             let exec_time = entry.get_time();
-            if timer_utils::now() < exec_time {
+            if open_coroutine_timer::now() < exec_time {
                 break;
             }
             for node in entry.iter() {
@@ -175,7 +176,7 @@ mod tests {
             println!("sigurg handled");
         }
         Monitor::register_handler(sigurg_handler as libc::sighandler_t);
-        let time = timer_utils::get_timeout_time(Duration::from_millis(10));
+        let time = open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
         Monitor::add_task(time, None);
         std::thread::sleep(Duration::from_millis(20));
         Monitor::clean_task(time);
@@ -188,7 +189,7 @@ mod tests {
             println!("sigurg should not handle");
         }
         Monitor::register_handler(sigurg_handler as libc::sighandler_t);
-        let time = timer_utils::get_timeout_time(Duration::from_millis(100));
+        let time = open_coroutine_timer::get_timeout_time(Duration::from_millis(100));
         Monitor::add_task(time, None);
         Monitor::clean_task(time);
         std::thread::sleep(Duration::from_millis(200));

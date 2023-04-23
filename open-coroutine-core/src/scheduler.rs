@@ -3,12 +3,12 @@ use crate::coroutine::{Coroutine, CoroutineState};
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
 use once_cell::sync::Lazy;
+use open_coroutine_queue::{LocalQueue, WorkStealQueue};
+use open_coroutine_timer::TimerList;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::time::Duration;
-use timer_utils::TimerList;
 use uuid::Uuid;
-use work_steal_queue::{LocalQueue, WorkStealQueue};
 
 /// 源协程
 #[allow(dead_code)]
@@ -80,7 +80,7 @@ impl Scheduler {
             for _ in 0..SUSPEND_TABLE.len() {
                 if let Some(entry) = SUSPEND_TABLE.front() {
                     let exec_time = entry.get_time();
-                    if timer_utils::now() < exec_time {
+                    if open_coroutine_timer::now() < exec_time {
                         break;
                     }
                     //移动至"就绪"队列
@@ -106,12 +106,12 @@ impl Scheduler {
     }
 
     pub fn try_timed_schedule(&self, time: Duration) -> u64 {
-        self.try_timeout_schedule(timer_utils::get_timeout_time(time))
+        self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(time))
     }
 
     pub fn try_timeout_schedule(&self, timeout_time: u64) -> u64 {
         loop {
-            let left_time = timeout_time.saturating_sub(timer_utils::now());
+            let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
             if left_time == 0 {
                 return 0;
             }
@@ -121,7 +121,7 @@ impl Scheduler {
                     _ = coroutine.set_scheduler(self);
                     cfg_if::cfg_if! {
                         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-                            let start = timer_utils::get_timeout_time(Duration::from_millis(10));
+                            let start = open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
                             crate::monitor::Monitor::add_task(start, Some(&coroutine));
                         }
                     }

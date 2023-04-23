@@ -14,5 +14,9 @@ open-coroutine-core = { version = "0.4.0", path = "open-coroutine-core" }
 
 [workspace]
 members = [
-    "open-coroutine-core"
+    "open-coroutine-timer",
+    "open-coroutine-queue",
+    "open-coroutine-core",
+    "open-coroutine-hooks",
+    "open-coroutine-macros"
 ]

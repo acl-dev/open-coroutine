@@ -82,7 +82,7 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     pub fn delay_with(&self, val: Yield, time: Duration) -> Param {
-        self.until_with(val, timer_utils::get_timeout_time(time))
+        self.until_with(val, open_coroutine_timer::get_timeout_time(time))
     }
 
     //只有框架级crate才需要使用此方法
