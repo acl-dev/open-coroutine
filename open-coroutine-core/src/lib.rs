@@ -45,3 +45,18 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
+pub mod coroutine;
+
+pub mod scheduler;
+
+#[cfg(all(unix, feature = "preemptive-schedule"))]
+mod monitor;
+
+#[allow(
+    dead_code,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    trivial_numeric_casts
+)]
+pub mod event_loop;
