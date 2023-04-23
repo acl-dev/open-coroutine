@@ -50,7 +50,7 @@ impl Selector {
                             Ok(ep) => ep as RawFd,
                             Err(err) => {
                                 // `fcntl` failed, cleanup `ep`.
-                                let _ = unsafe { libc::close(ep) };
+                                _ = unsafe { libc::close(ep) };
                                 return Err(err);
                             }
                         },
@@ -95,16 +95,14 @@ impl Selector {
         #[cfg(not(target_pointer_width = "32"))]
         const MAX_SAFE_TIMEOUT: u128 = libc::c_int::MAX as u128;
 
-        let timeout = timeout
-            .map(|to| {
-                let to_ms = to.as_millis();
-                // as_millis() truncates, so round up to 1 ms as the documentation says can happen.
-                // This avoids turning submillisecond timeouts into immediate returns unless the
-                // caller explicitly requests that by specifying a zero timeout.
-                let to_ms = to_ms + u128::from(to_ms == 0 && to.subsec_nanos() != 0);
-                to_ms.min(MAX_SAFE_TIMEOUT) as libc::c_int
-            })
-            .unwrap_or(-1);
+        let timeout = timeout.map_or(-1, |to| {
+            let to_ms = to.as_millis();
+            // as_millis() truncates, so round up to 1 ms as the documentation says can happen.
+            // This avoids turning submillisecond timeouts into immediate returns unless the
+            // caller explicitly requests that by specifying a zero timeout.
+            let to_ms = to_ms + u128::from(to_ms == 0 && to.subsec_nanos() != 0);
+            to_ms.min(MAX_SAFE_TIMEOUT) as libc::c_int
+        });
 
         let events = events.sys();
         events.clear();
