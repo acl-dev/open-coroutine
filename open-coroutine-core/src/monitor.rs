@@ -154,7 +154,7 @@ impl Monitor {
             unsafe {
                 let pthread = libc::pthread_self();
                 assert!(entry
-                    .remove(TaskNode {
+                    .remove(&TaskNode {
                         pthread,
                         coroutine: None,
                     })

@@ -39,6 +39,7 @@ pub struct RngSeedGenerator {
 
 impl RngSeedGenerator {
     /// Returns a new generator from the provided seed.
+    #[must_use]
     pub fn new(seed: RngSeed) -> Self {
         Self {
             state: Mutex::new(FastRand::new(seed)),
@@ -59,6 +60,7 @@ impl RngSeedGenerator {
     }
 
     /// Directly creates a generator using the next seed.
+    #[must_use]
     pub fn next_generator(&self) -> Self {
         RngSeedGenerator::new(self.next_seed())
     }
@@ -75,7 +77,7 @@ impl Default for RngSeedGenerator {
 /// In order to make certain functions within a runtime deterministic, a seed
 /// can be specified at the time of creation.
 #[allow(unreachable_pub)]
-#[derive(Clone, Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct RngSeed {
     s: u32,
     r: u32,
@@ -83,10 +85,12 @@ pub struct RngSeed {
 
 impl RngSeed {
     /// Creates a random seed using loom internally.
+    #[must_use]
     pub fn new() -> Self {
         Self::from_u64(seed())
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn from_u64(seed: u64) -> Self {
         let one = (seed >> 32) as u32;
         let mut two = seed as u32;
@@ -115,7 +119,7 @@ impl Default for RngSeed {
 /// Implement xorshift64+: 2 32-bit xorshift sequences added together.
 /// Shift triplet `[17,7,16]` was calculated as indicated in Marsaglia's
 /// Xorshift paper: <https://www.jstatsoft.org/article/view/v008i14/xorshift.pdf>
-/// This generator passes the SmallCrush suite, part of TestU01 framework:
+/// This generator passes the `SmallCrush` suite, part of `TestU01` framework:
 /// <http://simul.iro.umontreal.ca/testu01/tu01.html>
 #[repr(C)]
 #[derive(Debug)]
@@ -126,6 +130,7 @@ pub struct FastRand {
 
 impl FastRand {
     /// Initializes a new, thread-local, fast random number generator.
+    #[must_use]
     pub fn new(seed: RngSeed) -> FastRand {
         FastRand {
             one: Cell::new(seed.s),
@@ -141,8 +146,8 @@ impl FastRand {
     pub fn replace_seed(&self, seed: RngSeed) -> RngSeed {
         let old_seed = RngSeed::from_pair(self.one.get(), self.two.get());
 
-        self.one.replace(seed.s);
-        self.two.replace(seed.r);
+        _ = self.one.replace(seed.s);
+        _ = self.two.replace(seed.r);
 
         old_seed
     }
@@ -150,7 +155,7 @@ impl FastRand {
     pub fn fastrand_n(&self, n: u32) -> u32 {
         // This is similar to fastrand() % n, but faster.
         // See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
-        let mul = (self.fastrand() as u64).wrapping_mul(n as u64);
+        let mul = (u64::from(self.fastrand())).wrapping_mul(u64::from(n));
         (mul >> 32) as u32
     }
 

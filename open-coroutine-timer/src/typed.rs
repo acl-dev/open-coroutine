@@ -8,6 +8,7 @@ pub struct TimerEntry<T> {
 }
 
 impl<T> TimerEntry<T> {
+    #[must_use]
     pub fn new(time: u64) -> Self {
         TimerEntry {
             time,
@@ -15,14 +16,17 @@ impl<T> TimerEntry<T> {
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    #[must_use]
     pub fn get_time(&self) -> u64 {
         self.time
     }
@@ -32,16 +36,16 @@ impl<T> TimerEntry<T> {
     }
 
     pub fn push_back(&mut self, t: T) {
-        self.inner.push_back(t)
+        self.inner.push_back(t);
     }
 
-    pub fn remove(&mut self, t: T) -> Option<T>
+    pub fn remove(&mut self, t: &T) -> Option<T>
     where
         T: Ord,
     {
         let index = self
             .inner
-            .binary_search_by(|x| x.cmp(&t))
+            .binary_search_by(|x| x.cmp(t))
             .unwrap_or_else(|x| x);
         self.inner.remove(index)
     }
@@ -50,6 +54,7 @@ impl<T> TimerEntry<T> {
         self.inner.iter_mut()
     }
 
+    #[must_use]
     pub fn iter(&self) -> Iter<'_, T> {
         self.inner.iter()
     }
@@ -62,12 +67,14 @@ pub struct TimerList<T> {
 }
 
 impl<T> TimerList<T> {
+    #[must_use]
     pub fn new() -> Self {
         TimerList {
             dequeue: VecDeque::new(),
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.dequeue.len()
     }
@@ -77,18 +84,16 @@ impl<T> TimerList<T> {
             .dequeue
             .binary_search_by(|x| x.time.cmp(&time))
             .unwrap_or_else(|x| x);
-        match self.dequeue.get_mut(index) {
-            Some(entry) => {
-                entry.push_back(t);
-            }
-            None => {
-                let mut entry = TimerEntry::new(time);
-                entry.push_back(t);
-                self.dequeue.insert(index, entry);
-            }
+        if let Some(entry) = self.dequeue.get_mut(index) {
+            entry.push_back(t);
+        } else {
+            let mut entry = TimerEntry::new(time);
+            entry.push_back(t);
+            self.dequeue.insert(index, entry);
         }
     }
 
+    #[must_use]
     pub fn front(&self) -> Option<&TimerEntry<T>> {
         self.dequeue.front()
     }
@@ -97,6 +102,7 @@ impl<T> TimerList<T> {
         self.dequeue.pop_front()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.dequeue.is_empty()
     }
@@ -113,6 +119,7 @@ impl<T> TimerList<T> {
         self.dequeue.iter_mut()
     }
 
+    #[must_use]
     pub fn iter(&self) -> Iter<'_, TimerEntry<T>> {
         self.dequeue.iter()
     }

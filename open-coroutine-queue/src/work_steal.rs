@@ -32,6 +32,7 @@ unsafe impl<T: Send + Debug> Send for WorkStealQueue<T> {}
 unsafe impl<T: Send + Debug> Sync for WorkStealQueue<T> {}
 
 impl<T: Debug> WorkStealQueue<T> {
+    #[must_use]
     pub fn new(local_queues: usize, local_capacity: usize) -> Self {
         WorkStealQueue {
             shared_queue: Injector::new(),
@@ -244,6 +245,7 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     /// assert_eq!(local1.pop_front(), None);
     /// assert_eq!(queue.pop(), None);
     /// ```
+    #[allow(clippy::cast_possible_truncation)]
     pub fn pop_front(&self) -> Option<T> {
         //每从本地弹出61次，就从全局队列弹出
         if self.tick() % 61 == 0 {
@@ -298,7 +300,7 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
                     for _ in 0..count {
                         match self.shared.pop() {
                             Some(item) => {
-                                self.queue.push(item).expect("steal to local queue failed!")
+                                self.queue.push(item).expect("steal to local queue failed!");
                             }
                             None => break,
                         }
