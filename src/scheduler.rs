@@ -165,8 +165,12 @@ impl Scheduler {
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn resume_syscall(&self, co_name: &'static str) {
+    pub fn resume_syscall(&self, co_name: usize) {
         unsafe {
+            let co_name = Box::leak(Box::new(std::ptr::read_unaligned(
+                (co_name as *const c_void).cast::<String>(),
+            )))
+            .as_str();
             if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
                 match coroutine.set_state(CoroutineState::Ready) {
                     CoroutineState::SystemCall(_) => {}

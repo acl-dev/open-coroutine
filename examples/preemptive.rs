@@ -1,7 +1,7 @@
 fn main() -> std::io::Result<()> {
     cfg_if::cfg_if! {
         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-            use open_coroutine_core_v2::scheduler::Scheduler;
+            use open_coroutine_core::scheduler::Scheduler;
             use std::ffi::c_void;
             use std::sync::{Arc, Condvar, Mutex};
             use std::time::Duration;
