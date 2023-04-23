@@ -10,6 +10,7 @@ pub struct Suspender<'s, Param, Yield>(&'s Yielder<Param, Yield>);
 thread_local! {
     static SUSPENDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
     static TIMESTAMP: Box<RefCell<u64>> = Box::new(RefCell::new(0));
+    static SYSCALL: Box<RefCell<&'static str>> = Box::new(RefCell::new(""));
 }
 
 impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
@@ -47,11 +48,25 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     pub(crate) fn timestamp() -> u64 {
-        TIMESTAMP.with(|boxed| *boxed.borrow_mut())
+        TIMESTAMP.with(|boxed| {
+            let val = *boxed.borrow_mut();
+            *boxed.borrow_mut() = 0;
+            val
+        })
     }
 
-    pub(crate) fn clean_timestamp() {
-        TIMESTAMP.with(|boxed| *boxed.borrow_mut() = 0);
+    fn init_syscall_name(syscall_name: &str) {
+        SYSCALL.with(|boxed| {
+            *boxed.borrow_mut() = Box::leak(Box::from(syscall_name));
+        });
+    }
+
+    pub(crate) fn syscall_name() -> &'static str {
+        SYSCALL.with(|boxed| {
+            let val = *boxed.borrow_mut();
+            *boxed.borrow_mut() = "";
+            val
+        })
     }
 
     pub fn suspend_with(&self, val: Yield) -> Param {
@@ -69,6 +84,12 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     pub fn delay_with(&self, val: Yield, time: Duration) -> Param {
         self.until_with(val, timer_utils::get_timeout_time(time))
     }
+
+    //只有框架级crate才需要使用此方法
+    pub fn syscall_with(&self, val: Yield, syscall_name: &str) -> Param {
+        Suspender::<Param, Yield>::init_syscall_name(syscall_name);
+        self.suspend_with(val)
+    }
 }
 
 impl<'s> Suspender<'s, (), ()> {
@@ -82,6 +103,11 @@ impl<'s> Suspender<'s, (), ()> {
 
     pub fn delay(&self, time: Duration) {
         self.delay_with((), time);
+    }
+
+    //只有框架级crate才需要使用此方法
+    pub fn syscall(&self, syscall_name: &str) {
+        self.syscall_with((), syscall_name);
     }
 }
 

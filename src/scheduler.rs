@@ -21,7 +21,6 @@ static QUEUE: Lazy<WorkStealQueue<SchedulableCoroutine>> = Lazy::new(WorkStealQu
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::new);
 
-#[allow(dead_code)]
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 #[allow(dead_code)]
@@ -67,7 +66,10 @@ impl Scheduler {
             f,
             crate::coroutine::default_stack_size(),
         )?;
-        coroutine.set_state(CoroutineState::Ready);
+        assert_eq!(
+            CoroutineState::Created,
+            coroutine.set_state(CoroutineState::Ready)
+        );
         let co_name = Box::leak(Box::from(coroutine.get_name()));
         self.ready.push_back(coroutine);
         Ok(co_name)
@@ -85,7 +87,10 @@ impl Scheduler {
                     if let Some(mut entry) = SUSPEND_TABLE.pop_front() {
                         for _ in 0..entry.len() {
                             if let Some(coroutine) = entry.pop_front() {
-                                coroutine.set_state(CoroutineState::Ready);
+                                match coroutine.set_state(CoroutineState::Ready) {
+                                    CoroutineState::Suspend(_) => {}
+                                    _ => panic!("unexpected state"),
+                                };
                                 //把到时间的协程加入就绪队列
                                 self.ready.push_back(coroutine);
                             }
@@ -130,8 +135,12 @@ impl Scheduler {
                                 self.ready.push_back(coroutine);
                             }
                         }
-                        CoroutineState::SystemCall => {
-                            todo!()
+                        CoroutineState::SystemCall(_syscall_name) => {
+                            //挂起协程到系统调用表
+                            let co_name = Box::leak(Box::from(coroutine.get_name()));
+                            unsafe {
+                                assert!(SYSTEM_CALL_TABLE.insert(co_name, coroutine).is_none());
+                            }
                         }
                         CoroutineState::CopyStack => {
                             todo!()
@@ -151,6 +160,19 @@ impl Scheduler {
                     }
                 }
                 None => return left_time,
+            }
+        }
+    }
+
+    //只有框架级crate才需要使用此方法
+    pub fn resume_syscall(&self, co_name: &'static str) {
+        unsafe {
+            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
+                match coroutine.set_state(CoroutineState::Ready) {
+                    CoroutineState::SystemCall(_) => {}
+                    _ => panic!("unexpected state"),
+                };
+                self.ready.push_back(coroutine);
             }
         }
     }

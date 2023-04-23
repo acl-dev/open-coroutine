@@ -48,8 +48,8 @@ pub enum CoroutineState {
     Running,
     ///被挂起，参数为开始执行的时间戳
     Suspend(u64),
-    ///执行系统调用
-    SystemCall,
+    ///执行系统调用，参数为系统调用名
+    SystemCall(&'static str),
     ///栈扩/缩容时
     CopyStack,
     ///执行用户函数完成
@@ -124,7 +124,10 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             let r = f(&suspender, p);
             Suspender::<Param, Yield>::clean_current();
             let current = Coroutine::<Param, Yield, Return>::current().unwrap();
-            current.set_state(CoroutineState::Finished);
+            assert_eq!(
+                CoroutineState::Running,
+                current.set_state(CoroutineState::Finished)
+            );
             _ = current
                 .result
                 .replace(MaybeUninit::new(ManuallyDrop::new(r)));
@@ -171,8 +174,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         self.state.get()
     }
 
-    pub fn set_state(&self, state: CoroutineState) {
-        self.state.set(state);
+    pub fn set_state(&self, state: CoroutineState) -> CoroutineState {
+        self.state.replace(state)
     }
 
     pub fn is_finished(&self) -> bool {
@@ -192,7 +195,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
 
     pub fn get_yield(&self) -> Option<Yield> {
         match self.get_state() {
-            CoroutineState::Suspend(_) => unsafe {
+            CoroutineState::SystemCall(_) | CoroutineState::Suspend(_) => unsafe {
                 let mut m = self.yields.borrow().assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             },
@@ -212,15 +215,22 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         if self.is_finished() {
             return CoroutineState::Finished;
         }
-        self.set_state(CoroutineState::Running);
+        match self.set_state(CoroutineState::Running) {
+            CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(0) => {}
+            _ => panic!("unexpected state"),
+        };
         Coroutine::<Param, Yield, Return>::init_current(self);
         let state = match self.sp.borrow_mut().resume(arg) {
             CoroutineResult::Return(_) => CoroutineState::Finished,
             CoroutineResult::Yield(y) => {
-                let state = CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
-                self.set_state(state);
                 _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
-                Suspender::<Yield, Param>::clean_timestamp();
+                let syscall_name = Suspender::<Yield, Param>::syscall_name();
+                let state = if syscall_name.is_empty() {
+                    CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp())
+                } else {
+                    CoroutineState::SystemCall(syscall_name)
+                };
+                assert_eq!(CoroutineState::Running, self.set_state(state));
                 state
             }
         };
@@ -286,6 +296,19 @@ mod tests {
             _ = suspender.suspend_with(2);
         });
         assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(Some(2), coroutine.get_yield());
+    }
+
+    #[test]
+    fn test_syscall() {
+        let coroutine = co!(|suspender, param| {
+            assert_eq!(1, param);
+            _ = suspender.syscall_with(2, "sleep");
+        });
+        assert_eq!(
+            CoroutineState::SystemCall("sleep"),
+            coroutine.resume_with(1)
+        );
         assert_eq!(Some(2), coroutine.get_yield());
     }
 
