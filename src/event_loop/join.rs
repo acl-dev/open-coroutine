@@ -65,47 +65,106 @@ impl JoinHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Condvar, Mutex};
 
     fn val(val: usize) -> &'static mut c_void {
         unsafe { std::mem::transmute(val) }
     }
 
     #[test]
-    fn join_test() {
-        let event_loop = EventLoop::new().unwrap();
-        let handle1 = event_loop
-            .submit(|_, _| {
-                println!("[coroutine1] launched");
-                val(1)
-            })
-            .expect("submit failed !");
-        let handle2 = event_loop
-            .submit(|_, _| {
-                println!("[coroutine2] launched");
-                val(2)
-            })
-            .expect("submit failed !");
-        assert_eq!(handle1.join().unwrap().unwrap() as *mut c_void as usize, 1);
-        assert_eq!(handle2.join().unwrap().unwrap() as *mut c_void as usize, 2);
+    fn join_test() -> std::io::Result<()> {
+        let pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let pair2 = Arc::clone(&pair);
+        let handler = std::thread::spawn(move || {
+            let event_loop = EventLoop::new().unwrap();
+            let handle1 = event_loop
+                .submit(|_, _| {
+                    println!("[coroutine1] launched");
+                    val(3)
+                })
+                .expect("submit failed !");
+            let handle2 = event_loop
+                .submit(|_, _| {
+                    println!("[coroutine2] launched");
+                    val(4)
+                })
+                .expect("submit failed !");
+            assert_eq!(handle1.join().unwrap().unwrap() as *mut c_void as usize, 3);
+            assert_eq!(handle2.join().unwrap().unwrap() as *mut c_void as usize, 4);
+
+            let (lock, cvar) = &*pair2;
+            let mut pending = lock.lock().unwrap();
+            *pending = false;
+            // notify the condvar that the value has changed.
+            cvar.notify_one();
+        });
+
+        // wait for the thread to start up
+        let (lock, cvar) = &*pair;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(3000),
+                |&mut pending| pending,
+            )
+            .unwrap();
+        if result.1.timed_out() {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "join failed",
+            ))
+        } else {
+            handler.join().unwrap();
+            Ok(())
+        }
     }
 
     #[test]
-    fn timed_join_test() {
-        let event_loop = EventLoop::new().unwrap();
-        let handle = event_loop
-            .submit(|_, _| {
-                println!("[coroutine3] launched");
-                val(3)
-            })
-            .expect("submit failed !");
-        let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
-        assert_eq!(
-            handle
-                .timeout_join(Duration::from_secs(1))
-                .unwrap()
-                .unwrap() as *mut c_void as usize,
-            3
-        );
+    fn timed_join_test() -> std::io::Result<()> {
+        let pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let pair2 = Arc::clone(&pair);
+        let handler = std::thread::spawn(move || {
+            let event_loop = EventLoop::new().unwrap();
+            let handle = event_loop
+                .submit(|_, _| {
+                    println!("[coroutine3] launched");
+                    val(5)
+                })
+                .expect("submit failed !");
+            let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+            assert_eq!(
+                handle
+                    .timeout_join(Duration::from_secs(1))
+                    .unwrap()
+                    .unwrap() as *mut c_void as usize,
+                5
+            );
+
+            let (lock, cvar) = &*pair2;
+            let mut pending = lock.lock().unwrap();
+            *pending = false;
+            // notify the condvar that the value has changed.
+            cvar.notify_one();
+        });
+
+        // wait for the thread to start up
+        let (lock, cvar) = &*pair;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(3000),
+                |&mut pending| pending,
+            )
+            .unwrap();
+        if result.1.timed_out() {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "timed join failed",
+            ))
+        } else {
+            handler.join().unwrap();
+            Ok(())
+        }
     }
 }

@@ -1,4 +1,5 @@
 use crate::coroutine::CoroutineState;
+use crate::event_loop::EventLoops;
 use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::{Lazy, OnceCell};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -93,11 +94,12 @@ impl Monitor {
         //通过这种方式来初始化monitor线程
         _ = MONITOR.get_or_init(|| {
             std::thread::spawn(|| {
+                let event_loop = EventLoops::monitor();
                 let monitor = Monitor::global();
                 while monitor.flag.load(Ordering::Acquire) {
                     monitor.signal();
-                    //尽量至少wait 1ms
-                    std::thread::sleep(Duration::from_millis(1));
+                    //monitor线程不执行协程计算任务，每次循环至少wait 1ms
+                    _ = event_loop.wait_just(Some(Duration::from_millis(1)));
                 }
             })
         });
@@ -111,9 +113,7 @@ impl Monitor {
         unsafe { &mut GLOBAL }
     }
 
-    /// 只在测试时使用
-    #[allow(dead_code)]
-    pub(crate) fn stop() {
+    pub fn stop() {
         Monitor::global().flag.store(false, Ordering::Release);
     }
 
