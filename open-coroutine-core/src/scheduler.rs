@@ -60,11 +60,12 @@ impl Scheduler {
     pub fn submit(
         &self,
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+        stack_size: Option<usize>,
     ) -> std::io::Result<&'static str> {
         let coroutine = SchedulableCoroutine::new(
             Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
             f,
-            crate::coroutine::default_stack_size(),
+            stack_size.unwrap_or(crate::coroutine::default_stack_size()),
         )?;
         assert_eq!(
             CoroutineState::Created,
@@ -203,55 +204,73 @@ mod tests {
     #[test]
     fn test_simple() {
         let scheduler = Scheduler::new();
-        _ = scheduler.submit(|_, _| {
-            println!("1");
-            result(1)
-        });
-        _ = scheduler.submit(|_, _| {
-            println!("2");
-            result(2)
-        });
+        _ = scheduler.submit(
+            |_, _| {
+                println!("1");
+                result(1)
+            },
+            None,
+        );
+        _ = scheduler.submit(
+            |_, _| {
+                println!("2");
+                result(2)
+            },
+            None,
+        );
         scheduler.try_schedule();
     }
 
     #[test]
     fn test_backtrace() {
         let scheduler = Scheduler::new();
-        _ = scheduler.submit(|_, _| result(1));
-        _ = scheduler.submit(|_, _| {
-            println!("{:?}", backtrace::Backtrace::new());
-            result(2)
-        });
+        _ = scheduler.submit(|_, _| result(1), None);
+        _ = scheduler.submit(
+            |_, _| {
+                println!("{:?}", backtrace::Backtrace::new());
+                result(2)
+            },
+            None,
+        );
         scheduler.try_schedule();
     }
 
     #[test]
     fn with_suspend() {
         let scheduler = Scheduler::new();
-        _ = scheduler.submit(|suspender, _| {
-            println!("[coroutine1] suspend");
-            suspender.suspend();
-            println!("[coroutine1] back");
-            result(1)
-        });
-        _ = scheduler.submit(|suspender, _| {
-            println!("[coroutine2] suspend");
-            suspender.suspend();
-            println!("[coroutine2] back");
-            result(2)
-        });
+        _ = scheduler.submit(
+            |suspender, _| {
+                println!("[coroutine1] suspend");
+                suspender.suspend();
+                println!("[coroutine1] back");
+                result(1)
+            },
+            None,
+        );
+        _ = scheduler.submit(
+            |suspender, _| {
+                println!("[coroutine2] suspend");
+                suspender.suspend();
+                println!("[coroutine2] back");
+                result(2)
+            },
+            None,
+        );
         scheduler.try_schedule();
     }
 
     #[test]
     fn with_delay() {
         let scheduler = Scheduler::new();
-        _ = scheduler.submit(|suspender, _| {
-            println!("[coroutine] delay");
-            suspender.delay(Duration::from_millis(100));
-            println!("[coroutine] back");
-            result(1)
-        });
+        _ = scheduler.submit(
+            |suspender, _| {
+                println!("[coroutine] delay");
+                suspender.delay(Duration::from_millis(100));
+                println!("[coroutine] back");
+                result(1)
+            },
+            None,
+        );
         scheduler.try_schedule();
         std::thread::sleep(Duration::from_millis(100));
         scheduler.try_schedule();

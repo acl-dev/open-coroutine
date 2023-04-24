@@ -5,10 +5,10 @@ use std::time::Duration;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct JoinHandle(Option<*const EventLoop>, *const c_char);
+pub struct JoinHandle(*const EventLoop, *const c_char);
 
 impl JoinHandle {
-    pub(crate) fn new(event_loop: Option<*const EventLoop>, string: &str) -> Self {
+    pub(crate) fn new(event_loop: *const EventLoop, string: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(CString::new(string).unwrap()));
         let cstr: &'static CStr = boxed.as_c_str();
         JoinHandle(event_loop, cstr.as_ptr())
@@ -16,7 +16,7 @@ impl JoinHandle {
 
     #[must_use]
     pub fn error() -> Self {
-        JoinHandle::new(None, "")
+        JoinHandle::new(std::ptr::null(), "")
     }
 
     pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
@@ -31,7 +31,7 @@ impl JoinHandle {
         if co_name.is_empty() {
             return Ok(None);
         }
-        let event_loop = unsafe { &*self.0.unwrap() };
+        let event_loop = unsafe { &*self.0 };
         let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             let left_time = timeout_time
@@ -52,7 +52,7 @@ impl JoinHandle {
         if co_name.is_empty() {
             return Ok(None);
         }
-        let event_loop = unsafe { &*self.0.unwrap() };
+        let event_loop = unsafe { &*self.0 };
         let mut result = Scheduler::get_result(co_name);
         while result.is_none() {
             event_loop.wait_event(Some(Duration::from_millis(10)))?;
@@ -78,16 +78,22 @@ mod tests {
         let handler = std::thread::spawn(move || {
             let event_loop = EventLoop::new().unwrap();
             let handle1 = event_loop
-                .submit(|_, _| {
-                    println!("[coroutine1] launched");
-                    val(3)
-                })
+                .submit(
+                    |_, _| {
+                        println!("[coroutine1] launched");
+                        val(3)
+                    },
+                    None,
+                )
                 .expect("submit failed !");
             let handle2 = event_loop
-                .submit(|_, _| {
-                    println!("[coroutine2] launched");
-                    val(4)
-                })
+                .submit(
+                    |_, _| {
+                        println!("[coroutine2] launched");
+                        val(4)
+                    },
+                    None,
+                )
                 .expect("submit failed !");
             assert_eq!(handle1.join().unwrap().unwrap() as *mut c_void as usize, 3);
             assert_eq!(handle2.join().unwrap().unwrap() as *mut c_void as usize, 4);
@@ -126,10 +132,13 @@ mod tests {
         let handler = std::thread::spawn(move || {
             let event_loop = EventLoop::new().unwrap();
             let handle = event_loop
-                .submit(|_, _| {
-                    println!("[coroutine3] launched");
-                    val(5)
-                })
+                .submit(
+                    |_, _| {
+                        println!("[coroutine3] launched");
+                        val(5)
+                    },
+                    None,
+                )
                 .expect("submit failed !");
             let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);

@@ -18,6 +18,10 @@ pub mod interest;
 
 mod selector;
 
+/// 做C兼容时会用到
+pub type UserFunc =
+    extern "C" fn(*const Suspender<(), ()>, &'static mut c_void) -> &'static mut c_void;
+
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
 
@@ -84,8 +88,18 @@ impl EventLoops {
 
     pub fn submit(
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+        stack_size: Option<usize>,
     ) -> std::io::Result<JoinHandle> {
-        EventLoops::next().submit(f)
+        EventLoops::start();
+        EventLoops::next().submit(f, stack_size)
+    }
+
+    pub fn try_timeout_schedule(timeout_time: u64) -> std::io::Result<u64> {
+        EventLoops::next().try_timeout_schedule(timeout_time)
+    }
+
+    pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
+        EventLoops::next().wait_event(timeout)
     }
 
     pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
@@ -142,10 +156,17 @@ impl EventLoop {
     pub fn submit(
         &self,
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+        stack_size: Option<usize>,
     ) -> std::io::Result<JoinHandle> {
         self.scheduler
-            .submit(f)
-            .map(|co_name| JoinHandle::new(Some(self), co_name))
+            .submit(f, stack_size)
+            .map(|co_name| JoinHandle::new(self, co_name))
+    }
+
+    pub fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
+        let result = self.scheduler.try_timeout_schedule(timeout_time);
+        self.wait_just(Some(Duration::ZERO))?;
+        Ok(result)
     }
 
     #[allow(clippy::ptr_as_ptr)]
