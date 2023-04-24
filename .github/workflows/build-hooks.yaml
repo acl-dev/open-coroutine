@@ -1,4 +1,4 @@
-name: build open_coroutine_hooks
+name: build open-coroutine-hooks
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   linux:
-    name: build open_coroutine_hooks on linux
+    name: build open-coroutine-hooks on linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -25,14 +25,14 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           /home/runner/.cargo/bin/cargo clean
-      - name: cargo build --release -p open_coroutine_hooks
+      - name: cargo build --release -p open-coroutine-hooks
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release -p open_coroutine_hooks
+          args: --release -p open-coroutine-hooks
       - uses: actions/upload-artifact@v2
         with:
-          name: open_coroutine_hooks
+          name: open-coroutine-hooks
           path: target/release/libopen_coroutine_hooks.so
           if-no-files-found: error
 
@@ -51,14 +51,14 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           /Users/runner/.cargo/bin/cargo clean
-      - name: cargo build --release -p open_coroutine_hooks
+      - name: cargo build --release -p open-coroutine-hooks
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release -p open_coroutine_hooks
+          args: --release -p open-coroutine-hooks
       - uses: actions/upload-artifact@v2
         with:
-          name: open_coroutine_hooks
+          name: open-coroutine-hooks
           path: target/release/libopen_coroutine_hooks.dylib
           if-no-files-found: error
 
@@ -77,18 +77,18 @@ jobs:
 #        run: |
 #          cd ${{ github.workspace }}
 #          C://Users//runneradmin//.cargo//bin//cargo.exe clean
-#      - name: cargo +nightly build --release -p open_coroutine_hooks
+#      - name: cargo +nightly build --release -p open-coroutine-hooks
 #        uses: actions-rs/cargo@v1
 #        with:
 #          command: build
-#          args: --release -p open_coroutine_hooks
+#          args: --release -p open-coroutine-hooks
 #      - uses: actions/upload-artifact@v2
 #        with:
-#          name: open_coroutine_hooks
+#          name: open-coroutine-hooks
 #          path: target/release/open_coroutine_hooks.dll
 #          if-no-files-found: error
 #      - uses: actions/upload-artifact@v2
 #        with:
-#          name: open_coroutine_hooks
+#          name: open-coroutine-hooks
 #          path: target/release/open_coroutine_hooks.dll.lib
 #          if-no-files-found: error
