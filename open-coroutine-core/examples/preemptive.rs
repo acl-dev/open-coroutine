@@ -24,7 +24,7 @@ fn main() -> std::io::Result<()> {
                     }
                     println!("loop1 end");
                     result(1)
-                });
+                }, None);
                 _ = scheduler.submit(|_, _| {
                     println!("coroutine2 launched");
                     while unsafe { TEST_FLAG2 } {
@@ -34,12 +34,12 @@ fn main() -> std::io::Result<()> {
                     println!("loop2 end");
                     unsafe { TEST_FLAG1 = false };
                     result(2)
-                });
+                }, None);
                 _ = scheduler.submit(|_, _| {
                     println!("coroutine3 launched");
                     unsafe { TEST_FLAG2 = false };
                     result(3)
-                });
+                }, None);
                 scheduler.try_schedule();
 
                 let (lock, cvar) = &*pair2;
