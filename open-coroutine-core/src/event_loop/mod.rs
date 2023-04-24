@@ -99,7 +99,18 @@ impl EventLoops {
     }
 
     pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
-        EventLoops::next().wait_event(timeout)
+        let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
+        let event_loop = EventLoops::next();
+        loop {
+            let left_time = timeout_time
+                .saturating_sub(open_coroutine_timer::now())
+                .min(10_000_000);
+            if left_time == 0 {
+                //timeout
+                return Ok(());
+            }
+            event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
+        }
     }
 
     pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
@@ -164,9 +175,9 @@ impl EventLoop {
     }
 
     pub fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
-        let result = self.scheduler.try_timeout_schedule(timeout_time);
+        _ = self.scheduler.try_timeout_schedule(timeout_time);
         self.wait_just(Some(Duration::ZERO))?;
-        Ok(result)
+        Ok(timeout_time.saturating_sub(open_coroutine_timer::now()))
     }
 
     #[allow(clippy::ptr_as_ptr)]
