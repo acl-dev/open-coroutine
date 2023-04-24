@@ -45,3 +45,33 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
+
+pub use open_coroutine_macros::*;
+
+pub mod join;
+
+pub mod coroutine;
+
+#[allow(dead_code)]
+extern "C" {
+    fn init_hook();
+
+    fn try_timed_schedule(ns_time: u64) -> libc::c_int;
+
+    fn timed_schedule(ns_time: u64) -> libc::c_int;
+}
+
+pub fn init() {
+    unsafe { init_hook() };
+    println!("open-coroutine inited !");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_link() {
+        init();
+    }
+}
