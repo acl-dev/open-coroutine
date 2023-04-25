@@ -9,7 +9,7 @@ extern "C" {
 }
 
 #[allow(dead_code)]
-fn co<F, P: 'static, R: 'static>(f: F, param: P, stack_size: usize) -> JoinHandle
+pub fn co<F, P: 'static, R: 'static>(f: F, param: P, stack_size: usize) -> JoinHandle
 where
     F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
 {

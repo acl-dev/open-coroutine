@@ -38,25 +38,23 @@ static EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCe
 static EVENT_LOOP_STARTED: Lazy<AtomicBool> = Lazy::new(AtomicBool::default);
 
 impl EventLoops {
-    fn next() -> &'static mut EventLoop {
+    fn next(skip_monitor: bool) -> &'static mut EventLoop {
         unsafe {
             let index = INDEX.fetch_add(1, Ordering::SeqCst);
             if index == usize::MAX {
                 INDEX.store(1, Ordering::SeqCst);
             }
-            EVENT_LOOPS.get_mut(index % EVENT_LOOPS.len()).unwrap()
+            if skip_monitor && index % EVENT_LOOPS.len() == 0 {
+                EVENT_LOOPS.get_mut(1).unwrap()
+            } else {
+                EVENT_LOOPS.get_mut(index % EVENT_LOOPS.len()).unwrap()
+            }
         }
     }
 
     pub(crate) fn monitor() -> &'static mut EventLoop {
-        unsafe {
-            let index = INDEX.fetch_add(1, Ordering::SeqCst);
-            if index == usize::MAX {
-                INDEX.store(1, Ordering::SeqCst);
-            }
-            //monitor线程的EventLoop固定
-            EVENT_LOOPS.get_mut(0).unwrap()
-        }
+        //monitor线程的EventLoop固定
+        unsafe { EVENT_LOOPS.get_mut(0).unwrap() }
     }
 
     pub fn start() {
@@ -69,7 +67,7 @@ impl EventLoops {
                 (1..unsafe { EVENT_LOOPS.len() })
                     .map(|_| {
                         std::thread::spawn(|| {
-                            let event_loop = EventLoops::next();
+                            let event_loop = EventLoops::next(true);
                             while EVENT_LOOP_STARTED.load(Ordering::Acquire) {
                                 _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                             }
@@ -91,16 +89,12 @@ impl EventLoops {
         stack_size: Option<usize>,
     ) -> std::io::Result<JoinHandle> {
         EventLoops::start();
-        EventLoops::next().submit(f, stack_size)
-    }
-
-    pub fn try_timeout_schedule(timeout_time: u64) -> std::io::Result<u64> {
-        EventLoops::next().try_timeout_schedule(timeout_time)
+        EventLoops::next(true).submit(f, stack_size)
     }
 
     pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
         let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
-        let event_loop = EventLoops::next();
+        let event_loop = EventLoops::next(false);
         loop {
             let left_time = timeout_time
                 .saturating_sub(open_coroutine_timer::now())
@@ -114,28 +108,50 @@ impl EventLoops {
     }
 
     pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
-        EventLoops::next().wait_read_event(fd, timeout)
+        let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
+        let event_loop = EventLoops::next(false);
+        loop {
+            let left_time = timeout_time
+                .saturating_sub(open_coroutine_timer::now())
+                .min(10_000_000);
+            if left_time == 0 {
+                //timeout
+                return Ok(());
+            }
+            event_loop.wait_read_event(fd, Some(Duration::from_nanos(left_time)))?;
+        }
     }
 
     pub fn wait_write_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
-        EventLoops::next().wait_write_event(fd, timeout)
+        let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
+        let event_loop = EventLoops::next(false);
+        loop {
+            let left_time = timeout_time
+                .saturating_sub(open_coroutine_timer::now())
+                .min(10_000_000);
+            if left_time == 0 {
+                //timeout
+                return Ok(());
+            }
+            event_loop.wait_write_event(fd, Some(Duration::from_nanos(left_time)))?;
+        }
     }
 
     pub fn del_event(fd: libc::c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
-            _ = EventLoops::next().del_event(fd);
+            _ = EventLoops::next(false).del_event(fd);
         });
     }
 
     pub fn del_read_event(fd: libc::c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
-            _ = EventLoops::next().del_read_event(fd);
+            _ = EventLoops::next(false).del_read_event(fd);
         });
     }
 
     pub fn del_write_event(fd: libc::c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
-            _ = EventLoops::next().del_write_event(fd);
+            _ = EventLoops::next(false).del_write_event(fd);
         });
     }
 }

@@ -45,4 +45,14 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
-pub mod common;
+
+#[no_mangle]
+pub extern "C" fn init_hook() {
+    //啥都不做，只是为了保证hook的函数能够被重定向到
+    //防止压根不调用coroutine_crate的情况
+}
+
+pub mod coroutine;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref, clippy::similar_names)]
+pub mod unix;

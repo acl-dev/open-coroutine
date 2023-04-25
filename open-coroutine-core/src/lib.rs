@@ -49,6 +49,20 @@ pub mod coroutine;
 
 pub mod scheduler;
 
+#[macro_export]
+macro_rules! unbreakable {
+    ( $f: expr , $syscall: expr ) => {
+        if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
+            let state = co.set_state($crate::coroutine::CoroutineState::SystemCall($syscall));
+            let r = $f;
+            _ = co.set_state(state);
+            r
+        } else {
+            $f
+        }
+    };
+}
+
 #[cfg(all(unix, feature = "preemptive-schedule"))]
 mod monitor;
 
