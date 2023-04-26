@@ -41,10 +41,8 @@ impl EventLoops {
     fn next(skip_monitor: bool) -> &'static mut EventLoop {
         unsafe {
             let index = INDEX.fetch_add(1, Ordering::SeqCst);
-            if index == usize::MAX {
-                INDEX.store(1, Ordering::SeqCst);
-            }
             if skip_monitor && index % EVENT_LOOPS.len() == 0 {
+                INDEX.store(1, Ordering::SeqCst);
                 EVENT_LOOPS.get_mut(1).unwrap()
             } else {
                 EVENT_LOOPS.get_mut(index % EVENT_LOOPS.len()).unwrap()
