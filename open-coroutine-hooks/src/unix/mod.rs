@@ -1,4 +1,21 @@
+// check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
+#[macro_export]
+macro_rules! init_hook {
+    ( $symbol:literal ) => {
+        once_cell::sync::Lazy::new(|| unsafe {
+            let syscall = $symbol;
+            let symbol = std::ffi::CString::new(String::from(syscall))
+                .unwrap_or_else(|_| panic!("can not transfer \"{syscall}\" to CString"));
+            let ptr = libc::dlsym(libc::RTLD_NEXT, symbol.as_ptr());
+            assert!(!ptr.is_null(), "system call \"{syscall}\" not found !");
+            std::mem::transmute(ptr)
+        })
+    };
+}
+
 pub mod sleep;
+
+pub mod socket;
 
 extern "C" {
     #[cfg(not(any(target_os = "dragonfly", target_os = "vxworks")))]
@@ -44,4 +61,44 @@ pub extern "C" fn reset_errno() {
 
 pub extern "C" fn set_errno(errno: libc::c_int) {
     unsafe { errno_location().write(errno) }
+}
+
+extern "C" fn set_non_blocking(socket: libc::c_int) {
+    assert!(set_non_blocking_flag(socket, true));
+}
+
+extern "C" fn set_blocking(socket: libc::c_int) {
+    assert!(set_non_blocking_flag(socket, false));
+}
+
+extern "C" fn set_non_blocking_flag(socket: libc::c_int, on: bool) -> bool {
+    let flags = unsafe { libc::fcntl(socket, libc::F_GETFL) };
+    if flags < 0 {
+        return false;
+    }
+    unsafe {
+        libc::fcntl(
+            socket,
+            libc::F_SETFL,
+            if on {
+                flags | libc::O_NONBLOCK
+            } else {
+                flags & !libc::O_NONBLOCK
+            },
+        ) == 0
+    }
+}
+
+#[must_use]
+pub extern "C" fn is_blocking(socket: libc::c_int) -> bool {
+    !is_non_blocking(socket)
+}
+
+#[must_use]
+pub extern "C" fn is_non_blocking(socket: libc::c_int) -> bool {
+    let flags = unsafe { libc::fcntl(socket, libc::F_GETFL) };
+    if flags < 0 {
+        return false;
+    }
+    (flags & libc::O_NONBLOCK) != 0
 }
