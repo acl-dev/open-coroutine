@@ -153,12 +153,12 @@ impl Monitor {
         if let Some(entry) = Monitor::global().task.get_entry(time) {
             unsafe {
                 let pthread = libc::pthread_self();
-                assert!(entry
-                    .remove(&TaskNode {
+                if !entry.is_empty() {
+                    _ = entry.remove(&TaskNode {
                         pthread,
                         coroutine: None,
-                    })
-                    .is_some());
+                    });
+                }
             }
         }
     }

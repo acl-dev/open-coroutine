@@ -54,5 +54,5 @@ pub extern "C" fn init_hook() {
 
 pub mod coroutine;
 
-#[allow(clippy::not_unsafe_ptr_arg_deref, clippy::similar_names)]
+#[allow(dead_code, clippy::not_unsafe_ptr_arg_deref, clippy::similar_names)]
 pub mod unix;
