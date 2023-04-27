@@ -88,9 +88,10 @@ impl Scheduler {
                     if let Some(mut entry) = SUSPEND_TABLE.pop_front() {
                         for _ in 0..entry.len() {
                             if let Some(coroutine) = entry.pop_front() {
-                                match coroutine.set_state(CoroutineState::Ready) {
+                                let old = coroutine.set_state(CoroutineState::Ready);
+                                match old {
                                     CoroutineState::Suspend(_) => {}
-                                    _ => panic!("unexpected state"),
+                                    _ => panic!("unexpected state {old}"),
                                 };
                                 //把到时间的协程加入就绪队列
                                 self.ready.push_back(coroutine);
@@ -166,17 +167,9 @@ impl Scheduler {
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn resume_syscall(&self, co_name: usize) {
+    pub fn resume_syscall(&self, co_name: &'static str) {
         unsafe {
-            let co_name = Box::leak(Box::new(std::ptr::read_unaligned(
-                (co_name as *const c_void).cast::<String>(),
-            )))
-            .as_str();
             if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
-                match coroutine.set_state(CoroutineState::Ready) {
-                    CoroutineState::SystemCall(_) => {}
-                    _ => panic!("unexpected state"),
-                };
                 self.ready.push_back(coroutine);
             }
         }

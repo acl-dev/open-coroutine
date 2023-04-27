@@ -4,7 +4,7 @@ use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -54,6 +54,12 @@ pub enum CoroutineState {
     CopyStack,
     ///执行用户函数完成
     Finished,
+}
+
+impl Display for CoroutineState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
 }
 
 #[repr(C)]
@@ -124,10 +130,6 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             let r = f(&suspender, p);
             Suspender::<Param, Yield>::clean_current();
             let current = Coroutine::<Param, Yield, Return>::current().unwrap();
-            assert_eq!(
-                CoroutineState::Running,
-                current.set_state(CoroutineState::Finished)
-            );
             _ = current
                 .result
                 .replace(MaybeUninit::new(ManuallyDrop::new(r)));
@@ -212,35 +214,42 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     }
 
     pub fn resume_with(&self, arg: Param) -> CoroutineState {
-        if self.is_finished() {
-            return CoroutineState::Finished;
-        }
-        match self.set_state(CoroutineState::Running) {
-            CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(0) => {}
-            _ => panic!("unexpected state"),
+        let mut current = self.get_state();
+        match current {
+            CoroutineState::Finished => {
+                return CoroutineState::Finished;
+            }
+            CoroutineState::SystemCall(_) => {}
+            CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(0) => {
+                current = CoroutineState::Running;
+                _ = self.set_state(current);
+            }
+            _ => panic!("unexpected state {current}"),
         };
         Coroutine::<Param, Yield, Return>::init_current(self);
         let state = match self.sp.borrow_mut().resume(arg) {
-            CoroutineResult::Return(_) => CoroutineState::Finished,
+            CoroutineResult::Return(()) => {
+                let state = CoroutineState::Finished;
+                assert_eq!(CoroutineState::Running, self.set_state(state));
+                state
+            }
             CoroutineResult::Yield(y) => {
                 _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
-                match self.get_state() {
+                let mut current = self.get_state();
+                match current {
                     CoroutineState::Running => {
                         let syscall_name = Suspender::<Yield, Param>::syscall_name();
-                        let state = if syscall_name.is_empty() {
-                            CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp())
-                        } else {
-                            //应该仅出现在测试的情况
-                            CoroutineState::SystemCall(syscall_name)
-                        };
-                        assert_eq!(CoroutineState::Running, self.set_state(state));
-                        state
+                        if syscall_name.is_empty() {
+                            current =
+                                CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
+                            assert_eq!(CoroutineState::Running, self.set_state(current));
+                        }
+                        current
                     }
                     CoroutineState::SystemCall(syscall_name) => {
                         CoroutineState::SystemCall(syscall_name)
                     }
-                    CoroutineState::CopyStack => todo!("unsupported now"),
-                    _ => panic!("unexpected state"),
+                    _ => panic!("unexpected state {current}"),
                 }
             }
         };
@@ -288,6 +297,7 @@ impl<'c, Param, Yield, Return> Ord for Coroutine<'c, Param, Yield, Return> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::unbreakable;
 
     #[test]
     fn test_return() {
@@ -313,13 +323,30 @@ mod tests {
     fn test_syscall() {
         let coroutine = co!(|suspender, param| {
             assert_eq!(1, param);
-            _ = suspender.syscall_with(2, "sleep");
+            unbreakable!(
+                {
+                    assert_eq!(3, suspender.suspend_with(2));
+                    assert_eq!(5, suspender.suspend_with(4));
+                },
+                "sleep"
+            );
+            if let Some(co) = Coroutine::<i32, i32, i32>::current() {
+                assert_eq!(CoroutineState::Running, co.get_state());
+            }
+            6
         });
         assert_eq!(
             CoroutineState::SystemCall("sleep"),
             coroutine.resume_with(1)
         );
         assert_eq!(Some(2), coroutine.get_yield());
+        assert_eq!(
+            CoroutineState::SystemCall("sleep"),
+            coroutine.resume_with(3)
+        );
+        assert_eq!(Some(4), coroutine.get_yield());
+        assert_eq!(CoroutineState::Finished, coroutine.resume_with(5));
+        assert_eq!(Some(6), coroutine.get_result());
     }
 
     #[test]
