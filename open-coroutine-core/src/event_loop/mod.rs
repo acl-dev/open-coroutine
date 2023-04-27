@@ -334,7 +334,7 @@ impl EventLoop {
         self.add_read_event(fd)?;
         if let Some(suspender) = Suspender::<(), ()>::current() {
             //让出当前协程的执行权
-            suspender.syscall("unknown");
+            suspender.suspend();
         }
         self.wait_event(timeout)
     }
@@ -347,7 +347,7 @@ impl EventLoop {
         self.add_write_event(fd)?;
         if let Some(suspender) = Suspender::<(), ()>::current() {
             //让出当前协程的执行权
-            suspender.syscall("unknown");
+            suspender.suspend();
         }
         self.wait_event(timeout)
     }

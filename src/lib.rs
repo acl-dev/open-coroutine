@@ -283,7 +283,6 @@ mod tests {
                     }
                 },
                 stream,
-                4096,
             );
         }
     }
@@ -355,7 +354,6 @@ mod tests {
                 println!("coroutine client closed");
             },
             port,
-            4096,
         );
     }
 

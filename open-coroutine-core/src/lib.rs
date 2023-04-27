@@ -54,8 +54,12 @@ macro_rules! unbreakable {
     ( $f: expr , $syscall: expr ) => {
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
             let state = co.set_state($crate::coroutine::CoroutineState::SystemCall($syscall));
+            assert_eq!($crate::coroutine::CoroutineState::Running, state);
             let r = $f;
-            _ = co.set_state(state);
+            match co.set_state(state) {
+                $crate::coroutine::CoroutineState::SystemCall(_) => {}
+                _ => panic!("unexpected state"),
+            };
             r
         } else {
             $f
