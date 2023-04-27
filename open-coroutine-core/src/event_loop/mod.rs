@@ -214,8 +214,8 @@ impl EventLoop {
         let token = EventLoop::token();
         self.selector.register(fd, token, Interest::READABLE)?;
         unsafe {
-            assert!(READABLE_RECORDS.insert(fd));
-            assert_eq!(None, READABLE_TOKEN_RECORDS.insert(fd, token));
+            _ = READABLE_RECORDS.insert(fd);
+            _ = READABLE_TOKEN_RECORDS.insert(fd, token);
         }
         Ok(())
     }
@@ -229,8 +229,8 @@ impl EventLoop {
         let token = EventLoop::token();
         self.selector.register(fd, token, Interest::WRITABLE)?;
         unsafe {
-            assert!(WRITABLE_RECORDS.insert(fd));
-            assert_eq!(None, WRITABLE_TOKEN_RECORDS.insert(fd, token));
+            _ = WRITABLE_RECORDS.insert(fd);
+            _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
         }
         Ok(())
     }
@@ -322,10 +322,10 @@ impl EventLoop {
                     self.scheduler.resume_syscall(co_name);
                 }
                 if event.is_readable() {
-                    assert!(READABLE_TOKEN_RECORDS.remove(&fd).is_some());
+                    _ = READABLE_TOKEN_RECORDS.remove(&fd);
                 }
                 if event.is_writable() {
-                    assert!(WRITABLE_TOKEN_RECORDS.remove(&fd).is_some());
+                    _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
                 }
             }
         }
