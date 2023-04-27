@@ -6,7 +6,7 @@ use crate::event_loop::selector::Selector;
 use crate::scheduler::{SchedulableCoroutine, Scheduler};
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::{HashMap, HashSet};
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -194,11 +194,12 @@ impl EventLoop {
         Ok(timeout_time.saturating_sub(open_coroutine_timer::now()))
     }
 
-    #[allow(clippy::ptr_as_ptr)]
     fn token() -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
-            let co_name: &'static String = Box::leak(Box::from(String::from(co.get_name())));
-            co_name as *const String as *const _ as *const c_void as usize
+            let boxed: &'static mut CString =
+                Box::leak(Box::from(CString::new(co.get_name()).unwrap()));
+            let cstr: &'static CStr = boxed.as_c_str();
+            cstr.as_ptr().cast::<c_void>() as usize
         } else {
             0
         }
@@ -313,8 +314,13 @@ impl EventLoop {
         for event in events.iter() {
             let fd = event.fd();
             let token = event.token();
-            self.scheduler.resume_syscall(token);
             unsafe {
+                if token != 0 {
+                    let co_name = CStr::from_ptr((token as *const c_void).cast::<c_char>())
+                        .to_str()
+                        .unwrap();
+                    self.scheduler.resume_syscall(co_name);
+                }
                 if event.is_readable() {
                     assert!(READABLE_TOKEN_RECORDS.remove(&fd).is_some());
                 }
