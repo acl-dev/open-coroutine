@@ -224,14 +224,24 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             CoroutineResult::Return(_) => CoroutineState::Finished,
             CoroutineResult::Yield(y) => {
                 _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
-                let syscall_name = Suspender::<Yield, Param>::syscall_name();
-                let state = if syscall_name.is_empty() {
-                    CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp())
-                } else {
-                    CoroutineState::SystemCall(syscall_name)
-                };
-                assert_eq!(CoroutineState::Running, self.set_state(state));
-                state
+                match self.get_state() {
+                    CoroutineState::Running => {
+                        let syscall_name = Suspender::<Yield, Param>::syscall_name();
+                        let state = if syscall_name.is_empty() {
+                            CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp())
+                        } else {
+                            //应该仅出现在测试的情况
+                            CoroutineState::SystemCall(syscall_name)
+                        };
+                        assert_eq!(CoroutineState::Running, self.set_state(state));
+                        state
+                    }
+                    CoroutineState::SystemCall(syscall_name) => {
+                        CoroutineState::SystemCall(syscall_name)
+                    }
+                    CoroutineState::CopyStack => todo!("unsupported now"),
+                    _ => panic!("unexpected state"),
+                }
             }
         };
         Coroutine::<Param, Yield, Return>::clean_current();
