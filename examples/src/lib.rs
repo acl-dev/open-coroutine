@@ -11,7 +11,6 @@ fn crate_co(input: i32) {
             println!("[coroutine] launched param:{}", param);
         },
         input,
-        4096,
     );
 }
 
