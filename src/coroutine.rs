@@ -63,7 +63,7 @@ mod tests {
                 input
             },
             1,
-            4096,
+            1024 * 1024,
         );
         let handler2 = co!(
             |_, input| {

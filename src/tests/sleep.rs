@@ -14,14 +14,12 @@ fn hook_test(millis: u64) {
             println!("[coroutine1] launched");
         },
         (),
-        4096,
     );
     _ = co!(
         |_, _| {
             println!("[coroutine2] launched");
         },
         (),
-        4096,
     );
     let start = now();
     std::thread::sleep(Duration::from_millis(millis));
@@ -39,7 +37,6 @@ fn hook_test_co(millis: u64) {
             println!("[coroutine1] launched");
         },
         (),
-        4096,
     );
     _ = co!(
         |_, _| {
@@ -47,7 +44,6 @@ fn hook_test_co(millis: u64) {
             println!("[coroutine2] launched");
         },
         (),
-        4096,
     );
     std::thread::sleep(Duration::from_millis(millis + 500));
 }
