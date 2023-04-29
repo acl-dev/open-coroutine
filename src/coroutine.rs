@@ -43,7 +43,8 @@ macro_rules! co {
         $crate::coroutine::co(
             $f,
             $param,
-            open_coroutine_core::coroutine::default_stack_size(),
+            //min stack size for backtrace
+            64 * 1024,
         )
     }};
     ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{

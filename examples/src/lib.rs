@@ -1,4 +1,4 @@
-use super::*;
+use open_coroutine::co;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,17 +15,17 @@ fn crate_co(input: i32) {
     );
 }
 
-unsafe fn crate_server(
+pub fn crate_server(
     port: u16,
     server_started: Arc<AtomicBool>,
     server_finished: Arc<(Mutex<bool>, Condvar)>,
 ) {
     //invoke by libc::listen
     crate_co(1);
-    let mut data: [u8; 512] = std::mem::zeroed();
+    let mut data: [u8; 512] = unsafe { std::mem::zeroed() };
     data[511] = b'\n';
     let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
-        .expect(&format!("bind to 127.0.0.1:{port} failed !"));
+        .unwrap_or_else(|_| panic!("bind to 127.0.0.1:{port} failed !"));
     server_started.store(true, Ordering::Release);
     //invoke by libc::accept
     crate_co(2);
@@ -61,15 +61,15 @@ unsafe fn crate_server(
     }
 }
 
-unsafe fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
+pub fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
     //等服务端起来
     while !server_started.load(Ordering::Acquire) {}
     //invoke by libc::connect
     crate_co(3);
     let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
     let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-        .expect(&format!("connect to 127.0.0.1:{port} failed !"));
-    let mut data: [u8; 512] = std::mem::zeroed();
+        .unwrap_or_else(|_| panic!("connect to 127.0.0.1:{port} failed !"));
+    let mut data: [u8; 512] = unsafe { std::mem::zeroed() };
     data[511] = b'\n';
     let mut buffer: Vec<u8> = Vec::with_capacity(512);
     for _ in 0..3 {
@@ -96,47 +96,17 @@ unsafe fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
     println!("client closed");
 }
 
-#[test]
-fn hook_test_not_co() -> std::io::Result<()> {
-    let port = 8888;
-    let server_started = Arc::new(AtomicBool::new(false));
-    let clone = server_started.clone();
-    let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
-    let server_finished = Arc::clone(&server_finished_pair);
-    unsafe {
-        _ = std::thread::spawn(move || crate_server(port, clone, server_finished_pair));
-        _ = std::thread::spawn(move || crate_client(port, server_started));
-
-        let (lock, cvar) = &*server_finished;
-        let result = cvar
-            .wait_timeout_while(
-                lock.lock().unwrap(),
-                Duration::from_secs(30),
-                |&mut pending| pending,
-            )
-            .unwrap();
-        if result.1.timed_out() {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "The service did not completed within the specified time",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-unsafe fn crate_co_server(
+pub fn crate_co_server(
     port: u16,
     server_started: Arc<AtomicBool>,
     server_finished: Arc<(Mutex<bool>, Condvar)>,
 ) {
     //invoke by libc::listen
     crate_co(11);
-    let mut data: [u8; 512] = std::mem::zeroed();
+    let mut data: [u8; 512] = unsafe { std::mem::zeroed() };
     data[511] = b'\n';
     let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
-        .expect(&format!("bind to 127.0.0.1:{port} failed !"));
+        .unwrap_or_else(|_| panic!("bind to 127.0.0.1:{port} failed !"));
     server_started.store(true, Ordering::Release);
     //invoke by libc::accept
     crate_co(12);
@@ -179,37 +149,7 @@ unsafe fn crate_co_server(
     }
 }
 
-#[test]
-fn hook_test_co_server() -> std::io::Result<()> {
-    let port = 8889;
-    let server_started = Arc::new(AtomicBool::new(false));
-    let clone = server_started.clone();
-    let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
-    let server_finished = Arc::clone(&server_finished_pair);
-    unsafe {
-        _ = std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
-        _ = std::thread::spawn(move || crate_client(port, server_started));
-
-        let (lock, cvar) = &*server_finished;
-        let result = cvar
-            .wait_timeout_while(
-                lock.lock().unwrap(),
-                Duration::from_secs(30),
-                |&mut pending| pending,
-            )
-            .unwrap();
-        if result.1.timed_out() {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "The coroutine service did not completed within the specified time",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-unsafe fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
+pub fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
     //等服务端起来
     while !server_started.load(Ordering::Acquire) {}
     _ = co!(
@@ -218,8 +158,8 @@ unsafe fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
             crate_co(13);
             let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), input);
             let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-                .expect(&format!("connect to 127.0.0.1:{input} failed !"));
-            let mut data: [u8; 512] = std::mem::zeroed();
+                .unwrap_or_else(|_| panic!("connect to 127.0.0.1:{input} failed !"));
+            let mut data: [u8; 512] = unsafe { std::mem::zeroed() };
             data[511] = b'\n';
             let mut buffer: Vec<u8> = Vec::with_capacity(512);
             for _ in 0..3 {
@@ -247,64 +187,4 @@ unsafe fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
         },
         port,
     );
-}
-
-#[test]
-fn hook_test_co_client() -> std::io::Result<()> {
-    let port = 8899;
-    let server_started = Arc::new(AtomicBool::new(false));
-    let clone = server_started.clone();
-    let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
-    let server_finished = Arc::clone(&server_finished_pair);
-    unsafe {
-        _ = std::thread::spawn(move || crate_server(port, clone, server_finished_pair));
-        _ = std::thread::spawn(move || crate_co_client(port, server_started));
-
-        let (lock, cvar) = &*server_finished;
-        let result = cvar
-            .wait_timeout_while(
-                lock.lock().unwrap(),
-                Duration::from_secs(30),
-                |&mut pending| pending,
-            )
-            .unwrap();
-        if result.1.timed_out() {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "The coroutine client did not completed within the specified time",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[test]
-fn hook_test_co() -> std::io::Result<()> {
-    let port = 8999;
-    let server_started = Arc::new(AtomicBool::new(false));
-    let clone = server_started.clone();
-    let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
-    let server_finished = Arc::clone(&server_finished_pair);
-    unsafe {
-        _ = std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
-        _ = std::thread::spawn(move || crate_co_client(port, server_started));
-
-        let (lock, cvar) = &*server_finished;
-        let result = cvar
-            .wait_timeout_while(
-                lock.lock().unwrap(),
-                Duration::from_secs(30),
-                |&mut pending| pending,
-            )
-            .unwrap();
-        if result.1.timed_out() {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "The coroutine server and coroutine client did not completed within the specified time",
-            ))
-        } else {
-            Ok(())
-        }
-    }
 }

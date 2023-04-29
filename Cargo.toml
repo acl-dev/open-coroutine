@@ -20,5 +20,6 @@ members = [
     "open-coroutine-queue",
     "open-coroutine-core",
     "open-coroutine-hooks",
-    "open-coroutine-macros"
+    "open-coroutine-macros",
+    "examples"
 ]
