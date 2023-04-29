@@ -6,7 +6,6 @@ use once_cell::sync::Lazy;
 use open_coroutine_queue::{LocalQueue, WorkStealQueue};
 use open_coroutine_timer::TimerList;
 use std::collections::HashMap;
-use std::ffi::c_void;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -15,7 +14,7 @@ use uuid::Uuid;
 type RootCoroutine<'a> = ScopedCoroutine<'a, (), (), (), DefaultStack>;
 
 /// 用户协程
-pub type SchedulableCoroutine = Coroutine<'static, (), (), &'static mut c_void>;
+pub type SchedulableCoroutine = Coroutine<'static, (), (), usize>;
 
 static QUEUE: Lazy<WorkStealQueue<SchedulableCoroutine>> = Lazy::new(WorkStealQueue::default);
 
@@ -69,7 +68,7 @@ impl Scheduler {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<&'static str> {
         let coroutine = SchedulableCoroutine::new(
@@ -200,24 +199,20 @@ impl Default for Scheduler {
 mod tests {
     use super::*;
 
-    fn result(result: usize) -> &'static mut c_void {
-        unsafe { std::mem::transmute(result) }
-    }
-
     #[test]
     fn test_simple() {
         let scheduler = Scheduler::new();
         _ = scheduler.submit(
             |_, _| {
                 println!("1");
-                result(1)
+                1
             },
             None,
         );
         _ = scheduler.submit(
             |_, _| {
                 println!("2");
-                result(2)
+                2
             },
             None,
         );
@@ -227,11 +222,11 @@ mod tests {
     #[test]
     fn test_backtrace() {
         let scheduler = Scheduler::new();
-        _ = scheduler.submit(|_, _| result(1), None);
+        _ = scheduler.submit(|_, _| 1, None);
         _ = scheduler.submit(
             |_, _| {
                 println!("{:?}", backtrace::Backtrace::new());
-                result(2)
+                2
             },
             None,
         );
@@ -246,7 +241,7 @@ mod tests {
                 println!("[coroutine1] suspend");
                 suspender.suspend();
                 println!("[coroutine1] back");
-                result(1)
+                1
             },
             None,
         );
@@ -255,7 +250,7 @@ mod tests {
                 println!("[coroutine2] suspend");
                 suspender.suspend();
                 println!("[coroutine2] back");
-                result(2)
+                2
             },
             None,
         );
@@ -270,7 +265,7 @@ mod tests {
                 println!("[coroutine] delay");
                 suspender.delay(Duration::from_millis(100));
                 println!("[coroutine] back");
-                result(1)
+                1
             },
             None,
         );
@@ -301,7 +296,7 @@ mod tests {
                         _ = libc::usleep(10_000);
                     }
                 }
-                result(1)
+                1
             });
             _ = scheduler.submit(|_, _| {
                 unsafe {
@@ -310,11 +305,11 @@ mod tests {
                     }
                 }
                 unsafe { TEST_FLAG1 = false };
-                result(2)
+                2
             });
             _ = scheduler.submit(|_, _| {
                 unsafe { TEST_FLAG2 = false };
-                result(3)
+                3
             });
             scheduler.try_schedule();
 

@@ -1,6 +1,6 @@
 use crate::event_loop::EventLoop;
 use crate::scheduler::Scheduler;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_char, CStr, CString};
 use std::time::Duration;
 
 #[repr(C)]
@@ -19,14 +19,11 @@ impl JoinHandle {
         JoinHandle::new(std::ptr::null(), "")
     }
 
-    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<&'static mut c_void>> {
+    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<usize>> {
         self.timeout_at_join(open_coroutine_timer::get_timeout_time(dur))
     }
 
-    pub fn timeout_at_join(
-        &self,
-        timeout_time: u64,
-    ) -> std::io::Result<Option<&'static mut c_void>> {
+    pub fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<Option<usize>> {
         let co_name = unsafe { CStr::from_ptr(self.1).to_str().unwrap() };
         if co_name.is_empty() {
             return Ok(None);
@@ -47,7 +44,7 @@ impl JoinHandle {
         Ok(result.unwrap().get_result())
     }
 
-    pub fn join(self) -> std::io::Result<Option<&'static mut c_void>> {
+    pub fn join(self) -> std::io::Result<Option<usize>> {
         let co_name = unsafe { CStr::from_ptr(self.1).to_str().unwrap() };
         if co_name.is_empty() {
             return Ok(None);
@@ -67,10 +64,6 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Condvar, Mutex};
 
-    fn val(val: usize) -> &'static mut c_void {
-        unsafe { std::mem::transmute(val) }
-    }
-
     #[test]
     fn join_test() -> std::io::Result<()> {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
@@ -81,7 +74,7 @@ mod tests {
                 .submit(
                     |_, _| {
                         println!("[coroutine1] launched");
-                        val(3)
+                        3
                     },
                     None,
                 )
@@ -90,13 +83,13 @@ mod tests {
                 .submit(
                     |_, _| {
                         println!("[coroutine2] launched");
-                        val(4)
+                        4
                     },
                     None,
                 )
                 .expect("submit failed !");
-            assert_eq!(handle1.join().unwrap().unwrap() as *mut c_void as usize, 3);
-            assert_eq!(handle2.join().unwrap().unwrap() as *mut c_void as usize, 4);
+            assert_eq!(handle1.join().unwrap().unwrap(), 3);
+            assert_eq!(handle2.join().unwrap().unwrap(), 4);
 
             let (lock, cvar) = &*pair2;
             let mut pending = lock.lock().unwrap();
@@ -135,7 +128,7 @@ mod tests {
                 .submit(
                     |_, _| {
                         println!("[coroutine3] launched");
-                        val(5)
+                        5
                     },
                     None,
                 )
@@ -146,7 +139,7 @@ mod tests {
                 handle
                     .timeout_join(Duration::from_secs(1))
                     .unwrap()
-                    .unwrap() as *mut c_void as usize,
+                    .unwrap(),
                 5
             );
 
