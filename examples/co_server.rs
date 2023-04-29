@@ -10,7 +10,6 @@ fn main() -> std::io::Result<()> {
     let clone = server_started.clone();
     let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
     let server_finished = Arc::clone(&server_finished_pair);
-
     _ = std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
     _ = std::thread::spawn(move || crate_client(port, server_started));
 
