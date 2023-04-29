@@ -5,11 +5,7 @@ use std::time::Duration;
 
 ///创建协程
 #[no_mangle]
-pub extern "C" fn coroutine_crate(
-    f: UserFunc,
-    param: &'static mut c_void,
-    stack_size: usize,
-) -> JoinHandle {
+pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle {
     let stack_size = if stack_size > 0 {
         Some(stack_size)
     } else {

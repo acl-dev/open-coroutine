@@ -5,7 +5,7 @@ use std::ffi::c_void;
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn coroutine_crate(f: UserFunc, param: &'static mut c_void, stack_size: usize) -> JoinHandle;
+    fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle;
 }
 
 #[allow(dead_code)]
@@ -15,8 +15,8 @@ where
 {
     extern "C" fn co_main<F, P: 'static, R: 'static>(
         suspender: *const Suspender<(), ()>,
-        input: &'static mut c_void,
-    ) -> &'static mut c_void
+        input: usize,
+    ) -> usize
     where
         F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
     {
@@ -24,14 +24,14 @@ where
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
             let data = std::ptr::read_unaligned(ptr);
             let result: &'static mut R = Box::leak(Box::new((data.0)(suspender, data.1)));
-            &mut *((result as *mut R).cast::<c_void>())
+            (result as *mut R).cast::<c_void>() as usize
         }
     }
     let inner = Box::leak(Box::new((f, param)));
     unsafe {
         coroutine_crate(
             co_main::<F, P, R>,
-            &mut *((inner as *mut (F, P)).cast::<c_void>()),
+            (inner as *mut (F, P)).cast::<c_void>() as usize,
             stack_size,
         )
     }

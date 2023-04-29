@@ -19,8 +19,7 @@ pub mod interest;
 mod selector;
 
 /// 做C兼容时会用到
-pub type UserFunc =
-    extern "C" fn(*const Suspender<(), ()>, &'static mut c_void) -> &'static mut c_void;
+pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;
 
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
@@ -83,7 +82,7 @@ impl EventLoops {
     }
 
     pub fn submit(
-        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<JoinHandle> {
         EventLoops::start();
@@ -180,7 +179,7 @@ impl EventLoop {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
+        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<JoinHandle> {
         self.scheduler
@@ -338,7 +337,7 @@ impl EventLoop {
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
         self.add_read_event(fd)?;
-        self.wait_event(timeout)
+        self.wait_just(timeout)
     }
 
     pub fn wait_write_event(
@@ -347,6 +346,6 @@ impl EventLoop {
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
         self.add_write_event(fd)?;
-        self.wait_event(timeout)
+        self.wait_just(timeout)
     }
 }

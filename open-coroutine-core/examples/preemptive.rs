@@ -2,13 +2,8 @@ fn main() -> std::io::Result<()> {
     cfg_if::cfg_if! {
         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
             use open_coroutine_core::scheduler::Scheduler;
-            use std::ffi::c_void;
             use std::sync::{Arc, Condvar, Mutex};
             use std::time::Duration;
-
-            fn result(result: usize) -> &'static mut c_void {
-                unsafe { std::mem::transmute(result) }
-            }
 
             static mut TEST_FLAG1: bool = true;
             static mut TEST_FLAG2: bool = true;
@@ -23,7 +18,7 @@ fn main() -> std::io::Result<()> {
                         _ = unsafe { libc::usleep(10_000) };
                     }
                     println!("loop1 end");
-                    result(1)
+                    1
                 }, None);
                 _ = scheduler.submit(|_, _| {
                     println!("coroutine2 launched");
@@ -33,12 +28,12 @@ fn main() -> std::io::Result<()> {
                     }
                     println!("loop2 end");
                     unsafe { TEST_FLAG1 = false };
-                    result(2)
+                    2
                 }, None);
                 _ = scheduler.submit(|_, _| {
                     println!("coroutine3 launched");
                     unsafe { TEST_FLAG2 = false };
-                    result(3)
+                    3
                 }, None);
                 scheduler.try_schedule();
 
