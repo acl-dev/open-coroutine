@@ -65,7 +65,7 @@ impl Display for CoroutineState {
 #[repr(C)]
 pub struct Coroutine<'c, Param, Yield, Return> {
     name: &'c str,
-    sp: RefCell<ScopedCoroutine<'c, Param, Yield, (), DefaultStack>>,
+    sp: RefCell<ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>>,
     state: Cell<CoroutineState>,
     yields: RefCell<MaybeUninit<ManuallyDrop<Yield>>>,
     //调用用户函数的返回值
@@ -129,11 +129,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             Suspender::<Param, Yield>::init_current(&suspender);
             let r = f(&suspender, p);
             Suspender::<Param, Yield>::clean_current();
-            let current = Coroutine::<Param, Yield, Return>::current().unwrap();
-            _ = current
-                .result
-                .replace(MaybeUninit::new(ManuallyDrop::new(r)));
-            if let Some(_scheduler) = current.get_scheduler() {}
+            r
         });
         Ok(Coroutine {
             name: Box::leak(name),
@@ -228,7 +224,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         };
         Coroutine::<Param, Yield, Return>::init_current(self);
         let state = match self.sp.borrow_mut().resume(arg) {
-            CoroutineResult::Return(()) => {
+            CoroutineResult::Return(r) => {
+                _ = self.result.replace(MaybeUninit::new(ManuallyDrop::new(r)));
                 let state = CoroutineState::Finished;
                 assert_eq!(CoroutineState::Running, self.set_state(state));
                 state

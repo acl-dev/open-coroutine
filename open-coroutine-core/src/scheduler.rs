@@ -57,6 +57,16 @@ impl Scheduler {
         }
     }
 
+    #[must_use]
+    pub fn current<'s>() -> Option<&'s Scheduler> {
+        if let Some(current) = SchedulableCoroutine::current() {
+            if let Some(scheduler) = current.get_scheduler() {
+                return Some(unsafe { &*scheduler });
+            }
+        }
+        None
+    }
+
     pub fn submit(
         &self,
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> &'static mut c_void + 'static,
