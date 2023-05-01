@@ -65,20 +65,19 @@ impl Display for CoroutineState {
 #[repr(C)]
 pub struct Coroutine<'c, Param, Yield, Return> {
     name: &'c str,
-    sp: RefCell<ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>>,
+    sp: ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>,
     state: Cell<CoroutineState>,
-    yields: RefCell<MaybeUninit<ManuallyDrop<Yield>>>,
+    yields: MaybeUninit<ManuallyDrop<Yield>>,
     //调用用户函数的返回值
-    result: RefCell<MaybeUninit<ManuallyDrop<Return>>>,
-    scheduler: RefCell<Option<*const Scheduler>>,
+    result: MaybeUninit<ManuallyDrop<Return>>,
+    scheduler: Option<*const Scheduler>,
 }
 
 impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return> {
     fn drop(&mut self) {
         //for test_yield case
-        let mut sp = self.sp.borrow_mut();
-        if sp.started() && !sp.done() {
-            unsafe { sp.force_reset() };
+        if self.sp.started() && !self.sp.done() {
+            unsafe { self.sp.force_reset() };
         }
     }
 }
@@ -133,11 +132,11 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         });
         Ok(Coroutine {
             name: Box::leak(name),
-            sp: RefCell::new(sp),
+            sp,
             state: Cell::new(CoroutineState::Created),
-            yields: RefCell::new(MaybeUninit::uninit()),
-            result: RefCell::new(MaybeUninit::uninit()),
-            scheduler: RefCell::new(None),
+            yields: MaybeUninit::uninit(),
+            result: MaybeUninit::uninit(),
+            scheduler: None,
         })
     }
 
@@ -183,7 +182,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn get_result(&self) -> Option<Return> {
         if self.is_finished() {
             unsafe {
-                let mut m = self.result.borrow().assume_init_read();
+                let mut m = self.result.assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             }
         } else {
@@ -194,7 +193,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn get_yield(&self) -> Option<Yield> {
         match self.get_state() {
             CoroutineState::SystemCall(_) | CoroutineState::Suspend(_) => unsafe {
-                let mut m = self.yields.borrow().assume_init_read();
+                let mut m = self.yields.assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             },
             _ => None,
@@ -202,14 +201,14 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     }
 
     pub fn get_scheduler(&self) -> Option<*const Scheduler> {
-        *self.scheduler.borrow()
+        self.scheduler
     }
 
-    pub(crate) fn set_scheduler(&self, scheduler: &Scheduler) -> Option<*const Scheduler> {
-        self.scheduler.replace(Some(scheduler))
+    pub(crate) fn set_scheduler(&mut self, scheduler: &Scheduler) -> Option<*const Scheduler> {
+        self.scheduler.replace(scheduler)
     }
 
-    pub fn resume_with(&self, arg: Param) -> CoroutineState {
+    pub fn resume_with(&mut self, arg: Param) -> CoroutineState {
         let mut current = self.get_state();
         match current {
             CoroutineState::Finished => {
@@ -223,15 +222,15 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             _ => panic!("unexpected state {current}"),
         };
         Coroutine::<Param, Yield, Return>::init_current(self);
-        let state = match self.sp.borrow_mut().resume(arg) {
+        let state = match self.sp.resume(arg) {
             CoroutineResult::Return(r) => {
-                _ = self.result.replace(MaybeUninit::new(ManuallyDrop::new(r)));
+                self.result = MaybeUninit::new(ManuallyDrop::new(r));
                 let state = CoroutineState::Finished;
                 assert_eq!(CoroutineState::Running, self.set_state(state));
                 state
             }
             CoroutineResult::Yield(y) => {
-                _ = self.yields.replace(MaybeUninit::new(ManuallyDrop::new(y)));
+                self.yields = MaybeUninit::new(ManuallyDrop::new(y));
                 let mut current = self.get_state();
                 match current {
                     CoroutineState::Running => {
@@ -256,7 +255,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
 }
 
 impl<'c, Yield, Return> Coroutine<'c, (), Yield, Return> {
-    pub fn resume(&self) -> CoroutineState {
+    pub fn resume(&mut self) -> CoroutineState {
         self.resume_with(())
     }
 }
@@ -298,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_return() {
-        let coroutine = co!(|_s: &Suspender<'_, i32, ()>, param| {
+        let mut coroutine = co!(|_s: &Suspender<'_, i32, ()>, param| {
             assert_eq!(0, param);
             1
         });
@@ -308,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_yield_once() {
-        let coroutine = co!(|suspender, param| {
+        let mut coroutine = co!(|suspender, param| {
             assert_eq!(1, param);
             _ = suspender.suspend_with(2);
         });
@@ -318,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_syscall() {
-        let coroutine = co!(|suspender, param| {
+        let mut coroutine = co!(|suspender, param| {
             assert_eq!(1, param);
             unbreakable!(
                 {
@@ -342,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_yield() {
-        let coroutine = co!(|suspender, input| {
+        let mut coroutine = co!(|suspender, input| {
             assert_eq!(1, input);
             assert_eq!(3, suspender.suspend_with(2));
             assert_eq!(5, suspender.suspend_with(4));
@@ -359,7 +358,7 @@ mod tests {
     #[test]
     fn test_current() {
         assert!(Coroutine::<i32, i32, i32>::current().is_none());
-        let coroutine = co!(|_: &Suspender<'_, i32, i32>, input| {
+        let mut coroutine = co!(|_: &Suspender<'_, i32, i32>, input| {
             assert_eq!(0, input);
             assert!(Coroutine::<i32, i32, i32>::current().is_some());
             1
@@ -370,7 +369,7 @@ mod tests {
 
     #[test]
     fn test_backtrace() {
-        let coroutine = co!(|suspender, input| {
+        let mut coroutine = co!(|suspender, input| {
             assert_eq!(1, input);
             println!("{:?}", backtrace::Backtrace::new());
             assert_eq!(3, suspender.suspend_with(2));

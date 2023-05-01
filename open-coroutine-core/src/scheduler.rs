@@ -36,10 +36,12 @@ pub struct Scheduler {
 
 impl Drop for Scheduler {
     fn drop(&mut self) {
-        assert!(
-            self.ready.is_empty(),
-            "there are still tasks to be carried out !"
-        );
+        if !std::thread::panicking() {
+            assert!(
+                self.ready.is_empty(),
+                "there are still tasks to be carried out !"
+            );
+        }
     }
 }
 
@@ -128,7 +130,7 @@ impl Scheduler {
             }
             self.check_ready();
             match self.ready.pop_front() {
-                Some(coroutine) => {
+                Some(mut coroutine) => {
                     _ = coroutine.set_scheduler(self);
                     cfg_if::cfg_if! {
                         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
