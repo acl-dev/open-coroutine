@@ -89,9 +89,8 @@ impl EventLoops {
         EventLoops::next(true).submit(f, stack_size)
     }
 
-    pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
-        let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
-        let event_loop = EventLoops::next(false);
+    fn slice_wait(time: Duration, event_loop: &mut EventLoop) -> std::io::Result<()> {
+        let timeout_time = open_coroutine_timer::get_timeout_time(time);
         loop {
             let left_time = timeout_time
                 .saturating_sub(open_coroutine_timer::now())
@@ -104,34 +103,37 @@ impl EventLoops {
         }
     }
 
-    pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
-        let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
-        let event_loop = EventLoops::next(false);
-        loop {
-            let left_time = timeout_time
-                .saturating_sub(open_coroutine_timer::now())
-                .min(10_000_000);
-            if left_time == 0 {
-                //timeout
-                return Ok(());
-            }
-            event_loop.wait_read_event(fd, Some(Duration::from_nanos(left_time)))?;
+    pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
+        let time = timeout.unwrap_or(Duration::MAX);
+        if let Some(suspender) = Suspender::<(), ()>::current() {
+            suspender.delay(time);
+            return Ok(());
         }
+        Self::slice_wait(time, EventLoops::next(false))
+    }
+
+    pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
+        let event_loop = EventLoops::next(false);
+        event_loop.add_read_event(fd)?;
+        let time = timeout.unwrap_or(Duration::MAX);
+        if let Some(suspender) = Suspender::<(), ()>::current() {
+            suspender.delay(time);
+            //回来的时候事件已经发生了
+            return Ok(());
+        }
+        Self::slice_wait(time, event_loop)
     }
 
     pub fn wait_write_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
-        let timeout_time = open_coroutine_timer::get_timeout_time(timeout.unwrap_or(Duration::MAX));
         let event_loop = EventLoops::next(false);
-        loop {
-            let left_time = timeout_time
-                .saturating_sub(open_coroutine_timer::now())
-                .min(10_000_000);
-            if left_time == 0 {
-                //timeout
-                return Ok(());
-            }
-            event_loop.wait_write_event(fd, Some(Duration::from_nanos(left_time)))?;
+        event_loop.add_write_event(fd)?;
+        let time = timeout.unwrap_or(Duration::MAX);
+        if let Some(suspender) = Suspender::<(), ()>::current() {
+            suspender.delay(time);
+            //回来的时候事件已经发生了
+            return Ok(());
         }
+        Self::slice_wait(time, event_loop)
     }
 
     pub fn del_event(fd: libc::c_int) {
@@ -185,12 +187,6 @@ impl EventLoop {
         self.scheduler
             .submit(f, stack_size)
             .map(|co_name| JoinHandle::new(self, co_name))
-    }
-
-    pub fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
-        _ = self.scheduler.try_timeout_schedule(timeout_time);
-        self.wait_just(Some(Duration::ZERO))?;
-        Ok(timeout_time.saturating_sub(open_coroutine_timer::now()))
     }
 
     fn token() -> usize {
@@ -329,23 +325,5 @@ impl EventLoop {
             }
         }
         Ok(())
-    }
-
-    pub fn wait_read_event(
-        &self,
-        fd: libc::c_int,
-        timeout: Option<Duration>,
-    ) -> std::io::Result<()> {
-        self.add_read_event(fd)?;
-        self.wait_just(timeout)
-    }
-
-    pub fn wait_write_event(
-        &self,
-        fd: libc::c_int,
-        timeout: Option<Duration>,
-    ) -> std::io::Result<()> {
-        self.add_write_event(fd)?;
-        self.wait_just(timeout)
     }
 }

@@ -325,22 +325,16 @@ mod tests {
                     assert_eq!(3, suspender.suspend_with(2));
                     assert_eq!(5, suspender.suspend_with(4));
                 },
-                "sleep"
+                "read"
             );
             if let Some(co) = Coroutine::<i32, i32, i32>::current() {
                 assert_eq!(CoroutineState::Running, co.get_state());
             }
             6
         });
-        assert_eq!(
-            CoroutineState::SystemCall("sleep"),
-            coroutine.resume_with(1)
-        );
+        assert_eq!(CoroutineState::SystemCall("read"), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());
-        assert_eq!(
-            CoroutineState::SystemCall("sleep"),
-            coroutine.resume_with(3)
-        );
+        assert_eq!(CoroutineState::SystemCall("read"), coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_yield());
         assert_eq!(CoroutineState::Finished, coroutine.resume_with(5));
         assert_eq!(Some(6), coroutine.get_result());

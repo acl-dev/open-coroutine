@@ -1,5 +1,4 @@
 // check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
-#[macro_export]
 macro_rules! init_hook {
     ( $symbol:literal ) => {
         once_cell::sync::Lazy::new(|| unsafe {
