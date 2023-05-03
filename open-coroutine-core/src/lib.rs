@@ -52,15 +52,22 @@ pub mod scheduler;
 #[macro_export]
 macro_rules! unbreakable {
     ( $f: expr , $syscall: expr ) => {
-        if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
+        if $crate::coroutine::suspender::Suspender::<(), ()>::current().is_some() {
+            let co = $crate::scheduler::SchedulableCoroutine::current()
+                .unwrap_or_else(|| panic!("current coroutine not found !"));
+            let co_name = co.get_name();
             let state = co.set_state($crate::coroutine::CoroutineState::SystemCall($syscall));
             assert_eq!($crate::coroutine::CoroutineState::Running, state);
             let r = $f;
-            let old = co.set_state(state);
-            match old {
-                $crate::coroutine::CoroutineState::SystemCall(_) => {}
-                _ => panic!("{} unexpected state {old}", co.get_name()),
-            };
+            if let Some(current) = $crate::scheduler::SchedulableCoroutine::current() {
+                if co_name == current.get_name() {
+                    let old = current.set_state(state);
+                    match old {
+                        $crate::coroutine::CoroutineState::SystemCall(_) => {}
+                        _ => panic!("{} unexpected state {old}", current.get_name()),
+                    };
+                }
+            }
             r
         } else {
             $f
