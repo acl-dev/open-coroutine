@@ -59,7 +59,7 @@ macro_rules! unbreakable {
             let old = co.set_state(state);
             match old {
                 $crate::coroutine::CoroutineState::SystemCall(_) => {}
-                _ => panic!("unexpected state {old}"),
+                _ => panic!("{} unexpected state {old}", co.get_name()),
             };
             r
         } else {
