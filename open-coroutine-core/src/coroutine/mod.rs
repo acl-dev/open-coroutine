@@ -172,7 +172,10 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     }
 
     pub fn set_state(&self, state: CoroutineState) -> CoroutineState {
-        self.state.replace(state)
+        let old = self.state.replace(state);
+        //方便定位问题，后续用打log的方式代替
+        println!("{} change state {}->{}", self.get_name(), old, state);
+        old
     }
 
     pub fn is_finished(&self) -> bool {
@@ -219,7 +222,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 current = CoroutineState::Running;
                 _ = self.set_state(current);
             }
-            _ => panic!("unexpected state {current}"),
+            _ => panic!("{} unexpected state {current}", self.get_name()),
         };
         Coroutine::<Param, Yield, Return>::init_current(self);
         let state = match self.sp.resume(arg) {
@@ -238,14 +241,16 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                         if syscall_name.is_empty() {
                             current =
                                 CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
-                            assert_eq!(CoroutineState::Running, self.set_state(current));
+                        } else {
+                            current = CoroutineState::SystemCall(syscall_name);
                         }
+                        assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
                     CoroutineState::SystemCall(syscall_name) => {
                         CoroutineState::SystemCall(syscall_name)
                     }
-                    _ => panic!("unexpected state {current}"),
+                    _ => panic!("{} unexpected state {current}", self.get_name()),
                 }
             }
         };
