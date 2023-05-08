@@ -231,12 +231,14 @@ impl EventLoop {
     }
 
     pub fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        self.selector.deregister(fd)?;
         unsafe {
+            let token = READABLE_TOKEN_RECORDS
+                .remove(&fd)
+                .or(WRITABLE_TOKEN_RECORDS.remove(&fd))
+                .unwrap_or(0);
+            self.selector.deregister(fd, token)?;
             _ = READABLE_RECORDS.remove(&fd);
-            _ = READABLE_TOKEN_RECORDS.remove(&fd);
             _ = WRITABLE_RECORDS.remove(&fd);
-            _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
         }
         Ok(())
     }
@@ -310,20 +312,25 @@ impl EventLoop {
             let fd = event.fd();
             let token = event.token();
             unsafe {
-                if token != 0 {
-                    let co_name = CStr::from_ptr((token as *const c_void).cast::<c_char>())
-                        .to_str()
-                        .unwrap();
-                    self.scheduler.resume_syscall(co_name);
-                }
                 if event.is_readable() {
                     _ = READABLE_TOKEN_RECORDS.remove(&fd);
+                    self.resume(token);
                 }
                 if event.is_writable() {
                     _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
+                    self.resume(token);
                 }
             }
         }
         Ok(())
+    }
+
+    unsafe fn resume(&self, token: usize) {
+        if token != 0 {
+            let co_name = CStr::from_ptr((token as *const c_void).cast::<c_char>())
+                .to_str()
+                .unwrap();
+            self.scheduler.resume_syscall(co_name);
+        }
     }
 }

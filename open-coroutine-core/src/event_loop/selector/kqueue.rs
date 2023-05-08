@@ -188,7 +188,7 @@ impl Selector {
         )
     }
 
-    pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
+    pub fn deregister(&self, fd: RawFd, _token: usize) -> io::Result<()> {
         let flags = libc::EV_DELETE | libc::EV_RECEIPT;
         let mut changes: [libc::kevent; 2] = [
             kevent!(fd, libc::EVFILT_WRITE, flags, 0),
