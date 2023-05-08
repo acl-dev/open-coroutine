@@ -120,7 +120,7 @@ impl Selector {
     pub fn register(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
         let mut event = libc::epoll_event {
             events: interests_to_epoll(interests),
-            u64: u64::from(token),
+            u64: token as u64,
             #[cfg(target_os = "redox")]
             _pad: 0,
         };
@@ -133,7 +133,7 @@ impl Selector {
     pub fn reregister(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
         let mut event = libc::epoll_event {
             events: interests_to_epoll(interests),
-            u64: u64::from(token),
+            u64: token as u64,
             #[cfg(target_os = "redox")]
             _pad: 0,
         };
