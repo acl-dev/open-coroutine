@@ -187,3 +187,50 @@ pub fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
         port,
     );
 }
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("1970-01-01 00:00:00 UTC was {} seconds ago!")
+        .as_nanos() as u64
+}
+
+pub fn sleep_test(millis: u64) {
+    _ = co!(
+        |_, _| {
+            println!("[coroutine1] launched");
+        },
+        (),
+    );
+    _ = co!(
+        |_, _| {
+            println!("[coroutine2] launched");
+        },
+        (),
+    );
+    let start = now();
+    std::thread::sleep(Duration::from_millis(millis));
+    let end = now();
+    assert!(end - start >= millis);
+}
+
+pub fn sleep_test_co(millis: u64) {
+    _ = co!(
+        |_, _| {
+            let start = now();
+            std::thread::sleep(Duration::from_millis(millis));
+            let end = now();
+            assert!(end - start >= millis);
+            println!("[coroutine1] launched");
+        },
+        (),
+    );
+    _ = co!(
+        |_, _| {
+            std::thread::sleep(Duration::from_millis(500));
+            println!("[coroutine2] launched");
+        },
+        (),
+    );
+    std::thread::sleep(Duration::from_millis(millis + 500));
+}

@@ -62,4 +62,11 @@ pub fn init() {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_link() {
+        init();
+    }
+}
