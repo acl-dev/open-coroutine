@@ -24,38 +24,52 @@ impl JoinHandle {
     }
 
     pub fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<Option<usize>> {
-        let co_name = unsafe { CStr::from_ptr(self.1).to_str().unwrap() };
-        if co_name.is_empty() {
-            return Ok(None);
-        }
-        let event_loop = unsafe { &*self.0 };
-        let mut result = Scheduler::get_result(co_name);
-        while result.is_none() {
-            let left_time = timeout_time
-                .saturating_sub(open_coroutine_timer::now())
-                .min(10_000_000);
-            if left_time == 0 {
-                //timeout
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        match unsafe { CStr::from_ptr(self.1) }.to_str() {
+            Ok(co_name) => {
+                if co_name.is_empty() {
+                    return Ok(None);
+                }
+                let event_loop = unsafe { &*self.0 };
+                let mut result = Scheduler::get_result(co_name);
+                while result.is_none() {
+                    let left_time = timeout_time
+                        .saturating_sub(open_coroutine_timer::now())
+                        .min(10_000_000);
+                    if left_time == 0 {
+                        //timeout
+                        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+                    }
+                    event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
+                    result = Scheduler::get_result(co_name);
+                }
+                Ok(result.unwrap().get_result())
             }
-            event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
-            result = Scheduler::get_result(co_name);
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid coroutine name",
+            )),
         }
-        Ok(result.unwrap().get_result())
     }
 
     pub fn join(self) -> std::io::Result<Option<usize>> {
-        let co_name = unsafe { CStr::from_ptr(self.1).to_str().unwrap() };
-        if co_name.is_empty() {
-            return Ok(None);
+        match unsafe { CStr::from_ptr(self.1) }.to_str() {
+            Ok(co_name) => {
+                if co_name.is_empty() {
+                    return Ok(None);
+                }
+                let event_loop = unsafe { &*self.0 };
+                let mut result = Scheduler::get_result(co_name);
+                while result.is_none() {
+                    event_loop.wait_event(Some(Duration::from_millis(10)))?;
+                    result = Scheduler::get_result(co_name);
+                }
+                Ok(result.unwrap().get_result())
+            }
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid coroutine name",
+            )),
         }
-        let event_loop = unsafe { &*self.0 };
-        let mut result = Scheduler::get_result(co_name);
-        while result.is_none() {
-            event_loop.wait_event(Some(Duration::from_millis(10)))?;
-            result = Scheduler::get_result(co_name);
-        }
-        Ok(result.unwrap().get_result())
     }
 }
 
