@@ -326,10 +326,10 @@ impl EventLoop {
     }
 
     unsafe fn resume(&self, token: usize) {
-        if token != 0 {
-            let co_name = CStr::from_ptr((token as *const c_void).cast::<c_char>())
-                .to_str()
-                .unwrap();
+        if token == 0 {
+            return;
+        }
+        if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
             self.scheduler.resume_syscall(co_name);
         }
     }
