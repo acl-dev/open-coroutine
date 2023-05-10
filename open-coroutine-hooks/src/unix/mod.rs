@@ -18,6 +18,8 @@ pub mod socket;
 
 pub mod read;
 
+pub mod write;
+
 extern "C" {
     #[cfg(not(any(target_os = "dragonfly", target_os = "vxworks")))]
     #[cfg_attr(
