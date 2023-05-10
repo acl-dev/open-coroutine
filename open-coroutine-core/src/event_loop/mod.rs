@@ -207,7 +207,11 @@ impl EventLoop {
             }
         }
         let token = EventLoop::token();
-        self.selector.register(fd, token, Interest::READABLE)?;
+        if let Err(e) = self.selector.register(fd, token, Interest::READABLE) {
+            if std::io::ErrorKind::AlreadyExists != e.kind() {
+                return Err(e);
+            }
+        }
         unsafe {
             _ = READABLE_RECORDS.insert(fd);
             _ = READABLE_TOKEN_RECORDS.insert(fd, token);
@@ -222,7 +226,11 @@ impl EventLoop {
             }
         }
         let token = EventLoop::token();
-        self.selector.register(fd, token, Interest::WRITABLE)?;
+        if let Err(e) = self.selector.register(fd, token, Interest::WRITABLE) {
+            if std::io::ErrorKind::AlreadyExists != e.kind() {
+                return Err(e);
+            }
+        }
         unsafe {
             _ = WRITABLE_RECORDS.insert(fd);
             _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
@@ -248,11 +256,15 @@ impl EventLoop {
             if READABLE_RECORDS.contains(&fd) {
                 if WRITABLE_RECORDS.contains(&fd) {
                     //写事件不能删
-                    self.selector.reregister(
+                    if let Err(e) = self.selector.reregister(
                         fd,
                         WRITABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
                         Interest::WRITABLE,
-                    )?;
+                    ) {
+                        if std::io::ErrorKind::AlreadyExists != e.kind() {
+                            return Err(e);
+                        }
+                    }
                     assert!(READABLE_RECORDS.remove(&fd));
                 } else {
                     self.del_event(fd)?;
@@ -267,11 +279,15 @@ impl EventLoop {
             if WRITABLE_RECORDS.contains(&fd) {
                 if READABLE_RECORDS.contains(&fd) {
                     //读事件不能删
-                    self.selector.reregister(
+                    if let Err(e) = self.selector.reregister(
                         fd,
                         READABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
                         Interest::READABLE,
-                    )?;
+                    ) {
+                        if std::io::ErrorKind::AlreadyExists != e.kind() {
+                            return Err(e);
+                        }
+                    }
                     assert!(WRITABLE_RECORDS.remove(&fd));
                 } else {
                     self.del_event(fd)?;
