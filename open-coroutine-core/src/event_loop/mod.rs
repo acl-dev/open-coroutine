@@ -202,17 +202,19 @@ impl EventLoop {
 
     pub fn add_read_event(&self, fd: libc::c_int) -> std::io::Result<()> {
         unsafe {
-            if READABLE_TOKEN_RECORDS.contains_key(&fd) {
+            if READABLE_RECORDS.contains(&fd) {
                 return Ok(());
             }
-        }
-        let token = EventLoop::token();
-        if let Err(e) = self.selector.register(fd, token, Interest::READABLE) {
-            if std::io::ErrorKind::AlreadyExists != e.kind() {
-                return Err(e);
-            }
-        }
-        unsafe {
+            let token = EventLoop::token();
+            if WRITABLE_RECORDS.contains(&fd) {
+                //同时对读写事件感兴趣
+                let interests = Interest::READABLE.add(Interest::WRITABLE);
+                self.selector
+                    .reregister(fd, token, interests)
+                    .or(self.selector.register(fd, token, interests))
+            } else {
+                self.selector.register(fd, token, Interest::READABLE)
+            }?;
             _ = READABLE_RECORDS.insert(fd);
             _ = READABLE_TOKEN_RECORDS.insert(fd, token);
         }
@@ -221,17 +223,19 @@ impl EventLoop {
 
     pub fn add_write_event(&self, fd: libc::c_int) -> std::io::Result<()> {
         unsafe {
-            if WRITABLE_TOKEN_RECORDS.contains_key(&fd) {
+            if WRITABLE_RECORDS.contains(&fd) {
                 return Ok(());
             }
-        }
-        let token = EventLoop::token();
-        if let Err(e) = self.selector.register(fd, token, Interest::WRITABLE) {
-            if std::io::ErrorKind::AlreadyExists != e.kind() {
-                return Err(e);
-            }
-        }
-        unsafe {
+            let token = EventLoop::token();
+            if READABLE_RECORDS.contains(&fd) {
+                //同时对读写事件感兴趣
+                let interests = Interest::WRITABLE.add(Interest::READABLE);
+                self.selector
+                    .reregister(fd, token, interests)
+                    .or(self.selector.register(fd, token, interests))
+            } else {
+                self.selector.register(fd, token, Interest::WRITABLE)
+            }?;
             _ = WRITABLE_RECORDS.insert(fd);
             _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
         }
@@ -256,16 +260,13 @@ impl EventLoop {
             if READABLE_RECORDS.contains(&fd) {
                 if WRITABLE_RECORDS.contains(&fd) {
                     //写事件不能删
-                    if let Err(e) = self.selector.reregister(
+                    self.selector.reregister(
                         fd,
-                        WRITABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
+                        *WRITABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0),
                         Interest::WRITABLE,
-                    ) {
-                        if std::io::ErrorKind::AlreadyExists != e.kind() {
-                            return Err(e);
-                        }
-                    }
+                    )?;
                     assert!(READABLE_RECORDS.remove(&fd));
+                    assert!(READABLE_TOKEN_RECORDS.remove(&fd).is_some());
                 } else {
                     self.del_event(fd)?;
                 }
@@ -279,16 +280,13 @@ impl EventLoop {
             if WRITABLE_RECORDS.contains(&fd) {
                 if READABLE_RECORDS.contains(&fd) {
                     //读事件不能删
-                    if let Err(e) = self.selector.reregister(
+                    self.selector.reregister(
                         fd,
-                        READABLE_TOKEN_RECORDS.remove(&fd).unwrap_or(0),
+                        *READABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0),
                         Interest::READABLE,
-                    ) {
-                        if std::io::ErrorKind::AlreadyExists != e.kind() {
-                            return Err(e);
-                        }
-                    }
+                    )?;
                     assert!(WRITABLE_RECORDS.remove(&fd));
+                    assert!(WRITABLE_TOKEN_RECORDS.remove(&fd).is_some());
                 } else {
                     self.del_event(fd)?;
                 }
