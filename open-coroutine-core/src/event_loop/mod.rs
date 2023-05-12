@@ -208,8 +208,10 @@ impl EventLoop {
             let token = EventLoop::token();
             if WRITABLE_RECORDS.contains(&fd) {
                 //同时对读写事件感兴趣
+                let interests = Interest::READABLE.add(Interest::WRITABLE);
                 self.selector
-                    .reregister(fd, token, Interest::READABLE.add(Interest::WRITABLE))
+                    .reregister(fd, token, interests)
+                    .or(self.selector.register(fd, token, interests))
             } else {
                 self.selector.register(fd, token, Interest::READABLE)
             }?;
@@ -227,8 +229,10 @@ impl EventLoop {
             let token = EventLoop::token();
             if READABLE_RECORDS.contains(&fd) {
                 //同时对读写事件感兴趣
+                let interests = Interest::WRITABLE.add(Interest::READABLE);
                 self.selector
-                    .reregister(fd, token, Interest::WRITABLE.add(Interest::READABLE))
+                    .reregister(fd, token, interests)
+                    .or(self.selector.register(fd, token, interests))
             } else {
                 self.selector.register(fd, token, Interest::WRITABLE)
             }?;
