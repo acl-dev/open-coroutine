@@ -202,17 +202,17 @@ impl EventLoop {
 
     pub fn add_read_event(&self, fd: libc::c_int) -> std::io::Result<()> {
         unsafe {
-            if READABLE_TOKEN_RECORDS.contains_key(&fd) {
+            if READABLE_RECORDS.contains(&fd) {
                 return Ok(());
             }
-        }
-        let token = EventLoop::token();
-        if let Err(e) = self.selector.register(fd, token, Interest::READABLE) {
-            if std::io::ErrorKind::AlreadyExists != e.kind() {
-                return Err(e);
-            }
-        }
-        unsafe {
+            let token = EventLoop::token();
+            if WRITABLE_RECORDS.contains(&fd) {
+                //同时对读写事件感兴趣
+                self.selector
+                    .reregister(fd, token, Interest::READABLE.add(Interest::WRITABLE))
+            } else {
+                self.selector.register(fd, token, Interest::READABLE)
+            }?;
             _ = READABLE_RECORDS.insert(fd);
             _ = READABLE_TOKEN_RECORDS.insert(fd, token);
         }
@@ -221,17 +221,17 @@ impl EventLoop {
 
     pub fn add_write_event(&self, fd: libc::c_int) -> std::io::Result<()> {
         unsafe {
-            if WRITABLE_TOKEN_RECORDS.contains_key(&fd) {
+            if WRITABLE_RECORDS.contains(&fd) {
                 return Ok(());
             }
-        }
-        let token = EventLoop::token();
-        if let Err(e) = self.selector.register(fd, token, Interest::WRITABLE) {
-            if std::io::ErrorKind::AlreadyExists != e.kind() {
-                return Err(e);
-            }
-        }
-        unsafe {
+            let token = EventLoop::token();
+            if READABLE_RECORDS.contains(&fd) {
+                //同时对读写事件感兴趣
+                self.selector
+                    .reregister(fd, token, Interest::WRITABLE.add(Interest::READABLE))
+            } else {
+                self.selector.register(fd, token, Interest::WRITABLE)
+            }?;
             _ = WRITABLE_RECORDS.insert(fd);
             _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
         }
