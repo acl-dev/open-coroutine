@@ -11,7 +11,6 @@ pub struct WorkStealQueue<T: Debug> {
     /// Number of pending tasks in the queue. This helps prevent unnecessary
     /// locking in the hot path.
     len: AtomicUsize,
-    stealing: AtomicBool,
     local_queues: Box<[Worker<T>]>,
     index: AtomicUsize,
     seed_generator: RngSeedGenerator,
@@ -37,7 +36,6 @@ impl<T: Debug> WorkStealQueue<T> {
         WorkStealQueue {
             shared_queue: Injector::new(),
             len: AtomicUsize::new(0),
-            stealing: AtomicBool::new(false),
             local_queues: (0..local_queues)
                 .map(|_| Worker::new(local_capacity))
                 .collect(),
@@ -76,16 +74,6 @@ impl<T: Debug> WorkStealQueue<T> {
                 Steal::Empty => return None,
             }
         }
-    }
-
-    fn try_lock(&self) -> bool {
-        self.stealing
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-    }
-
-    fn release_lock(&self) {
-        self.stealing.store(false, Ordering::Relaxed);
     }
 
     pub fn local_queue(&self) -> LocalQueue<T> {
@@ -291,25 +279,6 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
                     self.release_lock();
                     return self.queue.pop();
                 }
-            }
-
-            //尝试从全局队列steal
-            if !self.shared.is_empty() && self.shared.try_lock() {
-                if let Some(popped_item) = self.shared.pop() {
-                    let count = self.queue.spare_capacity().min(self.queue.capacity() / 2);
-                    for _ in 0..count {
-                        match self.shared.pop() {
-                            Some(item) => {
-                                self.queue.push(item).expect("steal to local queue failed!");
-                            }
-                            None => break,
-                        }
-                    }
-                    self.shared.release_lock();
-                    self.release_lock();
-                    return Some(popped_item);
-                }
-                self.shared.release_lock();
             }
             self.release_lock();
         }
