@@ -5,13 +5,15 @@
 - [诞生之因](#诞生之因)
 - [三顾协程](#三顾协程)
 - [语言选择](#语言选择)
-- [架构简析](#架构简析)
+- [架构设计](#架构设计)
 
 ## 诞生之因
 
 2020年我大学毕业，入职了W公司，由于内部系统不时出现线程池打满的情况，再加上TL读过[《Java线程池实现原理及其在美团业务中的实践》](https://tech.meituan.com/2020/04/02/java-pooling-pratice-in-meituan.html)，我们决定构建自己的动态线程池，从结果来看，效果不错：
 
-![](img/begin.jpg)
+<div style="text-align: center;">
+    <img src="img/begin.jpg" width="50%">
+</div>
 
 但是这没有从根本上解决问题。
 
@@ -21,7 +23,9 @@
 
 动态线程池的本质就是通过调整线程数，尽可能地让线程上下文切换开销小于阻塞开销。由于这个是人工保证的，那么必然保证不了。
 
-![](img/run.jpg)
+<div style="text-align: center;">
+    <img src="img/run.jpg" width="50%">
+</div>
 
 那么有没有一种技术能够在保证`thread-per-core`的前提下，执行IO密集型任务性能不输多线程呢？
 
@@ -41,7 +45,9 @@
 
 一开始玩协程，出于学习成本的考虑，首先选择的是`kotlin`，但当我发现kotlin的协程使用`Thread.sleep()`会阻塞线程后，果断把方向调整为`golang`，大概2周后：
 
-![](img/good.jpeg)
+<div style="text-align: center;">
+    <img src="img/good.jpeg" width="50%">
+</div>
 
 协程技术哪家强，编程语言找golang。
 
@@ -55,13 +61,15 @@
 
 没办法，看样子只能自己干了。
 
-![](img/just_do_it.jpg)
+<div style="text-align: center;">
+    <img src="img/just_do_it.jpg" width="100%">
+</div>
 
 ## 语言选择
 
 既然决定造轮子，那么需要选择开发轮子的语言。
 
-之前研究c协程库时，有看到大佬已经尝试过用c写动态链接库，然后java通过jni去调这种方式，最终失败了，具体原因得深入JVM源码才能得知，对鄙人来说太复杂，放弃了，因此排除掉java/kotlin等java字节码语言。
+之前研究c协程库时，有看到大佬已经尝试过用c写动态链接库、然后java通过jni去调这种方式，最终失败了，具体原因得深入JVM源码才能得知，对鄙人来说太高深，告辞，因此排除掉java/kotlin等JVM字节码语言。
 
 显然，用golang再去实现一个goroutine，且不说其复杂程度完全不亚于深入JVM源码，而且即使真的做出来，也不可能有人愿意在生产环境使用，因此排除golang。
 
@@ -74,17 +82,18 @@ c++使用还算方便，表达力强，一开始咱就打算用c++写的，但�
 1. 需要不停地写cmake，告诉系统怎么编译它，有些麻烦；
 2. 如果要用别人写的类库，把代码拉下来，放到自己项目里，然后需要耗费大量时间来通过编译。如果别人依赖的库没有其他依赖还好，一旦有其他依赖，那么它依赖的依赖，也得按照刚才说的步骤处理，这就十分麻烦了。
 
-![](img/what_else_can_I_say.jpg)
+<div style="text-align: center;">
+    <img src="img/what_else_can_I_say.jpg" width="50%">
+    <img src="img/rust.jpeg" width="100%">
+</div>
 
-![](img/rust.jpeg)
-
-## 架构简析
+## 架构设计
 
 以下都是todo
 
 ## 底层选型
 
-## Scheduler
+## 调度器
 
 ## 时间轮
 
