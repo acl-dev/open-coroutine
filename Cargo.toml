@@ -28,7 +28,7 @@ open-coroutine-macros = { version = "0.1.0", path = "open-coroutine-macros" }
 
 [dev-dependencies]
 # benchmark
-criterion = "0.4.0"
+criterion = "0.5.1"
 
 [[bench]]
 name = "benchmark"
