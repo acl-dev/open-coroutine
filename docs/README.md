@@ -126,6 +126,8 @@ PS：这里解释下hook技术，简单的说，就是函数调用的代理，�
 | 缺点   | 不支持[backtrace](https://github.com/rust-lang/backtrace-rs)，且做支持的难度大；二开过程中容易踩坑，而且极难排查                                       | 不好做深度定制，后续无论是做减少协程切换次数的优化，还是做其他优化，难度都较大；受限于rust内联汇编的实现，只对主流系统及CPU架构做了支持 | 底层使用rust协程实现，无论是抢占调度还是hook都无法做到彻底                                         |
 | 备注   | 其中[context](https://github.com/boostorg/context)的代码未更新，如果要写最好自己参考[context-rs](https://github.com/zonyitoo/context-rs)重新封装 | [作者](https://github.com/Amanieu)是rust语言社区的大佬                            | rust async关键字的传染性是硬伤                                                      |
 
+附上[协程切换方式性能对比](https://tboox.org/cn/2016/10/28/coroutine-context)，如果是有栈协程，性能最好的底层是基于[context](https://github.com/boostorg/context)做改造，直接抛弃对浮点数的支持，在x86_64下的linux，性能预计提升`125%~300%`。
+
 暂时采用[corosensei](https://github.com/Amanieu/corosensei)，目前正在尝试自研无栈协程。
 
 ## 调度器
