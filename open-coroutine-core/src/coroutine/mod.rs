@@ -46,7 +46,7 @@ pub enum CoroutineState {
     Ready,
     ///运行中
     Running,
-    ///被挂起，参数为开始执行的时间戳
+    ///被挂起到指定时间后继续执行，参数为时间戳
     Suspend(u64),
     ///执行系统调用，参数为系统调用名
     SystemCall(&'static str),
