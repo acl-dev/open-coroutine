@@ -142,6 +142,10 @@ PS：这里解释下hook技术，简单的说，就是函数调用的代理，�
 
 ## 时间轮
 
+<div style="text-align: center;">
+    <img src="img/time-wheel.png" width="50%">
+</div>
+
 ## 任务窃取
 
 ## 调度器
