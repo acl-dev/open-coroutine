@@ -1,5 +1,4 @@
 use crate::event_loop::EventLoop;
-use crate::scheduler::Scheduler;
 use std::ffi::{c_char, CStr, CString};
 use std::time::Duration;
 
@@ -30,7 +29,7 @@ impl JoinHandle {
                     return Ok(None);
                 }
                 let event_loop = unsafe { &*self.0 };
-                let mut result = Scheduler::get_result(co_name);
+                let mut result = EventLoop::get_result(co_name);
                 while result.is_none() {
                     let left_time = timeout_time
                         .saturating_sub(open_coroutine_timer::now())
@@ -40,9 +39,9 @@ impl JoinHandle {
                         return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
                     }
                     event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
-                    result = Scheduler::get_result(co_name);
+                    result = EventLoop::get_result(co_name);
                 }
-                Ok(result.unwrap().get_result())
+                Ok(result)
             }
             Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -58,12 +57,12 @@ impl JoinHandle {
                     return Ok(None);
                 }
                 let event_loop = unsafe { &*self.0 };
-                let mut result = Scheduler::get_result(co_name);
+                let mut result = EventLoop::get_result(co_name);
                 while result.is_none() {
                     event_loop.wait_event(Some(Duration::from_millis(10)))?;
-                    result = Scheduler::get_result(co_name);
+                    result = EventLoop::get_result(co_name);
                 }
-                Ok(result.unwrap().get_result())
+                Ok(result)
             }
             Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -83,24 +82,18 @@ mod tests {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::spawn(move || {
-            let event_loop = EventLoop::new().unwrap();
+            let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
             let handle1 = event_loop
-                .submit(
-                    |_, _| {
-                        println!("[coroutine1] launched");
-                        3
-                    },
-                    None,
-                )
+                .submit(|_, _| {
+                    println!("[coroutine1] launched");
+                    3
+                })
                 .expect("submit failed !");
             let handle2 = event_loop
-                .submit(
-                    |_, _| {
-                        println!("[coroutine2] launched");
-                        4
-                    },
-                    None,
-                )
+                .submit(|_, _| {
+                    println!("[coroutine2] launched");
+                    4
+                })
                 .expect("submit failed !");
             assert_eq!(handle1.join().unwrap().unwrap(), 3);
             assert_eq!(handle2.join().unwrap().unwrap(), 4);
@@ -137,15 +130,12 @@ mod tests {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::spawn(move || {
-            let event_loop = EventLoop::new().unwrap();
+            let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
             let handle = event_loop
-                .submit(
-                    |_, _| {
-                        println!("[coroutine3] launched");
-                        5
-                    },
-                    None,
-                )
+                .submit(|_, _| {
+                    println!("[coroutine3] launched");
+                    5
+                })
                 .expect("submit failed !");
             let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);

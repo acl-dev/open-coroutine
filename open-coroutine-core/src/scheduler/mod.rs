@@ -1,13 +1,17 @@
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineState};
+use crate::scheduler::listener::Listener;
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::{LocalQueue, WorkStealQueue};
 use open_coroutine_timer::TimerList;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use uuid::Uuid;
+
+pub mod listener;
 
 /// 源协程
 #[allow(dead_code)]
@@ -32,6 +36,7 @@ static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(H
 pub struct Scheduler {
     name: &'static str,
     ready: LocalQueue<'static, SchedulableCoroutine>,
+    listeners: RefCell<VecDeque<Box<dyn Listener>>>,
 }
 
 impl Drop for Scheduler {
@@ -55,6 +60,7 @@ impl Scheduler {
         Scheduler {
             name: Box::leak(name),
             ready: QUEUE.local_queue(),
+            listeners: RefCell::default(),
         }
     }
 
@@ -83,6 +89,7 @@ impl Scheduler {
             coroutine.set_state(CoroutineState::Ready)
         );
         let co_name = Box::leak(Box::from(coroutine.get_name()));
+        self.on_create(&coroutine);
         self.ready.push_back(coroutine);
         Ok(co_name)
     }
@@ -140,6 +147,7 @@ impl Scheduler {
                     }
                     match coroutine.resume() {
                         CoroutineState::Suspend(timestamp) => {
+                            self.on_suspend(&coroutine);
                             if timestamp > 0 {
                                 //挂起协程到时间轮
                                 unsafe { SUSPEND_TABLE.insert(timestamp, coroutine) };
@@ -148,7 +156,8 @@ impl Scheduler {
                                 self.ready.push_back(coroutine);
                             }
                         }
-                        CoroutineState::SystemCall(_syscall_name) => {
+                        CoroutineState::SystemCall(syscall_name) => {
+                            self.on_syscall(&coroutine, syscall_name);
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             unsafe {
@@ -159,6 +168,7 @@ impl Scheduler {
                             todo!()
                         }
                         CoroutineState::Finished => {
+                            self.on_finish(&coroutine);
                             let name = Box::leak(Box::from(coroutine.get_name()));
                             _ = unsafe { RESULT_TABLE.insert(name, coroutine) };
                         }
@@ -174,6 +184,34 @@ impl Scheduler {
                 }
                 None => return left_time,
             }
+        }
+    }
+
+    pub fn add_listener(&self, listener: impl Listener + 'static) {
+        self.listeners.borrow_mut().push_back(Box::new(listener));
+    }
+
+    fn on_create(&self, coroutine: &SchedulableCoroutine) {
+        for listener in self.listeners.borrow().iter() {
+            listener.on_create(coroutine);
+        }
+    }
+
+    fn on_suspend(&self, coroutine: &SchedulableCoroutine) {
+        for listener in self.listeners.borrow().iter() {
+            listener.on_suspend(coroutine);
+        }
+    }
+
+    fn on_syscall(&self, coroutine: &SchedulableCoroutine, syscall_name: &str) {
+        for listener in self.listeners.borrow().iter() {
+            listener.on_syscall(coroutine, syscall_name);
+        }
+    }
+
+    fn on_finish(&self, coroutine: &SchedulableCoroutine) {
+        for listener in self.listeners.borrow().iter() {
+            listener.on_finish(coroutine);
         }
     }
 

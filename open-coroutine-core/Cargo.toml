@@ -20,6 +20,7 @@ uuid = { version = "1.3.0", features = [
     "fast-rng",
     "macro-diagnostics",
 ] }
+crossbeam-deque = "0.8.2"
 open-coroutine-timer = { version = "0.0.4", path = "../open-coroutine-timer" }
 open-coroutine-queue = { version = "0.1.2", path = "../open-coroutine-queue" }
 

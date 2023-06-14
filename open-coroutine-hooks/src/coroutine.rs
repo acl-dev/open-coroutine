@@ -6,12 +6,12 @@ use std::time::Duration;
 ///创建协程
 #[no_mangle]
 pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle {
-    let stack_size = if stack_size > 0 {
+    let _stack_size = if stack_size > 0 {
         Some(stack_size)
     } else {
         None
     };
-    match EventLoops::submit(move |suspender, _| f(suspender, param), stack_size) {
+    match EventLoops::submit(move |suspender, _| f(suspender, param)) {
         Ok(handle) => handle,
         Err(_) => JoinHandle::error(),
     }
