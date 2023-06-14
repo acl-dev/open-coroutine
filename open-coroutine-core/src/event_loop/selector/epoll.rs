@@ -82,7 +82,7 @@ impl Selector {
 
     pub fn select(
         &self,
-        events: &mut super::super::Events,
+        events: &mut super::super::event::Events,
         timeout: Option<Duration>,
     ) -> io::Result<()> {
         // A bug in kernels < 2.6.37 makes timeouts larger than LONG_MAX / CONFIG_HZ
