@@ -8,9 +8,9 @@ use std::time::Duration;
 pub struct Suspender<'s, Param, Yield>(&'s Yielder<Param, Yield>);
 
 thread_local! {
-    static SUSPENDER: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
-    static TIMESTAMP: Box<RefCell<u64>> = Box::new(RefCell::new(0));
-    static SYSCALL: Box<RefCell<&'static str>> = Box::new(RefCell::new(""));
+    static SUSPENDER: RefCell<*const c_void> = RefCell::new(std::ptr::null());
+    static TIMESTAMP: RefCell<u64> = RefCell::new(0);
+    static SYSCALL: RefCell<&'static str> = RefCell::new("");
 }
 
 impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
@@ -20,8 +20,8 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
 
     #[allow(clippy::ptr_as_ptr)]
     pub(crate) fn init_current(suspender: &Suspender<Param, Yield>) {
-        SUSPENDER.with(|boxed| {
-            *boxed.borrow_mut() = suspender as *const _ as *const c_void;
+        SUSPENDER.with(|c| {
+            _ = c.replace(suspender as *const _ as *const c_void);
         });
     }
 
@@ -42,8 +42,8 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     fn init_timestamp(time: u64) {
-        TIMESTAMP.with(|boxed| {
-            *boxed.borrow_mut() = time;
+        TIMESTAMP.with(|c| {
+            _ = c.replace(time);
         });
     }
 
@@ -56,8 +56,8 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     fn init_syscall_name(syscall_name: &str) {
-        SYSCALL.with(|boxed| {
-            *boxed.borrow_mut() = Box::leak(Box::from(syscall_name));
+        SYSCALL.with(|c| {
+            _ = c.replace(Box::leak(Box::from(syscall_name)));
         });
     }
 

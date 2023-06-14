@@ -113,7 +113,7 @@ macro_rules! co {
 }
 
 thread_local! {
-    static COROUTINE: Box<RefCell<*const c_void>> = Box::new(RefCell::new(std::ptr::null()));
+    static COROUTINE: RefCell<*const c_void> = RefCell::new(std::ptr::null());
 }
 
 impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
@@ -142,8 +142,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
 
     #[allow(clippy::ptr_as_ptr)]
     fn init_current(coroutine: &Coroutine<'c, Param, Yield, Return>) {
-        COROUTINE.with(|boxed| {
-            *boxed.borrow_mut() = coroutine as *const _ as *const c_void;
+        COROUTINE.with(|c| {
+            _ = c.replace(coroutine as *const _ as *const c_void);
         });
     }
 

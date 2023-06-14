@@ -449,13 +449,8 @@ impl EventLoop {
 
 impl Default for EventLoop {
     fn default() -> Self {
-        EventLoop::new(
-            crate::coroutine::default_stack_size(),
-            256,
-            65536,
-            300_000_000_000,
-        )
-        .expect("init event loop failed!")
+        EventLoop::new(crate::coroutine::default_stack_size(), 0, 65536, 0)
+            .expect("init event loop failed!")
     }
 }
 
