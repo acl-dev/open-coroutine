@@ -384,7 +384,6 @@ impl EventLoop {
         {
             return Ok(());
         }
-        _ = self.grow();
         if self
             .register
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -404,6 +403,7 @@ impl EventLoop {
                 }
             }
             self.workers.add_listener(CoroutineListener { s: self });
+            _ = self.grow();
         }
         let timeout = if schedule_before_wait {
             timeout.map(|time| Duration::from_nanos(self.workers.try_timed_schedule(time)))
