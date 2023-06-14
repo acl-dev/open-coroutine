@@ -11,10 +11,7 @@ pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) 
     } else {
         None
     };
-    match EventLoops::submit(move |suspender, _| f(suspender, param)) {
-        Ok(handle) => handle,
-        Err(_) => JoinHandle::error(),
-    }
+    EventLoops::submit(move |suspender, _| f(suspender, param))
 }
 
 ///等待协程完成

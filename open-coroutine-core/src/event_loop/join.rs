@@ -1,4 +1,4 @@
-use crate::event_loop::EventLoop;
+use crate::event_loop::core::EventLoop;
 use std::ffi::{c_char, CStr, CString};
 use std::time::Duration;
 
@@ -83,18 +83,14 @@ mod tests {
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::spawn(move || {
             let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
-            let handle1 = event_loop
-                .submit(|_, _| {
-                    println!("[coroutine1] launched");
-                    3
-                })
-                .expect("submit failed !");
-            let handle2 = event_loop
-                .submit(|_, _| {
-                    println!("[coroutine2] launched");
-                    4
-                })
-                .expect("submit failed !");
+            let handle1 = event_loop.submit(|_, _| {
+                println!("[coroutine1] launched");
+                3
+            });
+            let handle2 = event_loop.submit(|_, _| {
+                println!("[coroutine2] launched");
+                4
+            });
             assert_eq!(handle1.join().unwrap().unwrap(), 3);
             assert_eq!(handle2.join().unwrap().unwrap(), 4);
 
@@ -131,12 +127,10 @@ mod tests {
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::spawn(move || {
             let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
-            let handle = event_loop
-                .submit(|_, _| {
-                    println!("[coroutine3] launched");
-                    5
-                })
-                .expect("submit failed !");
+            let handle = event_loop.submit(|_, _| {
+                println!("[coroutine3] launched");
+                5
+            });
             let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
             assert_eq!(
