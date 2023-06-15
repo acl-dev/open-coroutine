@@ -36,6 +36,7 @@ pub fn crate_server(
             crate_co(6);
             //从流里面读内容，读到buffer中
             let bytes_read = stream.read(&mut buffer).expect("server read failed !");
+            print!("Server Received: {}", String::from_utf8_lossy(&buffer[..]));
             if bytes_read == 1 && buffer[0] == b'e' {
                 //如果读到的为空，说明已经结束了
                 let (lock, cvar) = &*server_finished;
@@ -56,6 +57,10 @@ pub fn crate_server(
                     .write(&buffer[..bytes_read])
                     .expect("server write failed !")
             );
+            print!(
+                "Server Send: {}",
+                String::from_utf8_lossy(&buffer[..bytes_read])
+            );
         }
     }
 }
@@ -74,8 +79,9 @@ pub fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
     for _ in 0..3 {
         //invoke by libc::send
         crate_co(4);
-        //写入stream流，如果写入失败，提示“写入失败”
+        //写入stream流，如果写入失败，提示"写入失败"
         assert_eq!(512, stream.write(&data).expect("Failed to write!"));
+        print!("Client Send: {}", String::from_utf8_lossy(&data[..]));
 
         //invoke by libc::recv
         crate_co(5);
@@ -87,6 +93,7 @@ pub fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
                 .read_until(b'\n', &mut buffer)
                 .expect("Failed to read into buffer")
         );
+        print!("Client Received: {}", String::from_utf8_lossy(&buffer[..]));
         assert_eq!(&data, &buffer as &[u8]);
         buffer.clear();
     }
@@ -121,6 +128,10 @@ pub fn crate_co_server(
                     let bytes_read = stream
                         .read(&mut buffer)
                         .expect("coroutine server read failed !");
+                    print!(
+                        "Coroutine Server Received: {}",
+                        String::from_utf8_lossy(&buffer[..])
+                    );
                     if bytes_read == 1 && buffer[0] == b'e' {
                         //如果读到的为空，说明已经结束了
                         let (lock, cvar) = &*server_finished;
@@ -140,6 +151,10 @@ pub fn crate_co_server(
                         stream
                             .write(&buffer[..bytes_read])
                             .expect("coroutine server write failed !")
+                    );
+                    print!(
+                        "Coroutine Server Send: {}",
+                        String::from_utf8_lossy(&buffer[..bytes_read])
                     );
                 }
             },
@@ -164,8 +179,12 @@ pub fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
             for _ in 0..3 {
                 //invoke by libc::send
                 crate_co(14);
-                //写入stream流，如果写入失败，提示“写入失败”
+                //写入stream流，如果写入失败，提示"写入失败"
                 assert_eq!(512, stream.write(&data).expect("Failed to write!"));
+                print!(
+                    "Coroutine Client Send: {}",
+                    String::from_utf8_lossy(&data[..])
+                );
 
                 //invoke by libc::recv
                 crate_co(15);
@@ -176,6 +195,10 @@ pub fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
                     reader
                         .read_until(b'\n', &mut buffer)
                         .expect("Failed to read into buffer")
+                );
+                print!(
+                    "Coroutine Client Received: {}",
+                    String::from_utf8_lossy(&buffer[..])
                 );
                 assert_eq!(&data, &buffer as &[u8]);
                 buffer.clear();

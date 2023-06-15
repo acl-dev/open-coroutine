@@ -85,7 +85,16 @@ impl EventLoops {
         EventLoops::next(true).submit(f)
     }
 
-    fn slice_wait(time: Duration, event_loop: &'static mut EventLoop) -> std::io::Result<()> {
+    fn slice_wait(
+        timeout: Option<Duration>,
+        event_loop: &'static mut EventLoop,
+    ) -> std::io::Result<()> {
+        let time = timeout.unwrap_or(Duration::MAX);
+        if let Some(suspender) = Suspender::<(), ()>::current() {
+            suspender.delay(time);
+            //回来的时候等待的时间已经到了
+            return event_loop.wait_just(Some(Duration::ZERO));
+        }
         let timeout_time = open_coroutine_timer::get_timeout_time(time);
         loop {
             let left_time = timeout_time
@@ -100,36 +109,19 @@ impl EventLoops {
     }
 
     pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
-        let time = timeout.unwrap_or(Duration::MAX);
-        if let Some(suspender) = Suspender::<(), ()>::current() {
-            suspender.delay(time);
-            return Ok(());
-        }
-        Self::slice_wait(time, EventLoops::next(false))
+        Self::slice_wait(timeout, EventLoops::next(false))
     }
 
     pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = EventLoops::next(false);
         event_loop.add_read_event(fd)?;
-        let time = timeout.unwrap_or(Duration::MAX);
-        if let Some(suspender) = Suspender::<(), ()>::current() {
-            suspender.delay(time);
-            //回来的时候事件已经发生了
-            return Ok(());
-        }
-        Self::slice_wait(time, event_loop)
+        Self::slice_wait(timeout, event_loop)
     }
 
     pub fn wait_write_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = EventLoops::next(false);
         event_loop.add_write_event(fd)?;
-        let time = timeout.unwrap_or(Duration::MAX);
-        if let Some(suspender) = Suspender::<(), ()>::current() {
-            suspender.delay(time);
-            //回来的时候事件已经发生了
-            return Ok(());
-        }
-        Self::slice_wait(time, event_loop)
+        Self::slice_wait(timeout, event_loop)
     }
 
     pub fn del_event(fd: libc::c_int) {
