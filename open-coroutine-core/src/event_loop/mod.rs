@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::coroutine::suspender::Suspender;
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
@@ -26,9 +27,20 @@ pub struct EventLoops {}
 
 static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
-// todo 增加配置类，允许用户配置一些参数
-static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> =
-    Lazy::new(|| (0..num_cpus::get()).map(|_| EventLoop::default()).collect());
+static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
+    (0..Config::get_instance().get_event_loop_size())
+        .map(|_| {
+            let config = Config::get_instance();
+            EventLoop::new(
+                config.get_stack_size(),
+                config.get_min_size(),
+                config.get_max_size(),
+                config.get_keep_alive_time(),
+            )
+            .expect("init event loop failed!")
+        })
+        .collect()
+});
 
 static EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCell::new();
 

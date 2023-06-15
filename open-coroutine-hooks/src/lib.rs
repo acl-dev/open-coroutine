@@ -46,10 +46,18 @@
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
 
+use open_coroutine_core::config::Config;
+
 #[no_mangle]
-pub extern "C" fn init_hook() {
-    //啥都不做，只是为了保证hook的函数能够被重定向到
-    //防止压根不调用coroutine_crate的情况
+pub extern "C" fn init_config(config: Config) {
+    //一方面保证hook的函数能够被重定向到(防止压根不调用coroutine_crate的情况)
+    //另一方面初始化EventLoop配置
+    _ = Config::get_instance()
+        .set_event_loop_size(config.get_event_loop_size())
+        .set_stack_size(config.get_stack_size())
+        .set_min_size(config.get_min_size())
+        .set_max_size(config.get_max_size())
+        .set_keep_alive_time(config.get_keep_alive_time());
 }
 
 pub mod coroutine;

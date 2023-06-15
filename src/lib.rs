@@ -46,6 +46,7 @@
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
 
+pub use open_coroutine_core::config::Config;
 pub use open_coroutine_macros::*;
 
 pub mod join;
@@ -53,11 +54,11 @@ pub mod join;
 pub mod coroutine;
 
 extern "C" {
-    fn init_hook();
+    fn init_config(config: Config);
 }
 
 pub fn init() {
-    unsafe { init_hook() };
+    unsafe { init_config(Config::default()) };
     println!("open-coroutine inited !");
 }
 

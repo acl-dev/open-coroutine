@@ -86,3 +86,5 @@ mod monitor;
     trivial_numeric_casts
 )]
 pub mod event_loop;
+
+pub mod config;
