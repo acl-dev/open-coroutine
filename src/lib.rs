@@ -59,7 +59,7 @@ extern "C" {
 
 pub fn init(config: Config) {
     unsafe { init_config(config) };
-    println!("open-coroutine inited with {:#?}", config);
+    println!("open-coroutine inited with {config:#?}");
 }
 
 #[cfg(test)]
