@@ -57,9 +57,9 @@ extern "C" {
     fn init_config(config: Config);
 }
 
-pub fn init() {
-    unsafe { init_config(Config::default()) };
-    println!("open-coroutine inited !");
+pub fn init(config: Config) {
+    unsafe { init_config(config) };
+    println!("open-coroutine inited with {:#?}", config);
 }
 
 #[cfg(test)]
@@ -68,6 +68,6 @@ mod tests {
 
     #[test]
     fn test_link() {
-        init();
+        init(Config::default());
     }
 }
