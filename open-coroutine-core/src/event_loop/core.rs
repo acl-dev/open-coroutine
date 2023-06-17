@@ -99,7 +99,7 @@ impl EventLoop {
                                 //回收worker协程
                                 return 0;
                             }
-                            _ = self.wait_just(Some(Duration::from_millis(10)));
+                            _ = self.wait_just(Some(Duration::from_millis(1)));
                         }
                         Steal::Success(task) => {
                             let task_name = task.get_name();
@@ -239,6 +239,7 @@ impl EventLoop {
         timeout: Option<Duration>,
         schedule_before_wait: bool,
     ) -> std::io::Result<()> {
+        _ = self.grow();
         if self
             .waiting
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
@@ -246,7 +247,6 @@ impl EventLoop {
         {
             return Ok(());
         }
-        _ = self.grow();
         if self
             .register
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
