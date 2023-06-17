@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-#[open_coroutine::main(event_loop_size = 2, max_size = 4)]
+#[open_coroutine::main(event_loop_size = 2, max_size = 3)]
 fn main() -> std::io::Result<()> {
     let port = 8999;
     let server_started = Arc::new(AtomicBool::new(false));
