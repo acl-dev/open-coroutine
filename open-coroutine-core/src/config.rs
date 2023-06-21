@@ -1,6 +1,6 @@
-use std::fmt::{Debug, Formatter};
 use crossbeam_utils::atomic::AtomicCell;
 use once_cell::sync::Lazy;
+use std::fmt::{Debug, Formatter};
 
 static CONFIG: Lazy<Config> = Lazy::new(Config::default);
 
