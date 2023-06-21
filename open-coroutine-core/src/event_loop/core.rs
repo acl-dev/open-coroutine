@@ -91,15 +91,19 @@ impl EventLoop {
                 loop {
                     match self.work_queue.steal() {
                         Steal::Empty => {
-                            let larger_than_min =
-                                self.running.load(Ordering::Acquire) > self.min_size;
+                            let running = self.running.load(Ordering::Acquire);
                             let keep_alive =
                                 open_coroutine_timer::now() - create_time < self.keep_alive_time;
-                            if larger_than_min && !keep_alive {
+                            if running > self.min_size && !keep_alive {
                                 //回收worker协程
+                                _ = self.running.fetch_sub(1, Ordering::Release);
                                 return 0;
                             }
-                            suspender.delay(Duration::from_millis(10));
+                            if running > 1 {
+                                suspender.delay(Duration::from_millis(1));
+                            } else {
+                                _ = self.wait_just(Some(Duration::from_millis(1)));
+                            }
                         }
                         Steal::Success(task) => {
                             let task_name = task.get_name();
