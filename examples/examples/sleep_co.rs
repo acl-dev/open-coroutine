@@ -1,5 +1,5 @@
-use std::time::Duration;
 use open_coroutine_examples::sleep_test_co;
+use std::time::Duration;
 
 #[open_coroutine::main(event_loop_size = 2, max_size = 2, keep_alive_time = 0)]
 fn main() {
