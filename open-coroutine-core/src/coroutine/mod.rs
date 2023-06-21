@@ -150,7 +150,9 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     #[must_use]
     pub fn current() -> Option<&'c Coroutine<'c, Param, Yield, Return>> {
         COROUTINE.with(|boxed| {
-            let ptr = *boxed.borrow_mut();
+            let ptr = *boxed
+                .try_borrow_mut()
+                .expect("coroutine current already borrowed");
             if ptr.is_null() {
                 None
             } else {
@@ -160,7 +162,11 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     }
 
     fn clean_current() {
-        COROUTINE.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
+        COROUTINE.with(|boxed| {
+            *boxed
+                .try_borrow_mut()
+                .expect("coroutine current already borrowed") = std::ptr::null();
+        });
     }
 
     pub fn get_name(&self) -> &str {

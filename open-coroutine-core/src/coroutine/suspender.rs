@@ -28,7 +28,9 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     #[must_use]
     pub fn current() -> Option<&'s Suspender<'s, Param, Yield>> {
         SUSPENDER.with(|boxed| {
-            let ptr = *boxed.borrow_mut();
+            let ptr = *boxed
+                .try_borrow_mut()
+                .expect("suspender current already borrowed");
             if ptr.is_null() {
                 None
             } else {
@@ -38,7 +40,11 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     pub(crate) fn clean_current() {
-        SUSPENDER.with(|boxed| *boxed.borrow_mut() = std::ptr::null());
+        SUSPENDER.with(|boxed| {
+            *boxed
+                .try_borrow_mut()
+                .expect("suspender current already borrowed") = std::ptr::null();
+        });
     }
 
     fn init_timestamp(time: u64) {
@@ -48,11 +54,7 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     pub(crate) fn timestamp() -> u64 {
-        TIMESTAMP.with(|boxed| {
-            let val = *boxed.borrow_mut();
-            *boxed.borrow_mut() = 0;
-            val
-        })
+        TIMESTAMP.with(|boxed| boxed.replace(0))
     }
 
     fn init_syscall_name(syscall_name: &str) {
@@ -62,11 +64,7 @@ impl<'s, Param, Yield> Suspender<'s, Param, Yield> {
     }
 
     pub(crate) fn syscall_name() -> &'static str {
-        SYSCALL.with(|boxed| {
-            let val = *boxed.borrow_mut();
-            *boxed.borrow_mut() = "";
-            val
-        })
+        SYSCALL.with(|boxed| boxed.replace(""))
     }
 
     pub fn suspend_with(&self, val: Yield) -> Param {
