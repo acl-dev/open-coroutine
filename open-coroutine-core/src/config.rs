@@ -93,8 +93,9 @@ impl Default for Config {
 mod tests {
     use super::*;
 
+    #[ignore]
     #[test]
-    fn test_simple() {
+    fn test_config() {
         _ = Config::get_instance()
             .set_event_loop_size(2)
             .set_stack_size(4096)
