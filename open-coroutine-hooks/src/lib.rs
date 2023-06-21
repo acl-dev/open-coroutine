@@ -58,6 +58,7 @@ pub extern "C" fn init_config(config: Config) {
         .set_min_size(config.get_min_size())
         .set_max_size(config.get_max_size())
         .set_keep_alive_time(config.get_keep_alive_time());
+    println!("open-coroutine inited with {config:#?}");
 }
 
 pub mod coroutine;

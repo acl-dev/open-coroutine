@@ -92,7 +92,7 @@ pub fn main(args: TokenStream, func: TokenStream) -> TokenStream {
     let caller = quote! {
         // rebuild the function, add a func named is_expired to check user login session expire or not.
         #func_vis fn #func_name #func_generics(#func_inputs) #func_output {
-            let mut open_coroutine_config = open_coroutine::Config::default();
+            let open_coroutine_config = open_coroutine::Config::default();
             open_coroutine_config.set_event_loop_size(#event_loop_size)
                     .set_stack_size(#stack_size)
                     .set_min_size(#min_size)
