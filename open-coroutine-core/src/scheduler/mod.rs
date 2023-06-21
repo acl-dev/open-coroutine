@@ -328,37 +328,40 @@ mod tests {
         static mut TEST_FLAG2: bool = true;
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
-        let handler = std::thread::spawn(move || {
-            let scheduler = Box::leak(Box::new(Scheduler::new()));
-            _ = scheduler.submit(|_, _| {
-                unsafe {
-                    while TEST_FLAG1 {
-                        _ = libc::usleep(10_000);
+        let handler = std::thread::Builder::new()
+            .name("test_preemptive_schedule".to_string())
+            .spawn(move || {
+                let scheduler = Box::leak(Box::new(Scheduler::new()));
+                _ = scheduler.submit(|_, _| {
+                    unsafe {
+                        while TEST_FLAG1 {
+                            _ = libc::usleep(10_000);
+                        }
                     }
-                }
-                1
-            });
-            _ = scheduler.submit(|_, _| {
-                unsafe {
-                    while TEST_FLAG2 {
-                        _ = libc::usleep(10_000);
+                    1
+                });
+                _ = scheduler.submit(|_, _| {
+                    unsafe {
+                        while TEST_FLAG2 {
+                            _ = libc::usleep(10_000);
+                        }
                     }
-                }
-                unsafe { TEST_FLAG1 = false };
-                2
-            });
-            _ = scheduler.submit(|_, _| {
-                unsafe { TEST_FLAG2 = false };
-                3
-            });
-            scheduler.try_schedule();
+                    unsafe { TEST_FLAG1 = false };
+                    2
+                });
+                _ = scheduler.submit(|_, _| {
+                    unsafe { TEST_FLAG2 = false };
+                    3
+                });
+                scheduler.try_schedule();
 
-            let (lock, cvar) = &*pair2;
-            let mut pending = lock.lock().unwrap();
-            *pending = false;
-            // notify the condvar that the value has changed.
-            cvar.notify_one();
-        });
+                let (lock, cvar) = &*pair2;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                // notify the condvar that the value has changed.
+                cvar.notify_one();
+            })
+            .expect("failed to spawn thread");
 
         // wait for the thread to start up
         let (lock, cvar) = &*pair;

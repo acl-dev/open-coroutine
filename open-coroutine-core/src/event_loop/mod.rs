@@ -28,9 +28,9 @@ pub struct EventLoops {}
 static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
-    (0..Config::get_instance().get_event_loop_size())
+    let config = Config::get_instance();
+    (0..config.get_event_loop_size())
         .map(|_| {
-            let config = Config::get_instance();
             EventLoop::new(
                 config.get_stack_size(),
                 config.get_min_size(),
@@ -72,13 +72,16 @@ impl EventLoops {
             //初始化event_loop线程
             _ = EVENT_LOOP_WORKERS.get_or_init(|| {
                 (1..unsafe { EVENT_LOOPS.len() })
-                    .map(|_| {
-                        std::thread::spawn(|| {
-                            let event_loop = EventLoops::next(true);
-                            while EVENT_LOOP_STARTED.load(Ordering::Acquire) {
-                                _ = event_loop.wait_event(Some(Duration::from_millis(10)));
-                            }
-                        })
+                    .map(|i| {
+                        std::thread::Builder::new()
+                            .name(format!("open-coroutine-event-loop-{i}"))
+                            .spawn(|| {
+                                let event_loop = EventLoops::next(true);
+                                while EVENT_LOOP_STARTED.load(Ordering::Acquire) {
+                                    _ = event_loop.wait_event(Some(Duration::from_millis(10)));
+                                }
+                            })
+                            .expect("failed to spawn event-loop thread")
                     })
                     .collect()
             });

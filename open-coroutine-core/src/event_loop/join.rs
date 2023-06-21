@@ -81,25 +81,28 @@ mod tests {
     fn join_test() -> std::io::Result<()> {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
-        let handler = std::thread::spawn(move || {
-            let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
-            let handle1 = event_loop.submit(|_, _| {
-                println!("[coroutine1] launched");
-                3
-            });
-            let handle2 = event_loop.submit(|_, _| {
-                println!("[coroutine2] launched");
-                4
-            });
-            assert_eq!(handle1.join().unwrap().unwrap(), 3);
-            assert_eq!(handle2.join().unwrap().unwrap(), 4);
+        let handler = std::thread::Builder::new()
+            .name("test_join".to_string())
+            .spawn(move || {
+                let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
+                let handle1 = event_loop.submit(|_, _| {
+                    println!("[coroutine1] launched");
+                    3
+                });
+                let handle2 = event_loop.submit(|_, _| {
+                    println!("[coroutine2] launched");
+                    4
+                });
+                assert_eq!(handle1.join().unwrap().unwrap(), 3);
+                assert_eq!(handle2.join().unwrap().unwrap(), 4);
 
-            let (lock, cvar) = &*pair2;
-            let mut pending = lock.lock().unwrap();
-            *pending = false;
-            // notify the condvar that the value has changed.
-            cvar.notify_one();
-        });
+                let (lock, cvar) = &*pair2;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                // notify the condvar that the value has changed.
+                cvar.notify_one();
+            })
+            .expect("failed to spawn thread");
 
         // wait for the thread to start up
         let (lock, cvar) = &*pair;
@@ -125,28 +128,31 @@ mod tests {
     fn timed_join_test() -> std::io::Result<()> {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
-        let handler = std::thread::spawn(move || {
-            let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
-            let handle = event_loop.submit(|_, _| {
-                println!("[coroutine3] launched");
-                5
-            });
-            let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
-            assert_eq!(
-                handle
-                    .timeout_join(Duration::from_secs(1))
-                    .unwrap()
-                    .unwrap(),
-                5
-            );
+        let handler = std::thread::Builder::new()
+            .name("test_timed_join".to_string())
+            .spawn(move || {
+                let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
+                let handle = event_loop.submit(|_, _| {
+                    println!("[coroutine3] launched");
+                    5
+                });
+                let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
+                assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+                assert_eq!(
+                    handle
+                        .timeout_join(Duration::from_secs(1))
+                        .unwrap()
+                        .unwrap(),
+                    5
+                );
 
-            let (lock, cvar) = &*pair2;
-            let mut pending = lock.lock().unwrap();
-            *pending = false;
-            // notify the condvar that the value has changed.
-            cvar.notify_one();
-        });
+                let (lock, cvar) = &*pair2;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                // notify the condvar that the value has changed.
+                cvar.notify_one();
+            })
+            .expect("failed to spawn thread");
 
         // wait for the thread to start up
         let (lock, cvar) = &*pair;

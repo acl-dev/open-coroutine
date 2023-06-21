@@ -94,15 +94,18 @@ impl Monitor {
         Monitor::register_handler(sigurg_handler as libc::sighandler_t);
         //通过这种方式来初始化monitor线程
         _ = MONITOR.get_or_init(|| {
-            std::thread::spawn(|| {
-                let event_loop = EventLoops::monitor();
-                let monitor = Monitor::global();
-                while monitor.flag.load(Ordering::Acquire) {
-                    monitor.signal();
-                    //monitor线程不执行协程计算任务，每次循环至少wait 1ms
-                    _ = event_loop.wait_just(Some(Duration::from_millis(1)));
-                }
-            })
+            std::thread::Builder::new()
+                .name("open-coroutine-monitor".to_string())
+                .spawn(|| {
+                    let event_loop = EventLoops::monitor();
+                    let monitor = Monitor::global();
+                    while monitor.flag.load(Ordering::Acquire) {
+                        monitor.signal();
+                        //monitor线程不执行协程计算任务，每次循环至少wait 1ms
+                        _ = event_loop.wait_just(Some(Duration::from_millis(1)));
+                    }
+                })
+                .expect("failed to spawn monitor thread")
         });
         Monitor {
             task: TimerList::new(),

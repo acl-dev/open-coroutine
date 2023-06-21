@@ -9,7 +9,9 @@ fn main() -> std::io::Result<()> {
             static mut TEST_FLAG2: bool = true;
             let pair = Arc::new((Mutex::new(true), Condvar::new()));
             let pair2 = Arc::clone(&pair);
-            let handler = std::thread::spawn(move || {
+            let handler = std::thread::Builder::new()
+            .name("preemptive".to_string())
+            .spawn(move || {
                 let scheduler = Scheduler::new();
                 _ = scheduler.submit(|_, _| {
                     println!("coroutine1 launched");
@@ -42,7 +44,7 @@ fn main() -> std::io::Result<()> {
                 *pending = false;
                 // notify the condvar that the value has changed.
                 cvar.notify_one();
-            });
+            }).expect("failed to spawn thread");
 
             // wait for the thread to start up
             let (lock, cvar) = &*pair;

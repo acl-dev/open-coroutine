@@ -10,8 +10,14 @@ fn main() -> std::io::Result<()> {
     let clone = server_started.clone();
     let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
     let server_finished = Arc::clone(&server_finished_pair);
-    _ = std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
-    _ = std::thread::spawn(move || crate_co_client(port, server_started));
+    _ = std::thread::Builder::new()
+        .name("crate_co_server".to_string())
+        .spawn(move || crate_co_server(port, clone, server_finished_pair))
+        .expect("failed to spawn thread");
+    _ = std::thread::Builder::new()
+        .name("crate_co_client".to_string())
+        .spawn(move || crate_co_client(port, server_started))
+        .expect("failed to spawn thread");
     std::thread::sleep(Duration::from_millis(80));
 
     let (lock, cvar) = &*server_finished;
