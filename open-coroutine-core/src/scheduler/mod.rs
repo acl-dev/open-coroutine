@@ -188,7 +188,12 @@ impl Scheduler {
     }
 
     pub fn add_listener(&self, listener: impl Listener + 'static) {
-        self.listeners.borrow_mut().push_back(Box::new(listener));
+        loop {
+            if let Ok(mut listeners) = self.listeners.try_borrow_mut() {
+                listeners.push_back(Box::new(listener));
+                return;
+            }
+        }
     }
 
     fn on_create(&self, coroutine: &SchedulableCoroutine) {
