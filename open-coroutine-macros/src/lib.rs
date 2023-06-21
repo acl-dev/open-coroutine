@@ -60,7 +60,7 @@ pub fn main(args: TokenStream, func: TokenStream) -> TokenStream {
     let mut stack_size = 64 * 1024usize;
     let mut min_size = 0usize;
     let mut max_size = 65536usize;
-    let mut keep_alive_time = 0u64;
+    let mut keep_alive_time = 60_000_000_000u64;
     if !args.is_empty() {
         let tea_parser = syn::meta::parser(|meta| {
             if meta.path.is_ident("event_loop_size") {

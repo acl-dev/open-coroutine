@@ -99,7 +99,7 @@ impl EventLoop {
                                 //回收worker协程
                                 return 0;
                             }
-                            _ = self.wait_just(Some(Duration::from_millis(1)));
+                            suspender.delay(Duration::from_millis(10));
                         }
                         Steal::Success(task) => {
                             let task_name = task.get_name();

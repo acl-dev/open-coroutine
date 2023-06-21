@@ -44,6 +44,7 @@ pub fn crate_server(
                 *pending = false;
                 cvar.notify_one();
                 println!("server closed");
+                crate_co(8);
                 return;
             }
             assert_eq!(512, bytes_read);
@@ -100,6 +101,7 @@ pub fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
     //发送终止符
     assert_eq!(1, stream.write(&[b'e']).expect("Failed to write!"));
     println!("client closed");
+    crate_co(8);
 }
 
 pub fn crate_co_server(
@@ -139,6 +141,7 @@ pub fn crate_co_server(
                         *pending = false;
                         cvar.notify_one();
                         println!("coroutine server closed");
+                        crate_co(18);
                         return Some(Box::leak(Box::new(stream)));
                     }
                     assert_eq!(512, bytes_read);
@@ -206,6 +209,7 @@ pub fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
             //发送终止符
             assert_eq!(1, stream.write(&[b'e']).expect("Failed to write!"));
             println!("coroutine client closed");
+            crate_co(18);
         },
         port,
     );

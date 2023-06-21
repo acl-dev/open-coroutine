@@ -84,7 +84,7 @@ impl Default for Config {
             stack_size: crate::coroutine::default_stack_size(),
             min_size: 0,
             max_size: 65536,
-            keep_alive_time: 0,
+            keep_alive_time: 60_000_000_000,
         }
     }
 }

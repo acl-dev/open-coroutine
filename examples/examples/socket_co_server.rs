@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-#[open_coroutine::main(event_loop_size = 2, max_size = 2)]
+#[open_coroutine::main(event_loop_size = 2, max_size = 1, keep_alive_time = 70_000_000)]
 fn main() -> std::io::Result<()> {
     let port = 8889;
     let server_started = Arc::new(AtomicBool::new(false));
@@ -12,6 +12,7 @@ fn main() -> std::io::Result<()> {
     let server_finished = Arc::clone(&server_finished_pair);
     _ = std::thread::spawn(move || crate_co_server(port, clone, server_finished_pair));
     _ = std::thread::spawn(move || crate_client(port, server_started));
+    std::thread::sleep(Duration::from_millis(80));
 
     let (lock, cvar) = &*server_finished;
     let result = cvar
