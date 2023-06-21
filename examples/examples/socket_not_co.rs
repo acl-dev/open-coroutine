@@ -18,7 +18,6 @@ fn main() -> std::io::Result<()> {
         .name("crate_client".to_string())
         .spawn(move || crate_client(port, server_started))
         .expect("failed to spawn thread");
-    std::thread::sleep(Duration::from_millis(80));
 
     let (lock, cvar) = &*server_finished;
     let result = cvar
