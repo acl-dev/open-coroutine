@@ -66,8 +66,8 @@ impl EventLoops {
 
     pub fn start() {
         if EVENT_LOOP_STARTED
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-            .is_err()
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
         {
             //初始化event_loop线程
             _ = EVENT_LOOP_WORKERS.get_or_init(|| {

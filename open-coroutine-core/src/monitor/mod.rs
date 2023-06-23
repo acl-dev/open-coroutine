@@ -1,5 +1,6 @@
 use crate::coroutine::CoroutineState;
 use crate::event_loop::EventLoops;
+use crate::monitor::node::TaskNode;
 use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::{Lazy, OnceCell};
 use open_coroutine_timer::TimerList;
@@ -7,42 +8,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+mod node;
+
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
 static MONITOR: OnceCell<JoinHandle<()>> = OnceCell::new();
 
-struct TaskNode {
-    pthread: libc::pthread_t,
-    coroutine: Option<*const SchedulableCoroutine>,
-}
-
-impl Eq for TaskNode {}
-
-impl PartialEq<Self> for TaskNode {
-    fn eq(&self, other: &Self) -> bool {
-        self.pthread.eq(&other.pthread)
-    }
-}
-
-impl PartialOrd<Self> for TaskNode {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.pthread.partial_cmp(&other.pthread)
-    }
-}
-
-impl Ord for TaskNode {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.pthread.cmp(&other.pthread)
-    }
-}
-
+#[derive(Debug)]
 pub(crate) struct Monitor {
     task: TimerList<TaskNode>,
-    flag: AtomicBool,
+    started: AtomicBool,
 }
 
 impl Monitor {
-    #[allow(dead_code)]
     pub(crate) fn signum() -> libc::c_int {
         cfg_if::cfg_if! {
             if #[cfg(any(target_os = "linux",
@@ -56,7 +34,6 @@ impl Monitor {
         }
     }
 
-    #[allow(dead_code)]
     #[cfg(unix)]
     fn register_handler(sigurg_handler: libc::sighandler_t) {
         unsafe {
@@ -99,7 +76,7 @@ impl Monitor {
                 .spawn(|| {
                     let event_loop = EventLoops::monitor();
                     let monitor = Monitor::global();
-                    while monitor.flag.load(Ordering::Acquire) {
+                    while monitor.started.load(Ordering::Acquire) {
                         monitor.signal();
                         //monitor线程不执行协程计算任务，每次循环至少wait 1ms
                         _ = event_loop.wait_just(Some(Duration::from_millis(1)));
@@ -109,7 +86,7 @@ impl Monitor {
         });
         Monitor {
             task: TimerList::new(),
-            flag: AtomicBool::new(true),
+            started: AtomicBool::new(true),
         }
     }
 
@@ -118,7 +95,7 @@ impl Monitor {
     }
 
     pub fn stop() {
-        Monitor::global().flag.store(false, Ordering::Release);
+        Monitor::global().started.store(false, Ordering::Release);
     }
 
     fn signal(&mut self) {
@@ -129,12 +106,15 @@ impl Monitor {
                 break;
             }
             for node in entry.iter() {
-                if let Some(coroutine) = node.coroutine {
+                if let Some(coroutine) = node.get_coroutine() {
                     unsafe {
                         if CoroutineState::Running == (*coroutine).get_state() {
                             //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
                             //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
-                            assert_eq!(0, libc::pthread_kill(node.pthread, Monitor::signum()));
+                            assert_eq!(
+                                0,
+                                libc::pthread_kill(node.get_pthread(), Monitor::signum())
+                            );
                         }
                     }
                 }
@@ -142,13 +122,12 @@ impl Monitor {
         }
     }
 
-    #[allow(unused_variables)]
     pub(crate) fn add_task(time: u64, coroutine: Option<*const SchedulableCoroutine>) {
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global()
                 .task
-                .insert(time, TaskNode { pthread, coroutine });
+                .insert(time, TaskNode::new(pthread, coroutine));
         }
     }
 
@@ -157,10 +136,7 @@ impl Monitor {
             unsafe {
                 let pthread = libc::pthread_self();
                 if !entry.is_empty() {
-                    _ = entry.remove(&TaskNode {
-                        pthread,
-                        coroutine: None,
-                    });
+                    _ = entry.remove(&TaskNode::new(pthread, None));
                 }
             }
         }

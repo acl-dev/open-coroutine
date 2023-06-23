@@ -246,7 +246,7 @@ impl EventLoop {
         _ = self.grow();
         if self
             .waiting
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
             return Ok(());
@@ -278,10 +278,10 @@ impl EventLoop {
         };
         let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout).map_err(|e| {
-            self.waiting.store(false, Ordering::Relaxed);
+            self.waiting.store(false, Ordering::Release);
             e
         })?;
-        self.waiting.store(false, Ordering::Relaxed);
+        self.waiting.store(false, Ordering::Release);
         for event in events.iter() {
             let fd = event.fd();
             let token = event.token();

@@ -319,13 +319,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[cfg(all(
-        target_os = "linux",
-        target_os = "l4re",
-        target_os = "android",
-        target_os = "emscripten",
-        feature = "preemptive-schedule"
-    ))]
+    #[cfg(feature = "preemptive-schedule")]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {
         use std::sync::{Arc, Condvar, Mutex};
@@ -337,27 +331,36 @@ mod tests {
             .name("test_preemptive_schedule".to_string())
             .spawn(move || {
                 let scheduler = Box::leak(Box::new(Scheduler::new()));
-                _ = scheduler.submit(|_, _| {
-                    unsafe {
-                        while TEST_FLAG1 {
-                            _ = libc::usleep(10_000);
+                _ = scheduler.submit(
+                    |_, _| {
+                        unsafe {
+                            while TEST_FLAG1 {
+                                _ = libc::usleep(10_000);
+                            }
                         }
-                    }
-                    1
-                });
-                _ = scheduler.submit(|_, _| {
-                    unsafe {
-                        while TEST_FLAG2 {
-                            _ = libc::usleep(10_000);
+                        1
+                    },
+                    None,
+                );
+                _ = scheduler.submit(
+                    |_, _| {
+                        unsafe {
+                            while TEST_FLAG2 {
+                                _ = libc::usleep(10_000);
+                            }
                         }
-                    }
-                    unsafe { TEST_FLAG1 = false };
-                    2
-                });
-                _ = scheduler.submit(|_, _| {
-                    unsafe { TEST_FLAG2 = false };
-                    3
-                });
+                        unsafe { TEST_FLAG1 = false };
+                        2
+                    },
+                    None,
+                );
+                _ = scheduler.submit(
+                    |_, _| {
+                        unsafe { TEST_FLAG2 = false };
+                        3
+                    },
+                    None,
+                );
                 scheduler.try_schedule();
 
                 let (lock, cvar) = &*pair2;

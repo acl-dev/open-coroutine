@@ -143,12 +143,12 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
 
     fn try_lock(&self) -> bool {
         self.stealing
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
     }
 
     fn release_lock(&self) {
-        self.stealing.store(false, Ordering::Relaxed);
+        self.stealing.store(false, Ordering::Release);
     }
 
     /// If the queue is full, first push half to global,
