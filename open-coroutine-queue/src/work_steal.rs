@@ -77,14 +77,15 @@ impl<T: Debug> WorkStealQueue<T> {
     }
 
     pub fn local_queue(&self) -> LocalQueue<T> {
-        let index = self.index.fetch_add(1, Ordering::Relaxed);
+        let mut index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
             self.index.store(0, Ordering::Relaxed);
         }
+        index %= self.local_queues.len();
         let local = self
             .local_queues
-            .get(index % self.local_queues.len())
-            .unwrap();
+            .get(index)
+            .unwrap_or_else(|| panic!("local queue {index} init failed!"));
         LocalQueue::new(self, local, FastRand::new(self.seed_generator.next_seed()))
     }
 }

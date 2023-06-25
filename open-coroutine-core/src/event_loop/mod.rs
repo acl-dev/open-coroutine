@@ -49,19 +49,26 @@ static EVENT_LOOP_STARTED: Lazy<AtomicBool> = Lazy::new(AtomicBool::default);
 impl EventLoops {
     fn next(skip_monitor: bool) -> &'static mut EventLoop {
         unsafe {
-            let index = INDEX.fetch_add(1, Ordering::SeqCst);
+            let mut index = INDEX.fetch_add(1, Ordering::SeqCst);
             if skip_monitor && index % EVENT_LOOPS.len() == 0 {
                 INDEX.store(1, Ordering::SeqCst);
-                EVENT_LOOPS.get_mut(1).unwrap()
+                EVENT_LOOPS.get_mut(1).expect("init event-loop-1 failed!")
             } else {
-                EVENT_LOOPS.get_mut(index % EVENT_LOOPS.len()).unwrap()
+                index %= EVENT_LOOPS.len();
+                EVENT_LOOPS
+                    .get_mut(index)
+                    .unwrap_or_else(|| panic!("init event-loop-{index} failed!"))
             }
         }
     }
 
     pub(crate) fn monitor() -> &'static mut EventLoop {
         //monitor线程的EventLoop固定
-        unsafe { EVENT_LOOPS.get_mut(0).unwrap() }
+        unsafe {
+            EVENT_LOOPS
+                .get_mut(0)
+                .expect("init event-loop-monitor failed!")
+        }
     }
 
     pub fn start() {

@@ -8,7 +8,9 @@ pub struct JoinHandle(*const EventLoop, *const c_char);
 
 impl JoinHandle {
     pub(crate) fn new(event_loop: *const EventLoop, string: &str) -> Self {
-        let boxed: &'static mut CString = Box::leak(Box::from(CString::new(string).unwrap()));
+        let boxed: &'static mut CString = Box::leak(Box::from(
+            CString::new(string).expect("init JoinHandle failed!"),
+        ));
         let cstr: &'static CStr = boxed.as_c_str();
         JoinHandle(event_loop, cstr.as_ptr())
     }

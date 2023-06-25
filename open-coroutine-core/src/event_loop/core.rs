@@ -126,8 +126,9 @@ impl EventLoop {
 
     fn token() -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
-            let boxed: &'static mut CString =
-                Box::leak(Box::from(CString::new(co.get_name()).unwrap()));
+            let boxed: &'static mut CString = Box::leak(Box::from(
+                CString::new(co.get_name()).expect("build name failed!"),
+            ));
             let cstr: &'static CStr = boxed.as_c_str();
             cstr.as_ptr().cast::<c_void>() as usize
         } else {
