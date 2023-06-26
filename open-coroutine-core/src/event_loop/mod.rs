@@ -124,7 +124,7 @@ impl EventLoops {
                 .min(10_000_000);
             if left_time == 0 {
                 //timeout
-                return Ok(());
+                return event_loop.wait_just(Some(Duration::ZERO));
             }
             event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
         }
