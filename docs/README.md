@@ -8,6 +8,8 @@
 - [核心特性](#核心特性)
 - [架构设计](#架构设计)
 - [底层抽象](#底层抽象)
+- [时间轮](#时间轮)
+- [协程窃取](#协程窃取)
 
 ## 诞生之因
 
@@ -134,7 +136,7 @@ PS：这里解释下hook技术，简单的说，就是函数调用的代理，�
 
 暂时采用[corosensei](https://github.com/Amanieu/corosensei)，目前正在尝试自研无栈协程。
 
-选好底层库，接着就是确定协程的状态了，下面是个人理解：
+`suspend`和`resume`原语直接复用[corosensei](https://github.com/Amanieu/corosensei)，这里不过多赘述。 选好底层库，接着就是确定协程的状态了，下面是个人理解：
 
 <div style="text-align: center;">
     <img src="img/state.png" width="50%">
@@ -142,11 +144,49 @@ PS：这里解释下hook技术，简单的说，就是函数调用的代理，�
 
 ## 时间轮
 
+时间轮的数据结构如下图所示，本质上就是一个时间戳对应多个需要唤醒的协程。
+
+这里采用动态数组，在open-coroutine中使用都是末尾插入，因此写入速度尚可，遍历时可充分利用CPU cache。
+
 <div style="text-align: center;">
     <img src="img/time-wheel.png" width="50%">
 </div>
 
-## 任务窃取
+## 协程窃取
+
+一个CPU核心可以运行多个线程，一个线程可以调度多个协程，但为了减少线程间的竞争，线程只调度它本地集合里的协程。同时，为了最大程度地减少线程上下文切换开销，我们采用thread-per-core模型。
+
+<div style="text-align: center;">
+    <img src="img/thread-per-core.png" width="50%">
+</div>
+
+现在，仍有一些细节需要确定，集合用什么数据结构？集合是有界还是无界？
+
+RingBuffer作为最常用的高性能数据结构，主要有几个优点：
+
+1. 相比链表等其他数据结构，RingBuffer具有更好的CPU缓存友好性；
+
+2. 由于是固定大小，能够避免频繁的内存分配和释放带来的开销；
+
+3. 无锁化设计，使用CAS代替锁，性能更高；
+
+由于RingBuffer有界，如果创建的协程过多，RingBuffer必定被打满，剩下的协程该何去何从？直接丢弃肯定是不行的，这里我们参考goroutine，搞个无界共享队列。
+
+即便如此，仍然存在后续问题，如果所有线程都优先考虑本地RingBuffer，则会出现一种极端情况：共享队列上的协程永远没有被调度起来的机会。为了避免这种不均衡的情况出现，还是参考goroutine，让每个线程在调度了61个本地RingBuffer的协程后，就去共享队列中看一看。
+
+至此，集合的数据结构已经确定。
+
+<div style="text-align: center;">
+    <img src="img/collections.png" width="50%">
+</div>
+
+在现实世界中，总有线程会先把自己需要调度的协程处理完，而其他线程还有协程待处理。于是乎，一核有难、多核围观的壮观景象就出现了。
+
+<div style="text-align: center;">
+    <img src="img/watching.png" width="50%">
+</div>
+
+我们自然不希望这样，因此，对于空闲的线程，与其让它围观其他正在干活的线程，不如让它下场帮其他线程干活。
 
 ## 调度器
 
@@ -156,7 +196,7 @@ PS：这里解释下hook技术，简单的说，就是函数调用的代理，�
 
 ## JoinHandle
 
-## 系统调用钩子
+## Hook
 
 ## 再次封装
 
