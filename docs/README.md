@@ -10,6 +10,8 @@
 - [底层抽象](#底层抽象)
 - [时间轮](#时间轮)
 - [协程窃取](#协程窃取)
+- [调度器](#调度器)
+- [抢占调度](#抢占调度)
 
 ## 诞生之因
 
@@ -199,7 +201,7 @@ RingBuffer作为最常用的高性能数据结构，主要有几个优点：
 我们用[时间轮](#时间轮)来实现suspend队列，基于[协程窃取](#协程窃取)实现ready队列(至于syscall集合，先卖个关子)，剩下只要实现submit(往ready队列添加协程)和try_schedule(非阻塞地调度协程)两个方法，就完成了一个功能强大的调度器。
 
 <div style="text-align: center;">
-    <img src="img/scheduler.png" width="50%">
+    <img src="img/scheduler.png" width="75%">
 </div>
 
 submit方法的实现非常简单，就不阐述了。我们直接谈try_schedule，其实也简单，就是真正调度前，检查一下suspend队列是否有需要运行的协程，如果有则把它加到ready队列，然后调度ready队列的协程就行了(任务窃取算法在[底层](#协程窃取)已经实现了)。
