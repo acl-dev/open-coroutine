@@ -224,7 +224,6 @@ while (count < 1) {
     std::cout << "Waiting for signal..." << std::endl;
     sleep(1);
 }
-std::cout << "thread main finished!" << std::endl;
 ```
 
 如何抢占它呢？下给是一个简单的c++信号抢占例子：
@@ -366,7 +365,19 @@ int main() {
 }
 ```
 
-大家关注signal_handler和main的改动即可，上述涉及的系统调用，建议阅读《Linux/UNIX系统编程手册》20~22章节的内容。
+大家关注signal_handler和main的改动即可，第三次运行，观察控制台的输出：
+
+```c++
+Waiting for signal...
+Received signal 2
+signal handler Waiting for signal...
+signal handler Waiting for signal...
+Received signal 2
+Waiting for signal...
+thread main finished!
+```
+
+上述涉及的系统调用sigemptyset、sigaction、pthread_kill、pthread_sigmask和sigdelset，建议阅读《Linux/UNIX系统编程手册》20~22章节的内容以加深理解。
 
 ## EventLoop
 
