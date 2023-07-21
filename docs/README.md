@@ -210,6 +210,164 @@ submit方法的实现非常简单，就不阐述了。我们直接谈try_schedul
 
 ## 抢占调度
 
+抢占调度可以让一个正在执行的协程被中断，以便其他等待执行的协程有机会被调度并运行。这种机制可以在遇到阻塞操作或计算密集型任务时及时切换执行其他协程，避免因为一个协程的长时间执行而导致整个程序的性能下降。
+
+在go语言中，抢占调度是通过采用协作式和抢占式混合调度实现的。当协程主动发起I/O操作、调用runtime.Gosched()函数或访问channel等等时，会发生协作式调度，即主动让出CPU并让其他协程执行。而当一个协程超过一定时间限制或发生系统调用等情况时，会发生抢占式调度，即强制剥夺当前协程的执行权。这样的混合调度机制可以在保证程序的高并发性的同时，增加系统的响应能力。
+
+为了提高程序的并发性和响应能力，open-coroutine也引入了基于信号的抢占调度机制。与goroutine略微有些差异的是，当发生系统调用时，部分系统调用也会发生协作式调度(先卖个关子，后续再详细介绍)。
+
+我们把以下代码当成协程体：
+
+```c++
+// 模拟死循环协程体
+while (count < 1) {
+    std::cout << "Waiting for signal..." << std::endl;
+    sleep(1);
+}
+std::cout << "thread main finished!" << std::endl;
+```
+
+如何抢占它呢？下给是一个简单的c++信号抢占例子：
+
+```c++
+#include <iostream>
+#include <csignal>
+#include <unistd.h>
+#include <thread>
+
+static int count = 0;
+
+void signal_handler(int signum) {
+    // 此时已经t1已经被抢占了
+    std::cout << "Received signal " << signum << std::endl;
+    count++;
+}
+
+void thread_main() {
+    // 注册信号处理函数
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        std::cerr << "Failed to register handler for SIGINT" << std::endl;
+        return;
+    }
+
+    // 模拟死循环协程体
+    while (count < 1) {
+        std::cout << "Waiting for signal..." << std::endl;
+        sleep(1);
+    }
+    std::cout << "thread main finished!" << std::endl;
+}
+
+int main() {
+    std::thread t1(thread_main);
+    sleep(1);
+    pthread_kill(t1.native_handle(), SIGINT);
+    t1.join();
+    return 0;
+}
+```
+
+控制台输出结果：
+
+```text
+Waiting for signal...
+Received signal 2
+thread main finished!
+```
+
+解释下，在主线程中，我们开启了一个子线程t1，在注册信号处理函数后，子线程t1将会陷入死循环并输出`Waiting for signal...`到控制台。主线程在睡眠1s后，向子线程t1发送信号，子线程t1的执行权被移交给信号处理函数signal_handler，信号处理函数结束后，子线程t1的执行权回到之前执行的地方(也就是`std::cout << "Waiting for signal..." << std::endl;`下面一行代码)继续执行，此时条件不满足，子线程t1跳出循环，打印`thread main finished!`，子线程t1执行完毕，随后主线程结束等待，也执行完毕。
+
+接下来，我们考虑更复杂的情况，即需要重复抢占，修改代码如下：
+
+```c++
+void signal_handler(int signum) {
+    // 此时已经t1已经被抢占了
+    std::cout << "Received signal " << signum << std::endl;
+    count++;
+    // 模拟死循环协程体，需要再次被抢占
+    while (count < 2) {
+        std::cout << "signal handler Waiting for signal..." << std::endl;
+        sleep(1);
+    }
+}
+```
+
+子线程t1只要能进入signal_handler函数2次，就等于天然支持重复抢占。
+
+再次运行，观察控制台的输出：
+
+```text
+Waiting for signal...
+Received signal 2
+signal handler Waiting for signal...
+signal handler Waiting for signal...
+```
+
+我们发现子线程t1被永远卡在信号处理函数signal_handler里了，这是怎么回事？
+
+子线程t1在进入信号处理函数signal_handler前，linux系统会对线程本地的信号掩码做处理，屏蔽将要处理的信号，以确保程序的正常运行和数据的完整性。否则，当一个程序正在处理一个关键性任务时，如果接收到某个中断信号或者其他干扰信号，可能会导致程序的异常终止或者数据的不完整。
+
+由于我们确实需要重复抢占来保证程序的正常运行，因此需要解除信号屏蔽，当然，还需要再次发送信号。下面直接给出全量代码：
+
+```c++
+#include <iostream>
+#include <csignal>
+#include <unistd.h>
+#include <thread>
+
+static int count = 0;
+
+void signal_handler(int signum) {
+    std::cout << "Received signal " << signum << std::endl;
+    count++;
+    // 解除信号屏蔽
+    sigset_t mask;
+    pthread_sigmask(SIG_BLOCK, NULL, &mask);
+    sigdelset(&mask, SIGINT);
+    pthread_sigmask(SIG_SETMASK, &mask, NULL);
+    // 模拟死循环协程体，需要再次被抢占
+    while (count < 2) {
+        std::cout << "signal handler Waiting for signal..." << std::endl;
+        sleep(1);
+    }
+}
+
+void thread_main() {
+    // 注册信号处理函数
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        std::cerr << "Failed to register handler for SIGINT" << std::endl;
+        return;
+    }
+
+    // 模拟死循环协程体
+    while (count < 1) {
+        std::cout << "Waiting for signal..." << std::endl;
+        sleep(1);
+    }
+    std::cout << "thread main finished!" << std::endl;
+}
+
+int main() {
+    std::thread t1(thread_main);
+    sleep(1);
+    pthread_kill(t1.native_handle(), SIGINT);
+    sleep(1);
+    pthread_kill(t1.native_handle(), SIGINT);
+    t1.join();
+    return 0;
+}
+```
+
+大家关注signal_handler和main的改动即可，上述涉及的系统调用，建议阅读《Linux/UNIX系统编程手册》20~22章节的内容。
+
 ## EventLoop
 
 ## JoinHandle
