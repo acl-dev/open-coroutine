@@ -1,6 +1,6 @@
 [package]
 name = "open-coroutine"
-version = "0.4.0"
+version = "0.4.6"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
@@ -12,7 +12,11 @@ license = "LGPL-3.0 OR Apache-2.0"
 [dependencies]
 libc = "0.2.119"
 open-coroutine-core = { version = "0.4.0", path = "open-coroutine-core" }
-open-coroutine-macros = { version = "0.1.0", path = "open-coroutine-macros" }
+open-coroutine-hooks = { version = "0.4.0", path = "open-coroutine-hooks" }
+open-coroutine-macros = { version = "0.1.1", path = "open-coroutine-macros" }
+
+[build-dependencies]
+glob = "0.3.1"
 
 [workspace]
 members = [

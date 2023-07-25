@@ -12,31 +12,27 @@ fn main() {
         .parent()
         .unwrap()
         .join("deps");
-    let lib = env::current_dir().unwrap().join("lib");
+    let mut pattern = deps.to_str().unwrap().to_owned();
     if cfg!(target_os = "linux") {
-        std::fs::copy(
-            lib.join("libopen_coroutine_hooks.so"),
-            deps.join("libopen_coroutine_hooks.so"),
-        )
-        .expect("copy libopen_coroutine_hooks.so failed!");
-    } else if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "aarch64") {
-            std::fs::copy(
-                lib.join("libopen_coroutine_hooks-m1.dylib"),
-                deps.join("libopen_coroutine_hooks.dylib"),
-            )
-            .expect("copy libopen_coroutine_hooks-m1.dylib failed!");
-        } else {
-            std::fs::copy(
-                lib.join("libopen_coroutine_hooks.dylib"),
-                deps.join("libopen_coroutine_hooks.dylib"),
-            )
-            .expect("copy libopen_coroutine_hooks.dylib failed!");
+        pattern += "/libopen_coroutine_hooks*.so";
+        for path in glob::glob(&pattern)
+            .expect("Failed to read glob pattern")
+            .flatten()
+        {
+            std::fs::rename(path, deps.join("libopen_coroutine_hooks.so"))
+                .expect("rename to libopen_coroutine_hooks.so failed!");
         }
-    } else if cfg!(target_os = "windows") {
-        std::fs::copy(lib.join("hook.dll"), deps.join("hook.dll")).expect("copy hook.dll failed!");
-        std::fs::copy(lib.join("hook.dll.lib"), deps.join("hook.lib"))
-            .expect("copy hook.lib failed!");
+    } else if cfg!(target_os = "macos") {
+        pattern += "/libopen_coroutine_hooks*.dylib";
+        for path in glob::glob(&pattern)
+            .expect("Failed to read glob pattern")
+            .flatten()
+        {
+            std::fs::rename(path, deps.join("libopen_coroutine_hooks.dylib"))
+                .expect("rename to libopen_coroutine_hooks.dylib failed!");
+        }
+    } else {
+        panic!("unsupported platform");
     }
     //link hook dylib
     println!("cargo:rustc-link-lib=dylib=open_coroutine_hooks");

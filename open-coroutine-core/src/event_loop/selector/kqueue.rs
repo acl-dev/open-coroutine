@@ -563,7 +563,7 @@ pub mod event {
             libc::NOTE_REVOKE,
             #[cfg(any(target_os = "ios", target_os = "macos"))]
             libc::NOTE_NONE,
-            #[cfg(any(target_os = "openbsd"))]
+            #[cfg(target_os = "openbsd")]
             libc::NOTE_TRUNCATE,
             libc::NOTE_EXIT,
             libc::NOTE_FORK,
@@ -615,7 +615,7 @@ pub mod event {
             libc::NOTE_VM_ERROR,
             #[cfg(any(target_os = "freebsd", target_os = "ios", target_os = "macos"))]
             libc::NOTE_SECONDS,
-            #[cfg(any(target_os = "freebsd"))]
+            #[cfg(target_os = "freebsd")]
             libc::NOTE_MSECONDS,
             #[cfg(any(target_os = "freebsd", target_os = "ios", target_os = "macos"))]
             libc::NOTE_USECONDS,
