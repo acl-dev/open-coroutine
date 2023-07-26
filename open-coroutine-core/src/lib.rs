@@ -49,6 +49,8 @@ pub mod coroutine;
 
 pub mod scheduler;
 
+pub mod pool;
+
 #[macro_export]
 macro_rules! unbreakable {
     ( $f: expr , $syscall: expr ) => {

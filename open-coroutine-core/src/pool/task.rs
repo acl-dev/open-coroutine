@@ -19,10 +19,12 @@ impl<'t> Task<'t> {
         }
     }
 
+    #[must_use]
     pub fn get_name(&self) -> &'t str {
         self.name
     }
 
+    #[must_use]
     pub fn run(self, suspender: &Suspender<'_, (), ()>) -> usize {
         (self.func)(suspender, ())
     }
