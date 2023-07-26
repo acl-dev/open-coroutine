@@ -1,40 +1,25 @@
 use crate::coroutine::suspender::Suspender;
+use crate::event_loop::blocker::SelectBlocker;
 use crate::event_loop::event::Events;
 use crate::event_loop::interest::Interest;
 use crate::event_loop::join::JoinHandle;
 use crate::event_loop::selector::Selector;
-use crate::event_loop::task::Task;
-use crate::scheduler::listener::Listener;
-use crate::scheduler::{SchedulableCoroutine, Scheduler};
-use crossbeam_deque::{Injector, Steal};
+use crate::pool::CoroutinePool;
+use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_void, CStr, CString};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::mem::MaybeUninit;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct EventLoop {
     selector: Selector,
     //是否正在执行select
     waiting: AtomicBool,
-    //工作协程
-    workers: Scheduler,
-    //协程栈大小
-    stack_size: usize,
-    //当前协程数
-    running: AtomicUsize,
-    //最小协程数，即核心协程数
-    min_size: usize,
-    //最大协程数
-    max_size: usize,
-    //队列
-    work_queue: Injector<Task<'static>>,
-    //非核心协程的最大存活时间，单位ns
-    keep_alive_time: u64,
-    //是否向workers注册监听器
-    register: AtomicBool,
+    //协程池
+    pool: MaybeUninit<CoroutinePool>,
 }
 
 static mut READABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new);
@@ -45,8 +30,6 @@ static mut WRITABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new
 
 static mut WRITABLE_TOKEN_RECORDS: Lazy<HashMap<libc::c_int, usize>> = Lazy::new(HashMap::new);
 
-static mut RESULT_TABLE: Lazy<HashMap<&str, usize>> = Lazy::new(HashMap::new);
-
 impl EventLoop {
     pub fn new(
         stack_size: usize,
@@ -54,74 +37,28 @@ impl EventLoop {
         max_size: usize,
         keep_alive_time: u64,
     ) -> std::io::Result<Self> {
-        Ok(EventLoop {
+        let mut event_loop = EventLoop {
             selector: Selector::new()?,
             waiting: AtomicBool::new(false),
-            workers: Scheduler::new(),
+            pool: MaybeUninit::uninit(),
+        };
+        let pool = CoroutinePool::new(
             stack_size,
-            running: AtomicUsize::new(0),
             min_size,
             max_size,
-            work_queue: Injector::default(),
             keep_alive_time,
-            register: AtomicBool::new(false),
-        })
+            SelectBlocker::new(&mut event_loop),
+        );
+        event_loop.pool = MaybeUninit::new(pool);
+        Ok(event_loop)
     }
 
     pub fn submit(
         &self,
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
     ) -> JoinHandle {
-        let name: Box<str> = Box::from(Uuid::new_v4().to_string());
-        let clone = Box::leak(name.clone());
-        self.work_queue.push(Task::new(name, f));
-        JoinHandle::new(self, clone)
-    }
-
-    pub fn grow(&'static self) -> std::io::Result<()> {
-        if self.work_queue.is_empty() {
-            return Ok(());
-        }
-        if self.running.load(Ordering::Acquire) >= self.max_size {
-            return Ok(());
-        }
-        let create_time = open_coroutine_timer::now();
-        _ = self.workers.submit(
-            move |suspender, _| {
-                loop {
-                    match self.work_queue.steal() {
-                        Steal::Empty => {
-                            let running = self.running.load(Ordering::Acquire);
-                            let keep_alive =
-                                open_coroutine_timer::now() - create_time < self.keep_alive_time;
-                            if running > self.min_size && !keep_alive {
-                                //回收worker协程
-                                _ = self.running.fetch_sub(1, Ordering::Release);
-                                return 0;
-                            }
-                            if running > 1 {
-                                suspender.delay(Duration::from_millis(1));
-                            } else {
-                                _ = self.wait_just(Some(Duration::from_millis(1)));
-                            }
-                        }
-                        Steal::Success(task) => {
-                            let task_name = task.get_name();
-                            let result = task.run(suspender);
-                            unsafe { assert!(RESULT_TABLE.insert(task_name, result).is_none()) }
-                        }
-                        Steal::Retry => continue,
-                    }
-                }
-            },
-            if self.stack_size > 0 {
-                Some(self.stack_size)
-            } else {
-                None
-            },
-        )?;
-        _ = self.running.fetch_add(1, Ordering::Release);
-        Ok(())
+        let task_name = unsafe { self.pool.assume_init_ref().submit(f) };
+        JoinHandle::new(self, task_name)
     }
 
     fn token() -> usize {
@@ -244,7 +181,6 @@ impl EventLoop {
         timeout: Option<Duration>,
         schedule_before_wait: bool,
     ) -> std::io::Result<()> {
-        _ = self.grow();
         if self
             .waiting
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -252,28 +188,12 @@ impl EventLoop {
         {
             return Ok(());
         }
-        if self
-            .register
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
-        {
-            #[derive(Debug)]
-            struct CoroutineListener {
-                s: &'static EventLoop,
-            }
-
-            impl Listener for CoroutineListener {
-                fn on_suspend(&self, _co: &SchedulableCoroutine) {
-                    _ = self.s.grow();
-                }
-                fn on_syscall(&self, _co: &SchedulableCoroutine, _syscall_name: &str) {
-                    _ = self.s.grow();
-                }
-            }
-            self.workers.add_listener(CoroutineListener { s: self });
-        }
         let timeout = if schedule_before_wait {
-            timeout.map(|time| Duration::from_nanos(self.workers.try_timed_schedule(time)))
+            timeout.map(|time| {
+                Duration::from_nanos(unsafe {
+                    self.pool.assume_init_ref().try_timed_schedule(time)
+                })
+            })
         } else {
             timeout
         };
@@ -305,12 +225,13 @@ impl EventLoop {
             return;
         }
         if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
-            self.workers.resume_syscall(co_name);
+            self.pool.assume_init_ref().resume_syscall(co_name);
         }
     }
 
-    pub fn get_result(co_name: &'static str) -> Option<usize> {
-        unsafe { RESULT_TABLE.remove(&co_name) }
+    #[must_use]
+    pub fn get_result(task_name: &'static str) -> Option<usize> {
+        CoroutinePool::get_result(task_name)
     }
 }
 
