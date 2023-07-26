@@ -71,7 +71,7 @@ impl EventLoops {
         }
     }
 
-    pub fn start() {
+    fn start() {
         if EVENT_LOOP_STARTED
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()

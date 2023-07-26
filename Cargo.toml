@@ -18,6 +18,19 @@ open-coroutine-macros = { version = "0.1.1", path = "open-coroutine-macros" }
 [build-dependencies]
 glob = "0.3.1"
 
+[features]
+default = ["full"]
+
+# Provide preemptive scheduling implementation.
+# Enable for default.
+preemptive-schedule = [
+    "open-coroutine-core/preemptive-schedule",
+    "open-coroutine-hooks/preemptive-schedule"
+]
+
+# Enable all features
+full = ["preemptive-schedule"]
+
 [workspace]
 members = [
     "open-coroutine-timer",

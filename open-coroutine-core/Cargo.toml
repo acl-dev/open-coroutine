@@ -52,8 +52,8 @@ backtrace = "0.3.67"
 default = ["preemptive-schedule"]
 
 # Provide preemptive scheduling implementation.
-# Not enable for default.
+# Enable for default.
 preemptive-schedule = []
 
-# Enable all features except stack-trace
+# Enable all features
 full = ["preemptive-schedule"]
