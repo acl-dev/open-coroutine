@@ -14,6 +14,7 @@
 - [抢占调度](#抢占调度)
 - [协程池](#协程池)
 - [EventLoop](#EventLoop)
+- [Hook](#Hook)
 
 ## 诞生之因
 
@@ -427,3 +428,135 @@ loop中添加非IO任务，然后在监听操作前主动调度这些任务，�
 由于[协程池](#协程池)和[协程窃取](#协程窃取)的存在，即使不做负载均衡也没问题)。
 
 ## Hook
+
+Hook是一种机制，通过在运行时插入自定义代码，可以修改或扩展现有代码的行为，甚至能对系统调用进行监控、拦截、修改、重定向。
+
+接下来举例实操：
+
+```c++
+#include <unistd.h>
+
+int main() {
+    sleep(60);
+    return 0;
+}
+```
+
+以上就是要被hook的代码，不出意外，直接运行它将耗费你宝贵的60秒。后续我们将在不改动它的前提下，完成对sleep()的重写。
+
+下面是改动前的CMakeLists.txt：
+
+```cmake
+cmake_minimum_required(VERSION 3.25)
+project(main)
+
+set(CMAKE_CXX_STANDARD 11)
+
+add_executable(main main.cpp)
+```
+
+下面是我们重写的sleep实现：
+
+```c++
+#include <iostream>
+#include <unistd.h>
+
+unsigned int sleep(unsigned int s) {
+    std::cout << "simulate sleep for " << s << "s" << std::endl;
+    return 0;
+}
+```
+
+下面是改动后的CMakeLists.txt：
+
+```cmake
+cmake_minimum_required(VERSION 3.25)
+project(main)
+
+set(CMAKE_CXX_STANDARD 11)
+
+add_library(libhook SHARED hook.cpp)
+add_executable(main main.cpp)
+target_link_libraries(main libhook)
+```
+
+重新编译运行，我们发现main函数很快就结束了，并且能在console上看到`simulate sleep for 60s`的输出。
+
+以上是在c++中玩hook，如何在rust中玩hook呢？
+
+在rust中，crate默认会被编译成rlib文件，想玩hook，首先我们得确保编译出的产物是c语言能够识别的动态链接库，在Cargo.toml中指定crate-type为cdylib即可：
+
+```toml
+[package]
+name = "open-coroutine-hooks"
+# 省略不重要的信息
+[lib]
+crate-type = ["cdylib"]
+```
+
+下一步是链接它，我们需要编写build.rs：
+
+```rust
+fn main() {
+    //link hook dylib
+    println!("cargo:rustc-link-lib=dylib=open_coroutine_hooks");
+}
+```
+
+原本以为到这里就可以了，然而当作者满心欢喜把crate发布到https://crates.io，再拉下来测试，意想不到的坑出现了：无法正确链接！
+
+怎么回事？
+
+<div style="text-align: center;">
+    <img src="img/wrong_dylib_name.png" width="50%">
+</div>
+
+(如果你在构建时没有加--release，可以到/target/debug/deps中看看)
+
+rust为了解决某些问题(如果有知道的同学请指教)，对每个构建产物名都会加上一串字符，导致文件名变成了`libopen_coroutine_hooks-7f613d536412c5e4.dylib`，而能够正确链接的文件名是`libopen_coroutine_hooks.dylib`(动态链接库的文件名在macos上以`.dylib`结尾，在linux上是以`.so`结尾，在windows上则是以`.dll`结尾，上面的截图来自于作者的macbook pro)。
+
+知道原因后，解决它不难，作者选择的办法是重命名，附上修复后的build.rs代码：
+
+```rust
+use std::env;
+use std::path::PathBuf;
+
+fn main() {
+    //copy dylib to deps
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let deps = out_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("deps");
+    let mut pattern = deps.to_str().unwrap().to_owned();
+    if cfg!(target_os = "linux") {
+        pattern += "/libopen_coroutine_hooks*.so";
+        for path in glob::glob(&pattern)
+            .expect("Failed to read glob pattern")
+            .flatten()
+        {
+            std::fs::rename(path, deps.join("libopen_coroutine_hooks.so"))
+                .expect("rename to libopen_coroutine_hooks.so failed!");
+        }
+    } else if cfg!(target_os = "macos") {
+        pattern += "/libopen_coroutine_hooks*.dylib";
+        for path in glob::glob(&pattern)
+            .expect("Failed to read glob pattern")
+            .flatten()
+        {
+            std::fs::rename(path, deps.join("libopen_coroutine_hooks.dylib"))
+                .expect("rename to libopen_coroutine_hooks.dylib failed!");
+        }
+    } else {
+        panic!("unsupported platform");
+    }
+    //link hook dylib
+    println!("cargo:rustc-link-lib=dylib=open_coroutine_hooks");
+}
+```
+
+上面只兼容了macos和linux，至于其他平台，欢迎给本仓库提交PR。
