@@ -522,7 +522,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    //copy dylib to deps
+    //fix dylib name
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let deps = out_dir
         .parent()
