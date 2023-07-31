@@ -25,6 +25,9 @@ pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
 
+#[cfg(target_os = "linux")]
+static BIND: Lazy<bool> = Lazy::new(|| unsafe { EVENT_LOOPS.len() } <= num_cpus::get());
+
 static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
@@ -82,7 +85,16 @@ impl EventLoops {
                     .map(|i| {
                         std::thread::Builder::new()
                             .name(format!("open-coroutine-event-loop-{i}"))
-                            .spawn(|| {
+                            .spawn(move || {
+                                #[cfg(target_os = "linux")]
+                                if *BIND {
+                                    assert!(
+                                        core_affinity::set_for_current(core_affinity::CoreId {
+                                            id: i
+                                        }),
+                                        "pin event loop thread to a single CPU core failed !"
+                                    );
+                                }
                                 let event_loop = EventLoops::next(true);
                                 while EVENT_LOOP_STARTED.load(Ordering::Acquire) {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));

@@ -74,6 +74,12 @@ impl Monitor {
             std::thread::Builder::new()
                 .name("open-coroutine-monitor".to_string())
                 .spawn(|| {
+                    // todo pin this thread to the CPU core closest to the network card
+                    #[cfg(target_os = "linux")]
+                    assert!(
+                        core_affinity::set_for_current(core_affinity::CoreId { id: 0 }),
+                        "pin monitor thread to a single CPU core failed !"
+                    );
                     let event_loop = EventLoops::monitor();
                     let monitor = Monitor::global();
                     while monitor.started.load(Ordering::Acquire) {
