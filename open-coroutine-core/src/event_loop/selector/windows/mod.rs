@@ -104,7 +104,7 @@ impl IoSourceState {
         }
     }
 
-    pub fn deregister(&mut self, _token: usize) -> std::io::Result<()> {
+    pub fn deregister(&mut self, _socket: libc::c_int, _token: usize) -> std::io::Result<()> {
         match self.inner.as_mut() {
             Some(state) => {
                 {
