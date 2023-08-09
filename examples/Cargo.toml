@@ -10,4 +10,4 @@ categories = ["os", "concurrency", "asynchronous"]
 license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
-open-coroutine = { version = "0.4.0", path = "../../open-coroutine" }
+open-coroutine = { version = "0.4.0", path = "../open-coroutine" }
