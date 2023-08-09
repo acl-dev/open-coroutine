@@ -3,7 +3,7 @@ use std::fmt;
 use super::afd;
 use super::iocp::CompletionStatus;
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Event {
     pub flags: u32,
     pub data: u64,
