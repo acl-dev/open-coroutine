@@ -88,7 +88,7 @@ impl IoSourceState {
 
     pub fn reregister(
         &mut self,
-        _socket: usize,
+        _socket: libc::c_int,
         token: usize,
         interests: Interest,
     ) -> std::io::Result<()> {
@@ -104,7 +104,7 @@ impl IoSourceState {
         }
     }
 
-    pub fn deregister(&mut self, _socket: usize) -> std::io::Result<()> {
+    pub fn deregister(&mut self, _token: usize) -> std::io::Result<()> {
         match self.inner.as_mut() {
             Some(state) => {
                 {
