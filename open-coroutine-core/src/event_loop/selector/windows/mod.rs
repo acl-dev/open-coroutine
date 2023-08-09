@@ -26,6 +26,7 @@ use std::time::Duration;
 use crate::event_loop::interest::Interest;
 pub use crate::event_loop::selector::windows::selector::Selector as InnerSelector;
 
+#[derive(Debug)]
 pub struct InternalState {
     selector: Arc<SelectorInner>,
     token: usize,
@@ -42,6 +43,7 @@ impl Drop for InternalState {
 
 pub type Selector = IoSourceState;
 
+#[derive(Debug)]
 pub struct IoSourceState {
     // This is `None` if the socket has not yet been registered.
     //
