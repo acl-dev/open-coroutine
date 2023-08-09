@@ -17,19 +17,19 @@ use std::fmt;
 ///
 /// # Examples
 ///
-/// # use std::error::Error;
+/// # use `std::error::Error`;
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// use mio::{Events, Poll};
-/// use std::time::Duration;
+/// use `mio::{Events, Poll}`;
+/// use `std::time::Duration`;
 ///
-/// let mut events = Events::with_capacity(1024);
-/// let mut poll = Poll::new()?;
+/// let mut events = `Events::with_capacity(1024)`;
+/// let mut poll = `Poll::new()`?;
 /// #
-/// # assert!(events.is_empty());
+/// # `assert!(events.is_empty())`;
 ///
 /// // Register `event::Source`s with `poll`.
 ///
-/// poll.poll(&mut events, Some(Duration::from_millis(100)))?;
+/// poll.poll(&mut events, `Some(Duration::from_millis(100))`)?;
 ///
 /// for event in events.iter() {
 ///     println!("Got an event for {:?}", event.token());
@@ -50,17 +50,17 @@ pub struct Events {
 ///
 /// # Examples
 ///
-/// # use std::error::Error;
+/// # use `std::error::Error`;
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// use open_coroutine_core::{Events, Poll};
-/// use std::time::Duration;
+/// use `open_coroutine_core::{Events, Poll}`;
+/// use `std::time::Duration`;
 ///
-/// let mut events = Events::with_capacity(1024);
-/// let mut poll = Poll::new()?;
+/// let mut events = `Events::with_capacity(1024)`;
+/// let mut poll = `Poll::new()`?;
 ///
 /// // Register handles with `poll`.
 ///
-/// poll.poll(&mut events, Some(Duration::from_millis(100)))?;
+/// poll.poll(&mut events, `Some(Duration::from_millis(100))`)?;
 ///
 /// for event in events.iter() {
 ///     println!("Got an event for {:?}", event.token());
@@ -80,11 +80,12 @@ impl Events {
     /// # Examples
     ///
     /// ```
-    /// use open_coroutine_core::Events;
+    /// use open_coroutine_core::event_loop::event::Events;
     ///
     /// let events = Events::with_capacity(1024);
     /// assert_eq!(1024, events.capacity());
     /// ```
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Events {
         Events {
             inner: sys::Events::with_capacity(capacity),
@@ -94,11 +95,12 @@ impl Events {
     /// Returns the number of `Event` values that `self` can hold.
     ///
     /// ```
-    /// use open_coroutine_core::Events;
+    /// use open_coroutine_core::event_loop::event::Events;
     ///
     /// let events = Events::with_capacity(1024);
     /// assert_eq!(1024, events.capacity());
     /// ```
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
@@ -108,11 +110,12 @@ impl Events {
     /// # Examples
     ///
     /// ```
-    /// use open_coroutine_core::Events;
+    /// use open_coroutine_core::event_loop::event::Events;
     ///
     /// let events = Events::with_capacity(1024);
     /// assert!(events.is_empty());
     /// ```
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -121,17 +124,17 @@ impl Events {
     ///
     /// # Examples
     ///
-    /// # use std::error::Error;
+    /// # use `std::error::Error`;
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// use open_coroutine_core::{Events, Poll};
-    /// use std::time::Duration;
+    /// use `open_coroutine_core::{Events, Poll}`;
+    /// use `std::time::Duration`;
     ///
-    /// let mut events = Events::with_capacity(1024);
-    /// let mut poll = Poll::new()?;
+    /// let mut events = `Events::with_capacity(1024)`;
+    /// let mut poll = `Poll::new()`?;
     ///
     /// // Register handles with `poll`.
     ///
-    /// poll.poll(&mut events, Some(Duration::from_millis(100)))?;
+    /// poll.poll(&mut events, `Some(Duration::from_millis(100))`)?;
     ///
     /// for event in events.iter() {
     ///     println!("Got an event for {:?}", event.token());
@@ -139,6 +142,7 @@ impl Events {
     /// #     Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn iter(&self) -> Iter<'_> {
         Iter {
             inner: self,
@@ -155,21 +159,21 @@ impl Events {
     ///
     /// # Examples
     ///
-    /// # use std::error::Error;
+    /// # use `std::error::Error`;
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// use open_coroutine_core::{Events, Poll};
-    /// use std::time::Duration;
+    /// use `open_coroutine_core::{Events, Poll}`;
+    /// use `std::time::Duration`;
     ///
-    /// let mut events = Events::with_capacity(1024);
-    /// let mut poll = Poll::new()?;
+    /// let mut events = `Events::with_capacity(1024)`;
+    /// let mut poll = `Poll::new()`?;
     ///
     /// // Register handles with `poll`.
     ///
-    /// poll.poll(&mut events, Some(Duration::from_millis(100)))?;
+    /// poll.poll(&mut events, `Some(Duration::from_millis(100))`)?;
     ///
     /// // Clear all events.
     /// events.clear();
-    /// assert!(events.is_empty());
+    /// `assert!(events.is_empty())`;
     /// #     Ok(())
     /// # }
     /// ```

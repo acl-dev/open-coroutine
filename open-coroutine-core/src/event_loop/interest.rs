@@ -59,12 +59,13 @@ impl Interest {
     /// constant function.
     ///
     /// ```
-    /// use open_coroutine_core::Interest;
+    /// use open_coroutine_core::event_loop::interest::Interest;
     ///
     /// const INTERESTS: Interest = Interest::READABLE.add(Interest::WRITABLE);
     /// # fn silent_dead_code_warning(_: Interest) { }
     /// # silent_dead_code_warning(INTERESTS)
     /// ```
+    #[must_use]
     #[allow(clippy::should_implement_trait)]
     pub const fn add(self, other: Interest) -> Interest {
         Interest(unsafe { NonZeroU8::new_unchecked(self.0.get() | other.0.get()) })
@@ -75,7 +76,7 @@ impl Interest {
     /// Returns `None` if the set would be empty after removing `other`.
     ///
     /// ```
-    /// use open_coroutine_core::Interest;
+    /// use open_coroutine_core::event_loop::interest::Interest;
     ///
     /// const RW_INTERESTS: Interest = Interest::READABLE.add(Interest::WRITABLE);
     ///
@@ -95,21 +96,26 @@ impl Interest {
     }
 
     /// Returns true if the value includes readable readiness.
+
+    #[must_use]
     pub const fn is_readable(self) -> bool {
         (self.0.get() & READABLE) != 0
     }
 
     /// Returns true if the value includes writable readiness.
+    #[must_use]
     pub const fn is_writable(self) -> bool {
         (self.0.get() & WRITABLE) != 0
     }
 
     /// Returns true if `Interest` contains AIO readiness
+    #[must_use]
     pub const fn is_aio(self) -> bool {
         (self.0.get() & AIO) != 0
     }
 
     /// Returns true if `Interest` contains LIO readiness
+    #[must_use]
     pub const fn is_lio(self) -> bool {
         (self.0.get() & LIO) != 0
     }
@@ -136,17 +142,17 @@ impl fmt::Debug for Interest {
         let mut one = false;
         if self.is_readable() {
             if one {
-                write!(fmt, " | ")?
+                write!(fmt, " | ")?;
             }
             write!(fmt, "READABLE")?;
-            one = true
+            one = true;
         }
         if self.is_writable() {
             if one {
-                write!(fmt, " | ")?
+                write!(fmt, " | ")?;
             }
             write!(fmt, "WRITABLE")?;
-            one = true
+            one = true;
         }
         #[cfg(any(
             target_os = "dragonfly",
@@ -157,20 +163,20 @@ impl fmt::Debug for Interest {
         {
             if self.is_aio() {
                 if one {
-                    write!(fmt, " | ")?
+                    write!(fmt, " | ")?;
                 }
                 write!(fmt, "AIO")?;
-                one = true
+                one = true;
             }
         }
-        #[cfg(any(target_os = "freebsd"))]
+        #[cfg(target_os = "freebsd")]
         {
             if self.is_lio() {
                 if one {
-                    write!(fmt, " | ")?
+                    write!(fmt, " | ")?;
                 }
                 write!(fmt, "LIO")?;
-                one = true
+                one = true;
             }
         }
         debug_assert!(one, "printing empty interests");

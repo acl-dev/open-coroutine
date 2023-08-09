@@ -86,7 +86,7 @@ impl Selector {
 
     pub fn select(
         &self,
-        events: &mut super::super::Events,
+        events: &mut super::super::event::Events,
         timeout: Option<Duration>,
     ) -> io::Result<()> {
         let timeout = timeout.map(|to| libc::timespec {
@@ -95,12 +95,9 @@ impl Selector {
             // billion (the number of nanoseconds in a second), making the
             // cast to i32 safe. The cast itself is needed for platforms
             // where C's long is only 32 bits.
-            tv_nsec: libc::c_long::from(to.subsec_nanos() as i32),
+            tv_nsec: libc::c_long::from(to.subsec_nanos()),
         });
-        let timeout = timeout
-            .as_ref()
-            .map(|s| s as *const _)
-            .unwrap_or(ptr::null_mut());
+        let timeout = timeout.as_ref().map_or(ptr::null(), |s| s as *const _);
 
         let events = events.sys();
         events.clear();
@@ -127,13 +124,13 @@ impl Selector {
         let mut n_changes = 0;
 
         if interests.is_writable() {
-            let kevent = kevent!(fd, libc::EVFILT_WRITE, flags, token as UData);
+            let kevent = kevent!(fd, libc::EVFILT_WRITE, flags, token);
             changes[n_changes] = MaybeUninit::new(kevent);
             n_changes += 1;
         }
 
         if interests.is_readable() {
-            let kevent = kevent!(fd, libc::EVFILT_READ, flags, token as UData);
+            let kevent = kevent!(fd, libc::EVFILT_READ, flags, token);
             changes[n_changes] = MaybeUninit::new(kevent);
             n_changes += 1;
         }
@@ -155,7 +152,7 @@ impl Selector {
             // the array.
             slice::from_raw_parts_mut(changes[0].as_mut_ptr(), n_changes)
         };
-        kevent_register(self.kq, changes, &[libc::EPIPE as i64])
+        kevent_register(self.kq, changes, &[i64::from(libc::EPIPE)])
     }
 
     pub fn reregister(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
@@ -172,8 +169,8 @@ impl Selector {
         };
 
         let mut changes: [libc::kevent; 2] = [
-            kevent!(fd, libc::EVFILT_WRITE, write_flags, token as UData),
-            kevent!(fd, libc::EVFILT_READ, read_flags, token as UData),
+            kevent!(fd, libc::EVFILT_WRITE, write_flags, token),
+            kevent!(fd, libc::EVFILT_READ, read_flags, token),
         ];
 
         // Since there is no way to check with which interests the fd was
@@ -187,11 +184,11 @@ impl Selector {
         kevent_register(
             self.kq,
             &mut changes,
-            &[libc::ENOENT as i64, libc::EPIPE as i64],
+            &[i64::from(libc::ENOENT), i64::from(libc::EPIPE)],
         )
     }
 
-    pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
+    pub fn deregister(&self, fd: RawFd, _token: usize) -> io::Result<()> {
         let flags = libc::EV_DELETE | libc::EV_RECEIPT;
         let mut changes: [libc::kevent; 2] = [
             kevent!(fd, libc::EVFILT_WRITE, flags, 0),
@@ -203,7 +200,7 @@ impl Selector {
         // the ENOENT error when it comes up. The ENOENT error informs us that
         // the filter wasn't there in first place, but we don't really care
         // about that since our goal is to remove it.
-        kevent_register(self.kq, &mut changes, &[libc::ENOENT as i64])
+        kevent_register(self.kq, &mut changes, &[i64::from(libc::ENOENT)])
     }
 
     #[cfg(debug_assertions)]
@@ -219,7 +216,7 @@ impl Selector {
             0,
             libc::EVFILT_USER,
             libc::EV_ADD | libc::EV_CLEAR | libc::EV_RECEIPT,
-            token as UData
+            token
         );
 
         syscall!(kevent(self.kq, &kevent, 1, &mut kevent, 1, ptr::null())).and_then(|_| {
@@ -234,12 +231,7 @@ impl Selector {
     // Used by `Waker`.
     #[cfg(any(target_os = "freebsd", target_os = "ios", target_os = "macos"))]
     pub fn wake(&self, token: usize) -> io::Result<()> {
-        let mut kevent = kevent!(
-            0,
-            libc::EVFILT_USER,
-            libc::EV_ADD | libc::EV_RECEIPT,
-            token as UData
-        );
+        let mut kevent = kevent!(0, libc::EVFILT_USER, libc::EV_ADD | libc::EV_RECEIPT, token);
         kevent.fflags = libc::NOTE_TRIGGER;
 
         syscall!(kevent(self.kq, &kevent, 1, &mut kevent, 1, ptr::null())).and_then(|_| {
@@ -427,6 +419,7 @@ pub mod event {
         }
     }
 
+    #[allow(clippy::too_many_lines, clippy::similar_names)]
     pub fn debug_details(f: &mut fmt::Formatter<'_>, event: &Event) -> fmt::Result {
         debug_detail!(
             FilterDetails(Filter),
@@ -570,7 +563,7 @@ pub mod event {
             libc::NOTE_REVOKE,
             #[cfg(any(target_os = "ios", target_os = "macos"))]
             libc::NOTE_NONE,
-            #[cfg(any(target_os = "openbsd"))]
+            #[cfg(target_os = "openbsd")]
             libc::NOTE_TRUNCATE,
             libc::NOTE_EXIT,
             libc::NOTE_FORK,
@@ -622,7 +615,7 @@ pub mod event {
             libc::NOTE_VM_ERROR,
             #[cfg(any(target_os = "freebsd", target_os = "ios", target_os = "macos"))]
             libc::NOTE_SECONDS,
-            #[cfg(any(target_os = "freebsd"))]
+            #[cfg(target_os = "freebsd")]
             libc::NOTE_MSECONDS,
             #[cfg(any(target_os = "freebsd", target_os = "ios", target_os = "macos"))]
             libc::NOTE_USECONDS,

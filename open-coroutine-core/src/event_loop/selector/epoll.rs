@@ -1,12 +1,12 @@
+use libc::{EPOLLET, EPOLLIN, EPOLLOUT, EPOLLRDHUP};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::os::unix::io::{AsRawFd, RawFd};
 #[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use std::{i32, io, ptr};
 
-use libc::{EPOLLET, EPOLLIN, EPOLLOUT, EPOLLRDHUP};
-
-use crate::epoll::{epoll_ctl, epoll_data, epoll_event, epoll_wait};
 use crate::event_loop::interest::Interest;
 
 /// Unique id for use as `SelectorId`.
@@ -21,6 +21,8 @@ pub struct Selector {
     #[cfg(debug_assertions)]
     has_waker: AtomicBool,
 }
+
+static mut TOKEN_FD: Lazy<HashMap<usize, RawFd>> = Lazy::new(HashMap::new);
 
 impl Selector {
     pub fn new() -> io::Result<Selector> {
@@ -46,7 +48,7 @@ impl Selector {
                             Ok(ep) => ep as RawFd,
                             Err(err) => {
                                 // `fcntl` failed, cleanup `ep`.
-                                let _ = unsafe { libc::close(ep) };
+                                _ = unsafe { libc::close(ep) };
                                 return Err(err);
                             }
                         },
@@ -80,7 +82,7 @@ impl Selector {
 
     pub fn select(
         &self,
-        events: &mut super::super::Events,
+        events: &mut super::super::event::Events,
         timeout: Option<Duration>,
     ) -> io::Result<()> {
         // A bug in kernels < 2.6.37 makes timeouts larger than LONG_MAX / CONFIG_HZ
@@ -91,88 +93,60 @@ impl Selector {
         #[cfg(not(target_pointer_width = "32"))]
         const MAX_SAFE_TIMEOUT: u128 = libc::c_int::MAX as u128;
 
-        let timeout = timeout
-            .map(|to| {
-                let to_ms = to.as_millis();
-                // as_millis() truncates, so round up to 1 ms as the documentation says can happen.
-                // This avoids turning submillisecond timeouts into immediate returns unless the
-                // caller explicitly requests that by specifying a zero timeout.
-                let to_ms = to_ms + u128::from(to_ms == 0 && to.subsec_nanos() != 0);
-                to_ms.min(MAX_SAFE_TIMEOUT) as libc::c_int
-            })
-            .unwrap_or(-1);
+        let timeout = timeout.map_or(-1, |to| {
+            let to_ms = to.as_millis();
+            // as_millis() truncates, so round up to 1 ms as the documentation says can happen.
+            // This avoids turning submillisecond timeouts into immediate returns unless the
+            // caller explicitly requests that by specifying a zero timeout.
+            let to_ms = to_ms + u128::from(to_ms == 0 && to.subsec_nanos() != 0);
+            to_ms.min(MAX_SAFE_TIMEOUT) as libc::c_int
+        });
 
         let events = events.sys();
         events.clear();
-        unsafe {
-            let res = epoll_wait(
-                self.ep,
-                events.as_mut_ptr(),
-                events.capacity() as i32,
-                timeout,
-            );
-            if res == -1 {
-                Err(std::io::Error::last_os_error())
-            } else {
-                // This is safe because `epoll_wait` ensures that
-                // `res`(n_events) are assigned.
-                events.set_len(res as usize);
-                Ok(())
-            }
-        }
+        syscall!(epoll_wait(
+            self.ep,
+            events.as_mut_ptr(),
+            events.capacity() as i32,
+            timeout,
+        ))
+        .map(|n_events| {
+            // This is safe because `epoll_wait` ensures that `n_events` are
+            // assigned.
+            unsafe { events.set_len(n_events as usize) };
+        })
     }
 
     pub fn register(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
-        unsafe {
-            let mut event: epoll_event = std::mem::zeroed();
-            event.events = interests_to_epoll(interests);
-            let mut data: epoll_data = std::mem::zeroed();
-            data.fd = fd;
-            data.ptr = token as *mut libc::c_void;
-            event.data = data;
-            let res = epoll_ctl(self.ep, libc::EPOLL_CTL_ADD, fd, &mut event);
-            if res == -1 {
-                let e = std::io::Error::last_os_error();
-                match e.kind() {
-                    std::io::ErrorKind::AlreadyExists => Ok(()),
-                    _ => Err(e),
-                }
-            } else {
-                Ok(())
-            }
-        }
+        let mut event = libc::epoll_event {
+            events: interests_to_epoll(interests),
+            u64: token as u64,
+            #[cfg(target_os = "redox")]
+            _pad: 0,
+        };
+
+        syscall!(epoll_ctl(self.ep, libc::EPOLL_CTL_ADD, fd, &mut event)).map(|_| {
+            _ = unsafe { TOKEN_FD.insert(token, fd) };
+        })
     }
 
     pub fn reregister(&self, fd: RawFd, token: usize, interests: Interest) -> io::Result<()> {
-        unsafe {
-            let mut event: epoll_event = std::mem::zeroed();
-            event.events = interests_to_epoll(interests);
-            let mut data: epoll_data = std::mem::zeroed();
-            data.fd = fd;
-            data.ptr = token as *mut libc::c_void;
-            event.data = data;
-            let res = epoll_ctl(self.ep, libc::EPOLL_CTL_MOD, fd, &mut event);
-            if res == -1 {
-                let e = std::io::Error::last_os_error();
-                match e.kind() {
-                    std::io::ErrorKind::AlreadyExists => Ok(()),
-                    _ => Err(e),
-                }
-            } else {
-                Ok(())
-            }
-        }
+        let mut event = libc::epoll_event {
+            events: interests_to_epoll(interests),
+            u64: token as u64,
+            #[cfg(target_os = "redox")]
+            _pad: 0,
+        };
+
+        syscall!(epoll_ctl(self.ep, libc::EPOLL_CTL_MOD, fd, &mut event)).map(|_| {
+            _ = unsafe { TOKEN_FD.insert(token, fd) };
+        })
     }
 
-    pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
-        unsafe {
-            let res = epoll_ctl(self.ep, libc::EPOLL_CTL_DEL, fd, ptr::null_mut());
-            if res == -1 {
-                Err(std::io::Error::last_os_error())
-            } else {
-                Ok(())
-            }
-        }
+    pub fn deregister(&self, fd: RawFd, token: usize) -> io::Result<()> {
+        syscall!(epoll_ctl(self.ep, libc::EPOLL_CTL_DEL, fd, ptr::null_mut())).map(|_| {
+            _ = unsafe { TOKEN_FD.remove(&token) };
+        })
     }
 
     #[cfg(debug_assertions)]
@@ -209,20 +183,19 @@ fn interests_to_epoll(interests: Interest) -> u32 {
     kind as u32
 }
 
-pub type Event = epoll_event;
+pub type Event = libc::epoll_event;
 pub type Events = Vec<Event>;
 
 pub mod event {
+    use super::{Event, TOKEN_FD};
     use std::fmt;
 
-    use super::Event;
-
     pub fn fd(event: &Event) -> libc::c_int {
-        event.data.fd
+        unsafe { TOKEN_FD.remove(&token(event)).unwrap_or(0) }
     }
 
     pub fn token(event: &Event) -> usize {
-        event.data.ptr as usize
+        event.u64 as usize
     }
 
     pub fn is_readable(event: &Event) -> bool {
@@ -299,10 +272,10 @@ pub mod event {
         );
 
         // Can't reference fields in packed structures.
-        let data = &event.data;
+        let e_u64 = event.u64;
         f.debug_struct("epoll_event")
             .field("events", &EventsDetails(event.events))
-            .field("data", data)
+            .field("data", &e_u64)
             .finish()
     }
 }

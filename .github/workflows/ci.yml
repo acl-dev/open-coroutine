@@ -66,17 +66,41 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo test --release --all"
-      - name: Run cargo release hellp example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example hello --release
-      - name: Run cargo release preemptive example in single thread
+      - name: Run cargo release preemptive example
+        if: always()
         run: |
           cd ${{ github.workspace }}/open-coroutine-core
-          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example complex_preemptive --release --features preemptive-schedule"
-      - name: Run cargo release preemptive example
-        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release"
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
+      - name: Run cargo release sleep not coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example sleep_not_co --release"
+      - name: Run cargo release sleep coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example sleep_co --release"
+      - name: Run cargo release socket not coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example socket_not_co --release"
+      - name: Run cargo release socket coroutine server example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example socket_co_server --release"
+      - name: Run cargo release socket coroutine client example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example socket_co_client --release"
+      - name: Run cargo release socket coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example socket_co --release"
 
   macos:
     name: Test ${{ matrix.rust }} on macOS-latest
@@ -107,17 +131,41 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo test --release --all"
-      - name: Run cargo release hello example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example hello --release
-      - name: Run cargo release preemptive example in single thread
+      - name: Run cargo release preemptive example
+        if: always()
         run: |
           cd ${{ github.workspace }}/open-coroutine-core
-          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example complex_preemptive --release --features preemptive-schedule"
-      - name: Run cargo release preemptive example
-        run: sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release"
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
+      - name: Run cargo release sleep not coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example sleep_not_co --release"
+      - name: Run cargo release sleep coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example sleep_co --release"
+      - name: Run cargo release socket not coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example socket_not_co --release"
+      - name: Run cargo release socket coroutine server example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example socket_co_server --release"
+      - name: Run cargo release socket coroutine client example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example socket_co_client --release"
+      - name: Run cargo release socket coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /Users/runner/.cargo/bin/cargo run --example socket_co --release"
 
   windows:
     name: Test ${{ matrix.rust }} on windows-latest
@@ -148,10 +196,38 @@ jobs:
           args: --release --all --no-run
       - name: Run cargo release test
         run: bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe test --release --all"
-      - name: Run cargo release hello example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example hello --release
-#      - name: Run cargo release preemptive example
-#        run: bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example preemptive --release"
+      - name: Run cargo release preemptive example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/open-coroutine-core
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example preemptive --release --features preemptive-schedule"
+      - name: Run cargo release sleep not coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example sleep_not_co --release"
+      - name: Run cargo release sleep coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example sleep_co --release"
+      - name: Run cargo release socket not coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_not_co --release"
+      - name: Run cargo release socket coroutine server example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_co_server --release"
+      - name: Run cargo release socket coroutine client example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_co_client --release"
+      - name: Run cargo release socket coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_co --release"

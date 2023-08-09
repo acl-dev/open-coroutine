@@ -12,7 +12,7 @@ use std::fmt;
 /// [`Poll::poll`]: ../struct.Poll.html#method.poll
 /// [`Poll`]: ../struct.Poll.html
 /// [`Token`]: ../struct.Token.html
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Event {
     inner: sys::Event,
@@ -20,11 +20,13 @@ pub struct Event {
 
 impl Event {
     /// Returns the event's fd.
+    #[must_use]
     pub fn fd(&self) -> libc::c_int {
         sys::event::fd(&self.inner)
     }
 
     /// Returns the event's token.
+    #[must_use]
     pub fn token(&self) -> usize {
         sys::event::token(&self.inner)
     }
@@ -39,11 +41,13 @@ impl Event {
     /// <https://github.com/sandstorm-io/sandstorm-website/blob/58f93346028c0576e8147627667328eaaf4be9fa/_posts/2015-04-08-osx-security-bug.md>.
     /// However because Mio uses edge-triggers it will not result in an infinite
     /// loop as described in the article above.
+    #[must_use]
     pub fn is_readable(&self) -> bool {
         sys::event::is_readable(&self.inner)
     }
 
     /// Returns true if the event contains writable readiness.
+    #[must_use]
     pub fn is_writable(&self) -> bool {
         sys::event::is_writable(&self.inner)
     }
@@ -69,6 +73,7 @@ impl Event {
     /// [OS selector]: ../struct.Poll.html#implementation-notes
     /// [epoll]: https://man7.org/linux/man-pages/man7/epoll.7.html
     /// [kqueue]: https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+    #[must_use]
     pub fn is_error(&self) -> bool {
         sys::event::is_error(&self.inner)
     }
@@ -100,6 +105,7 @@ impl Event {
     /// [OS selector]: ../struct.Poll.html#implementation-notes
     /// [epoll]: https://man7.org/linux/man-pages/man7/epoll.7.html
     /// [kqueue]: https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+    #[must_use]
     pub fn is_read_closed(&self) -> bool {
         sys::event::is_read_closed(&self.inner)
     }
@@ -130,6 +136,7 @@ impl Event {
     /// [OS selector]: ../struct.Poll.html#implementation-notes
     /// [epoll]: https://man7.org/linux/man-pages/man7/epoll.7.html
     /// [kqueue]: https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+    #[must_use]
     pub fn is_write_closed(&self) -> bool {
         sys::event::is_write_closed(&self.inner)
     }
@@ -151,6 +158,7 @@ impl Event {
     /// [OS selector]: ../struct.Poll.html#implementation-notes
     /// [epoll]: https://man7.org/linux/man-pages/man7/epoll.7.html
     /// [kqueue]: https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+    #[must_use]
     #[inline]
     pub fn is_priority(&self) -> bool {
         sys::event::is_priority(&self.inner)
@@ -169,11 +177,12 @@ impl Event {
     /// | [epoll]       | *Not supported* |
     /// | [kqueue]<sup>1</sup> | `EVFILT_AIO` |
     ///
-    /// 1: Only supported on DragonFly BSD, FreeBSD, iOS and macOS.
+    /// 1: Only supported on `DragonFly` BSD, FreeBSD, iOS and macOS.
     ///
     /// [OS selector]: ../struct.Poll.html#implementation-notes
     /// [epoll]: https://man7.org/linux/man-pages/man7/epoll.7.html
     /// [kqueue]: https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+    #[must_use]
     pub fn is_aio(&self) -> bool {
         sys::event::is_aio(&self.inner)
     }
@@ -184,6 +193,7 @@ impl Event {
     ///
     /// Method is available on all platforms, but only FreeBSD supports LIO. On
     /// FreeBSD this method checks the `EVFILT_LIO` flag.
+    #[must_use]
     pub fn is_lio(&self) -> bool {
         sys::event::is_lio(&self.inner)
     }
@@ -193,7 +203,7 @@ impl Event {
         unsafe {
             // This is safe because the memory layout of `Event` is
             // the same as `sys::Event` due to the `repr(transparent)` attribute.
-            &*(sys_event as *const sys::Event as *const Event)
+            &*(sys_event as *const sys::Event).cast::<Event>()
         }
     }
 }
@@ -208,7 +218,8 @@ impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let alternate = f.alternate();
         let mut d = f.debug_struct("Event");
-        d.field("fd", &self.fd())
+        _ = d
+            .field("fd", &self.fd())
             .field("token", &self.token())
             .field("readable", &self.is_readable())
             .field("writable", &self.is_writable())

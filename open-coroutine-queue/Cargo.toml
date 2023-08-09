@@ -1,0 +1,15 @@
+[package]
+name = "open-coroutine-queue"
+version = "0.1.2"
+edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "Concurrent work-stealing queue, implemented using st3 and crossbeam-deque."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-queue"
+keywords = ["open-coroutine", "queue", "work-steal"]
+categories = ["data-structures", "concurrency"]
+license = "LGPL-3.0 OR Apache-2.0"
+
+[dependencies]
+num_cpus = "1.14.0"
+st3 = "0.4.1"
+crossbeam-deque = "0.8.2"
