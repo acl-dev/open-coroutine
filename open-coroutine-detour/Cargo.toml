@@ -25,6 +25,7 @@ keywords = [
     "api",
     "redirect",
 ]
+categories = ["os::windows-apis"]
 license = "BSD-2-Clause"
 repository = "https://github.com/acl-dev/open-coroutine/tree/master/open-coroutine-detour"
 
