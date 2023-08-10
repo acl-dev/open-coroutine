@@ -27,7 +27,7 @@ impl Event {
     }
 
     pub(super) fn set_readable(&mut self) {
-        self.flags |= afd::POLL_RECEIVE
+        self.flags |= afd::POLL_RECEIVE;
     }
 
     pub(super) fn from_completion_status(status: &CompletionStatus) -> Event {
@@ -37,6 +37,7 @@ impl Event {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub(super) fn to_completion_status(&self) -> CompletionStatus {
         CompletionStatus::new(self.flags, self.data as usize, std::ptr::null_mut())
     }

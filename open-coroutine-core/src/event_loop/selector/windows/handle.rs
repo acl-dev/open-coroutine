@@ -25,6 +25,6 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        unsafe { CloseHandle(self.0) };
+        _ = unsafe { CloseHandle(self.0) };
     }
 }

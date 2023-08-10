@@ -157,15 +157,14 @@ impl SockState {
                 } else {
                     // Since the operation failed it means the kernel won't be
                     // using the memory any more.
-                    drop(from_overlapped(overlapped_ptr as *mut _));
+                    drop(from_overlapped(overlapped_ptr.cast()));
                     if code == ERROR_INVALID_HANDLE as i32 {
                         /* Socket closed; it'll be dropped. */
                         self.mark_delete();
                         return Ok(());
-                    } else {
-                        self.error = e.raw_os_error();
-                        return Err(e);
                     }
+                    self.error = e.raw_os_error();
+                    return Err(e);
                 }
             }
 
@@ -341,21 +340,21 @@ impl Selector {
         })
     }
 
-    pub fn try_clone(&self) -> io::Result<Selector> {
-        Ok(Selector {
+    pub fn try_clone(&self) -> Selector {
+        Selector {
             #[cfg(debug_assertions)]
             id: self.id,
             inner: Arc::clone(&self.inner),
             #[cfg(debug_assertions)]
             has_waker: AtomicBool::new(self.has_waker.load(Ordering::Acquire)),
-        })
+        }
     }
 
     /// # Safety
     ///
     /// This requires a mutable reference to self because only a single thread
     /// can poll IOCP at a time.
-    pub fn select(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn select(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.select(events, timeout)
     }
 
@@ -434,7 +433,7 @@ impl SelectorInner {
                 break Ok(());
             }
         } else {
-            self.select2(&mut events.statuses, &mut events.events, timeout)?;
+            _ = self.select2(&mut events.statuses, &mut events.events, timeout)?;
             Ok(())
         }
     }
@@ -491,7 +490,7 @@ impl SelectorInner {
                 continue;
             } else if iocp_event.token() % 2 == 1 {
                 // Handle is a named pipe. This could be extended to be any non-AFD event.
-                let callback = (*(iocp_event.overlapped() as *mut super::Overlapped)).callback;
+                let callback = (*iocp_event.overlapped().cast::<super::Overlapped>()).callback;
 
                 let len = events.len();
                 callback(iocp_event.entry(), Some(events));
@@ -538,7 +537,7 @@ impl SelectorInner {
                 flags,
                 data: token as u64,
             };
-            sock.lock().unwrap().set_event(event);
+            _ = sock.lock().unwrap().set_event(event);
             sock
         };
 
@@ -568,7 +567,7 @@ impl SelectorInner {
                 data: token as u64,
             };
 
-            state.lock().unwrap().set_event(event);
+            _ = state.lock().unwrap().set_event(event);
         }
 
         // FIXME: a sock which has_error true should not be re-added to
@@ -578,21 +577,21 @@ impl SelectorInner {
     }
 
     /// This function is called by register() and reregister() to start an
-    /// IOCTL_AFD_POLL operation corresponding to the registered events, but
+    /// `IOCTL_AFD_POLL` operation corresponding to the registered events, but
     /// only if necessary.
     ///
-    /// Since it is not possible to modify or synchronously cancel an AFD_POLL
-    /// operation, and there can be only one active AFD_POLL operation per
+    /// Since it is not possible to modify or synchronously cancel an `AFD_POLL`
+    /// operation, and there can be only one active `AFD_POLL` operation per
     /// (socket, completion port) pair at any time, it is expensive to change
     /// a socket's event registration after it has been submitted to the kernel.
     ///
     /// Therefore, if no other threads are polling when interest in a socket
     /// event is (re)registered, the socket is added to the 'update queue', but
-    /// the actual syscall to start the IOCTL_AFD_POLL operation is deferred
-    /// until just before the GetQueuedCompletionStatusEx() syscall is made.
+    /// the actual syscall to start the `IOCTL_AFD_POLL` operation is deferred
+    /// until just before the `GetQueuedCompletionStatusEx()` syscall is made.
     ///
     /// However, when another thread is already blocked on
-    /// GetQueuedCompletionStatusEx() we tell the kernel about the registered
+    /// `GetQueuedCompletionStatusEx()` we tell the kernel about the registered
     /// socket event(s) immediately.
     unsafe fn update_sockets_events_if_polling(&self) -> io::Result<()> {
         if self.is_polling.load(Ordering::Acquire) {
@@ -625,16 +624,16 @@ fn try_get_base_socket(raw_socket: RawSocket, ioctl: u32) -> Result<RawSocket, i
             ioctl,
             null_mut(),
             0,
-            &mut base_socket as *mut _ as *mut c_void,
+            std::ptr::addr_of_mut!(base_socket).cast::<c_void>(),
             size_of::<RawSocket>() as u32,
             &mut bytes,
             null_mut(),
             None,
-        ) != SOCKET_ERROR
+        ) == SOCKET_ERROR
         {
-            Ok(base_socket)
-        } else {
             Err(WSAGetLastError())
+        } else {
+            Ok(base_socket)
         }
     }
 }
@@ -675,7 +674,7 @@ impl Drop for SelectorInner {
 
             let result = self
                 .cp
-                .get_many(&mut statuses, Some(std::time::Duration::from_millis(0)));
+                .get_many(&mut statuses, Some(Duration::from_millis(0)));
             match result {
                 Ok(iocp_events) => {
                     events_num = iocp_events.iter().len();
@@ -685,7 +684,7 @@ impl Drop for SelectorInner {
                         } else if iocp_event.token() % 2 == 1 {
                             // Named pipe, dispatch the event so it can release resources
                             let callback = unsafe {
-                                (*(iocp_event.overlapped() as *mut super::Overlapped)).callback
+                                (*iocp_event.overlapped().cast::<super::Overlapped>()).callback
                             };
 
                             callback(iocp_event.entry(), None);

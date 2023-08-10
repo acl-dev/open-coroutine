@@ -12,7 +12,7 @@ use windows_sys::Win32::System::WindowsProgramming::{
     NtDeviceIoControlFile, IO_STATUS_BLOCK, IO_STATUS_BLOCK_0,
 };
 
-const IOCTL_AFD_POLL: u32 = 0x00012024;
+const IOCTL_AFD_POLL: u32 = 0x0001_2024;
 
 #[link(name = "ntdll")]
 extern "system" {
@@ -29,7 +29,7 @@ extern "system" {
 }
 /// Winsock2 AFD driver instance.
 ///
-/// All operations are unsafe due to IO_STATUS_BLOCK parameter are being used by Afd driver during STATUS_PENDING before I/O Completion Port returns its result.
+/// All operations are unsafe due to `IO_STATUS_BLOCK` parameter are being used by Afd driver during `STATUS_PENDING` before I/O Completion Port returns its result.
 #[derive(Debug)]
 pub struct Afd {
     fd: File,
@@ -69,6 +69,7 @@ impl Afd {
     /// `iosb` needs to be untouched after the call while operation is in effective at ALL TIME except for `cancel` method.
     /// So be careful not to `poll` twice while polling.
     /// User should deallocate there overlapped value when error to prevent memory leak.
+    #[allow(clippy::ptr_as_ptr)]
     pub unsafe fn poll(
         &self,
         info: &mut AfdPollInfo,
@@ -144,6 +145,7 @@ use windows_sys::Win32::{
 const AFD_HELPER_ATTRIBUTES: OBJECT_ATTRIBUTES = OBJECT_ATTRIBUTES {
     Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
     RootDirectory: 0,
+    #[allow(clippy::borrow_as_ptr)]
     ObjectName: &AFD_OBJ_NAME as *const _ as *mut _,
     Attributes: 0,
     SecurityDescriptor: null_mut(),
@@ -171,6 +173,7 @@ impl AfdPollInfo {
 
 impl Afd {
     /// Create new Afd instance.
+    #[allow(clippy::borrow_as_ptr)]
     pub(crate) fn new(cp: &CompletionPort) -> io::Result<Afd> {
         let mut afd_helper_handle: HANDLE = INVALID_HANDLE_VALUE;
         let mut iosb = IO_STATUS_BLOCK {
@@ -180,7 +183,7 @@ impl Afd {
 
         unsafe {
             let status = NtCreateFile(
-                &mut afd_helper_handle as *mut _,
+                std::ptr::addr_of_mut!(afd_helper_handle),
                 SYNCHRONIZE,
                 &AFD_HELPER_ATTRIBUTES as *const _ as *mut _,
                 &mut iosb,

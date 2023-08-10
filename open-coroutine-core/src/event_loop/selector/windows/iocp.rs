@@ -4,7 +4,7 @@ use super::{Handle, Overlapped};
 use std::fmt;
 use std::io;
 use std::mem;
-use std::os::windows::io::*;
+use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
 use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
@@ -166,7 +166,7 @@ impl CompletionStatus {
         CompletionStatus(OVERLAPPED_ENTRY {
             dwNumberOfBytesTransferred: bytes,
             lpCompletionKey: token,
-            lpOverlapped: overlapped as *mut _,
+            lpOverlapped: overlapped.cast(),
             Internal: 0,
         })
     }
@@ -214,7 +214,7 @@ fn duration_millis(dur: Option<Duration>) -> u32 {
         // submillisecond timeouts into immediate reutrns unless the caller explictly requests that
         // by specifiying a zero timeout.
         let dur_ms = dur_ms + u128::from(dur_ms == 0 && dur.subsec_nanos() != 0);
-        dur_ms.min(u32::MAX as u128) as u32
+        dur_ms.min(u128::from(u32::MAX)) as u32
     } else {
         u32::MAX
     }
