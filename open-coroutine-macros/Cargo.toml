@@ -11,8 +11,8 @@ license = "LGPL-3.0 OR Apache-2.0"
 
 [dependencies]
 num_cpus = "1.14.0"
-syn = { version = "2.0.4", features = ["full"] }
-quote = "1.0.23"
+syn = { version = "2.0.28", features = ["full"] }
+quote = "1.0.32"
 
 [lib]
 proc-macro = true

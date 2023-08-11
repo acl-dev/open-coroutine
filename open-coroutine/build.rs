@@ -37,16 +37,16 @@ fn main() {
             .expect("Failed to read glob pattern")
             .flatten()
         {
-            std::fs::rename(path, deps.join("libopen_coroutine_hooks.dll"))
+            std::fs::rename(path, deps.join("open_coroutine_hooks.dll"))
                 .expect("rename to open_coroutine_hooks.dll failed!");
         }
 
-        let lib_pattern = pattern + "/libopen_coroutine_hooks*.dll.a";
+        let lib_pattern = pattern + "/open_coroutine_hooks*.lib";
         for path in glob::glob(&lib_pattern)
             .expect("Failed to read glob pattern")
             .flatten()
         {
-            std::fs::rename(path, deps.join("libopen_coroutine_hooks.dll.a"))
+            std::fs::rename(path, deps.join("open_coroutine_hooks.lib"))
                 .expect("rename to open_coroutine_hooks.lib failed!");
         }
     } else {
