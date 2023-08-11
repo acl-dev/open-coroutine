@@ -9,10 +9,6 @@ use std::time::Duration;
 
 pub mod join;
 
-pub mod event;
-
-pub mod interest;
-
 mod selector;
 
 mod blocker;

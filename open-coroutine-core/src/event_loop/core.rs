@@ -1,12 +1,11 @@
 use crate::coroutine::suspender::Suspender;
 use crate::event_loop::blocker::SelectBlocker;
-use crate::event_loop::event::Events;
-use crate::event_loop::interest::Interest;
 use crate::event_loop::join::JoinHandle;
 use crate::event_loop::selector::Selector;
 use crate::pool::CoroutinePool;
 use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::Lazy;
+use polling::Event;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::MaybeUninit;
@@ -81,12 +80,12 @@ impl EventLoop {
             let token = EventLoop::token();
             if WRITABLE_RECORDS.contains(&fd) {
                 //同时对读写事件感兴趣
-                let interests = Interest::READABLE.add(Interest::WRITABLE);
+                let interests = Event::all(token);
                 self.selector
                     .reregister(fd, token, interests)
                     .or(self.selector.register(fd, token, interests))
             } else {
-                self.selector.register(fd, token, Interest::READABLE)
+                self.selector.register(fd, token, Event::readable(token))
             }?;
             _ = READABLE_RECORDS.insert(fd);
             _ = READABLE_TOKEN_RECORDS.insert(fd, token);
@@ -102,12 +101,12 @@ impl EventLoop {
             let token = EventLoop::token();
             if READABLE_RECORDS.contains(&fd) {
                 //同时对读写事件感兴趣
-                let interests = Interest::WRITABLE.add(Interest::READABLE);
+                let interests = Event::all(token);
                 self.selector
                     .reregister(fd, token, interests)
                     .or(self.selector.register(fd, token, interests))
             } else {
-                self.selector.register(fd, token, Interest::WRITABLE)
+                self.selector.register(fd, token, Event::writable(token))
             }?;
             _ = WRITABLE_RECORDS.insert(fd);
             _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
@@ -133,11 +132,9 @@ impl EventLoop {
             if READABLE_RECORDS.contains(&fd) {
                 if WRITABLE_RECORDS.contains(&fd) {
                     //写事件不能删
-                    self.selector.reregister(
-                        fd,
-                        *WRITABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0),
-                        Interest::WRITABLE,
-                    )?;
+                    let token = *WRITABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0);
+                    self.selector
+                        .reregister(fd, token, Event::writable(token))?;
                     assert!(READABLE_RECORDS.remove(&fd));
                     assert!(READABLE_TOKEN_RECORDS.remove(&fd).is_some());
                 } else {
@@ -153,11 +150,9 @@ impl EventLoop {
             if WRITABLE_RECORDS.contains(&fd) {
                 if READABLE_RECORDS.contains(&fd) {
                     //读事件不能删
-                    self.selector.reregister(
-                        fd,
-                        *READABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0),
-                        Interest::READABLE,
-                    )?;
+                    let token = *READABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0);
+                    self.selector
+                        .reregister(fd, token, Event::readable(token))?;
                     assert!(WRITABLE_RECORDS.remove(&fd));
                     assert!(WRITABLE_TOKEN_RECORDS.remove(&fd).is_some());
                 } else {
@@ -197,21 +192,21 @@ impl EventLoop {
         } else {
             timeout
         };
-        let mut events = Events::with_capacity(1024);
-        self.selector.select(&mut events, timeout).map_err(|e| {
+        let mut events = Vec::with_capacity(1024);
+        _ = self.selector.select(&mut events, timeout).map_err(|e| {
             self.waiting.store(false, Ordering::Release);
             e
         })?;
         self.waiting.store(false, Ordering::Release);
-        for event in events.iter() {
-            let fd = event.fd();
-            let token = event.token();
+        for event in &events {
+            let token = event.key;
+            let fd = Selector::fd(token);
             unsafe {
-                if event.is_readable() {
+                if event.readable {
                     _ = READABLE_TOKEN_RECORDS.remove(&fd);
                     self.resume(token);
                 }
-                if event.is_writable() {
+                if event.writable {
                     _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
                     self.resume(token);
                 }
