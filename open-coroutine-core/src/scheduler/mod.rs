@@ -319,7 +319,7 @@ mod tests {
         scheduler.try_schedule();
     }
 
-    #[cfg(feature = "preemptive-schedule")]
+    #[cfg(all(unix, feature = "preemptive-schedule"))]
     #[test]
     fn preemptive_schedule() -> std::io::Result<()> {
         use std::sync::{Arc, Condvar, Mutex};
