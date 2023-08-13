@@ -184,8 +184,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}
-          target: x86_64-pc-windows-gnu
+          toolchain: ${{ matrix.rust }}-x86_64-pc-windows-gnu
           override: true
       - name: Run cargo clean
         run: |
