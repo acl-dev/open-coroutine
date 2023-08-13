@@ -64,6 +64,5 @@ fn get_module_symbol_address(module: &str, symbol: &str) -> Option<usize> {
 }
 
 fn sleep_detour(dw_milliseconds: u32) {
-    eprintln!("hook works");
     _ = EventLoops::wait_event(Some(Duration::from_millis(u64::from(dw_milliseconds))));
 }
