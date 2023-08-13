@@ -26,11 +26,11 @@ polling = "2.8.0"
 open-coroutine-timer = { version = "0.1.0", path = "../open-coroutine-timer" }
 open-coroutine-queue = { version = "0.1.2", path = "../open-coroutine-queue" }
 
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.48.0", features = ["Win32_System_SystemInformation", "Win32_System_Diagnostics_Debug"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 core_affinity = "0.8.0"
-
-[target."cfg(windows)".dependencies]
-windows-sys = { version = "0.48.0", features = ["Win32_System_SystemInformation"] }
 
 [dev-dependencies]
 backtrace = "0.3.67"
