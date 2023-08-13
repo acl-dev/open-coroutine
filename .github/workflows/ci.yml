@@ -230,8 +230,8 @@ jobs:
         run: |
           cd ${{ github.workspace }}/examples
           bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_co_client --release"
-#      - name: Run cargo release socket coroutine example
-#        if: always()
-#        run: |
-#          cd ${{ github.workspace }}/examples
-#          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_co --release"
+      - name: Run cargo release socket coroutine example
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/examples
+          bash -c "RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 C://Users//runneradmin//.cargo//bin//cargo.exe run --example socket_co --release"
