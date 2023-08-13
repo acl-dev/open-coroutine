@@ -52,7 +52,7 @@ macro_rules! co {
     }};
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(test)]
 mod tests {
 
     #[test]

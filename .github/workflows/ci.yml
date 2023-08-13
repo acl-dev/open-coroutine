@@ -185,17 +185,12 @@ jobs:
         with:
           profile: minimal
           toolchain: ${{ matrix.rust }}
+          target: x86_64-pc-windows-gnu
           override: true
       - name: Run cargo clean
         run: |
           cd ${{ github.workspace }}
           C://Users//runneradmin//.cargo//bin//cargo.exe clean
-      - name: Build open-coroutine-hooks lib
-        run: |
-          cd ${{ github.workspace }}/open-coroutine-hooks
-          C://Users//runneradmin//.cargo//bin//cargo.exe build --release
-          cd ${{ github.workspace }}/target/release
-          ls
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
