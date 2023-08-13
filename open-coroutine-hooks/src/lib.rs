@@ -45,48 +45,28 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
-pub mod coroutine;
 
-pub mod scheduler;
+use open_coroutine_core::config::Config;
 
-pub mod pool;
-
-#[macro_export]
-macro_rules! unbreakable {
-    ( $f: expr , $syscall: expr ) => {
-        if $crate::coroutine::suspender::Suspender::<(), ()>::current().is_some() {
-            let co = $crate::scheduler::SchedulableCoroutine::current()
-                .unwrap_or_else(|| panic!("current coroutine not found !"));
-            let co_name = co.get_name();
-            let state = co.set_state($crate::coroutine::CoroutineState::SystemCall($syscall));
-            assert_eq!($crate::coroutine::CoroutineState::Running, state);
-            let r = $f;
-            if let Some(current) = $crate::scheduler::SchedulableCoroutine::current() {
-                if co_name == current.get_name() {
-                    let old = current.set_state(state);
-                    match old {
-                        $crate::coroutine::CoroutineState::SystemCall(_) => {}
-                        _ => panic!("{} unexpected state {old}", current.get_name()),
-                    };
-                }
-            }
-            r
-        } else {
-            $f
-        }
-    };
+#[no_mangle]
+pub extern "C" fn init_config(config: Config) {
+    //一方面保证hook的函数能够被重定向到(防止压根不调用coroutine_crate的情况)
+    //另一方面初始化EventLoop配置
+    _ = Config::get_instance()
+        .set_event_loop_size(config.get_event_loop_size())
+        .set_stack_size(config.get_stack_size())
+        .set_min_size(config.get_min_size())
+        .set_max_size(config.get_max_size())
+        .set_keep_alive_time(config.get_keep_alive_time());
+    println!("open-coroutine inited with {config:#?}");
 }
 
-#[cfg(all(unix, feature = "preemptive-schedule"))]
-mod monitor;
+pub mod coroutine;
 
-#[allow(
-    dead_code,
-    clippy::cast_possible_wrap,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    trivial_numeric_casts
-)]
-pub mod event_loop;
+#[allow(dead_code, clippy::not_unsafe_ptr_arg_deref, clippy::similar_names)]
+#[cfg(unix)]
+pub mod unix;
 
-pub mod config;
+#[allow(dead_code, clippy::not_unsafe_ptr_arg_deref, clippy::similar_names)]
+#[cfg(all(windows, nightly))]
+mod windows;

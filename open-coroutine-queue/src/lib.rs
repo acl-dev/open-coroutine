@@ -45,48 +45,46 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
-pub mod coroutine;
 
-pub mod scheduler;
+//! Suppose a thread in a work-stealing scheduler is idle and looking for the next task to run. To
+//! find an available task, it might do the following:
+//!
+//! 1. Try popping one task from the local worker queue.
+//! 2. Try popping and stealing tasks from another local worker queue.
+//! 3. Try popping and stealing a batch of tasks from the global injector queue.
+//!
+//! An implementation of this work-stealing strategy:
+//!
+//! # Examples
+//!
+//! ```
+//! use open_coroutine_queue::WorkStealQueue;
+//!
+//! let queue = WorkStealQueue::new(2, 64);
+//! queue.push(6);
+//! queue.push(7);
+//!
+//! let local0 = queue.local_queue();
+//! local0.push_back(2);
+//! local0.push_back(3);
+//! local0.push_back(4);
+//! local0.push_back(5);
+//!
+//! let local1 = queue.local_queue();
+//! local1.push_back(0);
+//! local1.push_back(1);
+//! for i in 0..8 {
+//!     assert_eq!(local1.pop_front(), Some(i));
+//! }
+//! assert_eq!(local0.pop_front(), None);
+//! assert_eq!(local1.pop_front(), None);
+//! assert_eq!(queue.pop(), None);
+//! ```
+//!
 
-pub mod pool;
+pub use rand::*;
+pub use work_steal::*;
 
-#[macro_export]
-macro_rules! unbreakable {
-    ( $f: expr , $syscall: expr ) => {
-        if $crate::coroutine::suspender::Suspender::<(), ()>::current().is_some() {
-            let co = $crate::scheduler::SchedulableCoroutine::current()
-                .unwrap_or_else(|| panic!("current coroutine not found !"));
-            let co_name = co.get_name();
-            let state = co.set_state($crate::coroutine::CoroutineState::SystemCall($syscall));
-            assert_eq!($crate::coroutine::CoroutineState::Running, state);
-            let r = $f;
-            if let Some(current) = $crate::scheduler::SchedulableCoroutine::current() {
-                if co_name == current.get_name() {
-                    let old = current.set_state(state);
-                    match old {
-                        $crate::coroutine::CoroutineState::SystemCall(_) => {}
-                        _ => panic!("{} unexpected state {old}", current.get_name()),
-                    };
-                }
-            }
-            r
-        } else {
-            $f
-        }
-    };
-}
+pub mod rand;
 
-#[cfg(all(unix, feature = "preemptive-schedule"))]
-mod monitor;
-
-#[allow(
-    dead_code,
-    clippy::cast_possible_wrap,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    trivial_numeric_casts
-)]
-pub mod event_loop;
-
-pub mod config;
+pub mod work_steal;

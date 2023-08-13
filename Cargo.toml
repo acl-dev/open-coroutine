@@ -1,35 +1,11 @@
-[package]
-name = "open-coroutine"
-version = "0.2.0"
-edition = "2021"
-authors = ["zhangzicheng@apache.org"]
-description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
-repository = "https://github.com/acl-dev/open-coroutine"
-license = "LGPL-3.0 OR Apache-2.0"
-readme = "README.md"
-keywords = ["coroutine", "fiber", "stackful", "hook"]
-exclude = [".github"]
-
 [workspace]
 members = [
-    "object-collection",
-    "timer-utils",
-    "work-steal-queue",
+    "open-coroutine-timer",
+    "open-coroutine-queue",
     "open-coroutine-core",
-    "detour2",
-    "libhook",
+    "open-coroutine-detour",
+    "open-coroutine-hooks",
     "open-coroutine-macros",
+    "open-coroutine",
+    "examples"
 ]
-
-[dependencies]
-libc = "0.2.119"
-open-coroutine-core = { version = "0.2.0", features = ["full"], path = "open-coroutine-core" }
-open-coroutine-macros = { version = "0.1.0", path = "open-coroutine-macros" }
-
-[dev-dependencies]
-# benchmark
-criterion = "0.5.1"
-
-[[bench]]
-name = "benchmark"
-harness = false

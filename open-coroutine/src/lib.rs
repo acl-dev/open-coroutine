@@ -45,48 +45,28 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
+
+pub use open_coroutine_core::config::Config;
+pub use open_coroutine_macros::*;
+
+pub mod join;
+
 pub mod coroutine;
 
-pub mod scheduler;
-
-pub mod pool;
-
-#[macro_export]
-macro_rules! unbreakable {
-    ( $f: expr , $syscall: expr ) => {
-        if $crate::coroutine::suspender::Suspender::<(), ()>::current().is_some() {
-            let co = $crate::scheduler::SchedulableCoroutine::current()
-                .unwrap_or_else(|| panic!("current coroutine not found !"));
-            let co_name = co.get_name();
-            let state = co.set_state($crate::coroutine::CoroutineState::SystemCall($syscall));
-            assert_eq!($crate::coroutine::CoroutineState::Running, state);
-            let r = $f;
-            if let Some(current) = $crate::scheduler::SchedulableCoroutine::current() {
-                if co_name == current.get_name() {
-                    let old = current.set_state(state);
-                    match old {
-                        $crate::coroutine::CoroutineState::SystemCall(_) => {}
-                        _ => panic!("{} unexpected state {old}", current.get_name()),
-                    };
-                }
-            }
-            r
-        } else {
-            $f
-        }
-    };
+extern "C" {
+    fn init_config(config: Config);
 }
 
-#[cfg(all(unix, feature = "preemptive-schedule"))]
-mod monitor;
+pub fn init(config: Config) {
+    unsafe { init_config(config) };
+}
 
-#[allow(
-    dead_code,
-    clippy::cast_possible_wrap,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    trivial_numeric_casts
-)]
-pub mod event_loop;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub mod config;
+    #[test]
+    fn test_link() {
+        init(Config::default());
+    }
+}
