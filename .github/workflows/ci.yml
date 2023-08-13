@@ -175,8 +175,8 @@ jobs:
       matrix:
         rust:
           # stable is not supported due to static-detour in retour crate
-#          - stable
-          - nightly
+#          - stable-x86_64-pc-windows-gnu
+          - nightly-x86_64-pc-windows-gnu
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -184,7 +184,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}-x86_64-pc-windows-gnu
+          toolchain: ${{ matrix.rust }}
           override: true
       - name: Run cargo clean
         run: |
