@@ -1,17 +1,17 @@
 use open_coroutine_core::event_loop::EventLoops;
-use open_coroutine_detour::static_detour;
+use retour::static_detour;
 use std::error::Error;
 use std::os::raw::c_void;
 use std::time::Duration;
 use std::{ffi::CString, iter, mem};
-use windows_sys::Win32::Foundation::{BOOL, HINSTANCE};
+use windows_sys::Win32::Foundation::BOOL;
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 
 #[no_mangle]
 #[allow(non_snake_case, warnings)]
 pub unsafe extern "system" fn DllMain(
-    _module: HINSTANCE,
+    _module: *mut c_void,
     call_reason: u32,
     _reserved: *mut c_void,
 ) -> BOOL {
@@ -64,6 +64,5 @@ fn get_module_symbol_address(module: &str, symbol: &str) -> Option<usize> {
 }
 
 fn sleep_detour(dw_milliseconds: u32) {
-    eprintln!("hook works");
     _ = EventLoops::wait_event(Some(Duration::from_millis(u64::from(dw_milliseconds))));
 }

@@ -3,7 +3,6 @@ members = [
     "open-coroutine-timer",
     "open-coroutine-queue",
     "open-coroutine-core",
-    "open-coroutine-detour",
     "open-coroutine-hooks",
     "open-coroutine-macros",
     "open-coroutine",

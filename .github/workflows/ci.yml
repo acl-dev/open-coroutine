@@ -174,8 +174,9 @@ jobs:
       fail-fast: false
       matrix:
         rust:
-          - stable
-          - nightly
+          # stable is not supported due to static-detour in retour crate
+#          - stable-x86_64-pc-windows-gnu
+          - nightly-x86_64-pc-windows-gnu
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -189,10 +190,6 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           C://Users//runneradmin//.cargo//bin//cargo.exe clean
-          cd ${{ github.workspace }}/open-coroutine-hooks
-          C://Users//runneradmin//.cargo//bin//cargo.exe build --release
-          cd ${{ github.workspace }}/target/release
-          ls
       - name: Run cargo release test compile
         uses: actions-rs/cargo@v1
         with:
