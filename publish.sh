@@ -22,6 +22,3 @@ cargo publish
 cd ..
 cd open-coroutine
 cargo publish
-
-cd ..
-cargo publish

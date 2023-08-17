@@ -21,13 +21,15 @@ static mut RESULT_TABLE: Lazy<HashMap<&str, usize>> = Lazy::new(HashMap::new);
 #[derive(Debug)]
 pub struct CoroutinePool {
     //任务队列
-    work_queue: Injector<Task<'static>>,
+    task_queue: Injector<Task<'static>>,
     //工作协程组
     workers: Scheduler,
     //协程栈大小
     stack_size: usize,
     //当前协程数
     running: AtomicUsize,
+    //当前空闲协程数
+    idle: AtomicUsize,
     //最小协程数，即核心协程数
     min_size: usize,
     //最大协程数
@@ -36,6 +38,7 @@ pub struct CoroutinePool {
     keep_alive_time: u64,
     //阻滞器
     blocker: &'static dyn Blocker,
+    //是否已初始化协程创建器
     inited: AtomicBool,
 }
 
@@ -51,9 +54,10 @@ impl CoroutinePool {
             workers: Scheduler::new(),
             stack_size,
             running: AtomicUsize::new(0),
+            idle: AtomicUsize::new(0),
             min_size,
             max_size,
-            work_queue: Injector::default(),
+            task_queue: Injector::default(),
             keep_alive_time,
             blocker: Box::leak(Box::new(blocker)),
             inited: AtomicBool::new(false),
@@ -66,12 +70,12 @@ impl CoroutinePool {
     ) -> &'static str {
         let name: Box<str> = Box::from(Uuid::new_v4().to_string());
         let clone = Box::leak(name.clone());
-        self.work_queue.push(Task::new(name, f));
+        self.task_queue.push(Task::new(name, f));
         clone
     }
 
     fn grow(&'static self) -> std::io::Result<()> {
-        if self.work_queue.is_empty() {
+        if self.task_queue.is_empty() {
             return Ok(());
         }
         if self.running.load(Ordering::Acquire) >= self.max_size {
@@ -81,23 +85,31 @@ impl CoroutinePool {
         _ = self.workers.submit(
             move |suspender, _| {
                 loop {
-                    match self.work_queue.steal() {
+                    match self.task_queue.steal() {
                         Steal::Empty => {
                             let running = self.running.load(Ordering::Acquire);
-                            let keep_alive =
-                                open_coroutine_timer::now() - create_time < self.keep_alive_time;
-                            if running > self.min_size && !keep_alive {
+                            if open_coroutine_timer::now() - create_time >= self.keep_alive_time
+                                && running > self.min_size
+                            {
                                 //回收worker协程
                                 _ = self.running.fetch_sub(1, Ordering::Release);
+                                _ = self.idle.fetch_sub(1, Ordering::Release);
                                 return 0;
                             }
-                            if running > 1 {
-                                suspender.delay(Duration::from_millis(1));
-                            } else {
+                            _ = self.idle.fetch_add(1, Ordering::Release);
+                            let idle = self.idle.load(Ordering::Acquire);
+                            if running > idle {
+                                //让出CPU给下一个协程
+                                suspender.suspend();
+                            } else if running == idle {
+                                //避免CPU在N个无任务的协程中空转
                                 self.blocker.block(Duration::from_millis(1));
+                            } else {
+                                unreachable!("should never execute to here");
                             }
                         }
                         Steal::Success(task) => {
+                            _ = self.idle.fetch_sub(1, Ordering::Release);
                             let task_name = task.get_name();
                             let result = task.run(suspender);
                             unsafe { assert!(RESULT_TABLE.insert(task_name, result).is_none()) }
