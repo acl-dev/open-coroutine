@@ -97,15 +97,16 @@ impl CoroutinePool {
                                 return 0;
                             }
                             _ = self.idle.fetch_add(1, Ordering::Release);
-                            let idle = self.idle.load(Ordering::Acquire);
-                            if running > idle {
+                            match self.idle.load(Ordering::Acquire).cmp(&running) {
                                 //让出CPU给下一个协程
-                                suspender.suspend();
-                            } else if running == idle {
-                                //避免CPU在N个无任务的协程中空转
-                                self.blocker.block(Duration::from_millis(1));
-                            } else {
-                                unreachable!("should never execute to here");
+                                std::cmp::Ordering::Less => suspender.suspend(),
+                                //避免CPU在N个无任务的协程中空轮询
+                                std::cmp::Ordering::Equal => {
+                                    self.blocker.block(Duration::from_millis(1));
+                                }
+                                std::cmp::Ordering::Greater => {
+                                    unreachable!("should never execute to here");
+                                }
                             }
                         }
                         Steal::Success(task) => {
