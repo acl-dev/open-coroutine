@@ -1,52 +1,6 @@
-use libc::{c_int, off_t, size_t, sockaddr, socklen_t, ssize_t};
+use libc::{c_int, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
-
-macro_rules! impl_expected_write_hook {
-    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
-        let socket = $socket;
-        let blocking = $crate::unix::is_blocking(socket);
-        if blocking {
-            $crate::unix::set_non_blocking(socket);
-        }
-        let mut sent = 0;
-        let mut r = 0;
-        while sent < $length {
-            r = $fn(
-                $socket,
-                ($buffer as usize + sent) as *const c_void,
-                $length - sent,
-                $($arg, )*
-            );
-            if r != -1 {
-                $crate::unix::reset_errno();
-                sent += r as size_t;
-                if sent >= $length {
-                    r = sent as ssize_t;
-                    break;
-                }
-            }
-            let error_kind = std::io::Error::last_os_error().kind();
-            if error_kind == std::io::ErrorKind::WouldBlock {
-                //wait write event
-                if open_coroutine_core::event_loop::EventLoops::wait_write_event(
-                    socket,
-                    Some(std::time::Duration::from_millis(10)),
-                )
-                .is_err()
-                {
-                    break;
-                }
-            } else if error_kind != std::io::ErrorKind::Interrupted {
-                break;
-            }
-        }
-        if blocking {
-            $crate::unix::set_blocking(socket);
-        }
-        r
-    }};
-}
 
 static SEND: Lazy<extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t> =
     init_hook!("send");
@@ -88,5 +42,132 @@ pub extern "C" fn pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: o
     open_coroutine_core::unbreakable!(
         impl_expected_write_hook!((Lazy::force(&PWRITE))(fd, buf, count, offset)),
         "pwrite"
+    )
+}
+
+static WRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int) -> ssize_t> = init_hook!("writev");
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[no_mangle]
+pub extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
+    open_coroutine_core::unbreakable!(
+        {
+            let blocking = crate::unix::is_blocking(fd);
+            if blocking {
+                crate::unix::set_non_blocking(fd);
+            }
+            let vec: Vec<iovec> =
+                unsafe { Vec::from_raw_parts(iov as *mut iovec, iovcnt as usize, iovcnt as usize) };
+            let mut total_sent = 0;
+            for iovec in vec {
+                let length = iovec.iov_len;
+                let mut sent = 0;
+                let mut r = 0;
+                while sent < length {
+                    let inner = vec![iovec {
+                        iov_base: (iovec.iov_base as usize + sent) as *mut c_void,
+                        iov_len: iovec.iov_len - sent,
+                    }];
+                    r = (Lazy::force(&WRITEV))(fd, inner.as_ptr(), 1);
+                    if r != -1 {
+                        crate::unix::reset_errno();
+                        sent += r as size_t;
+                        if sent >= length {
+                            r = sent as ssize_t;
+                            break;
+                        }
+                    }
+                    let error_kind = std::io::Error::last_os_error().kind();
+                    if error_kind == std::io::ErrorKind::WouldBlock {
+                        //wait write event
+                        if open_coroutine_core::event_loop::EventLoops::wait_write_event(
+                            fd,
+                            Some(std::time::Duration::from_millis(10)),
+                        )
+                        .is_err()
+                        {
+                            return -1;
+                        }
+                    } else if error_kind != std::io::ErrorKind::Interrupted {
+                        return -1;
+                    }
+                }
+                total_sent += r;
+            }
+            if blocking {
+                crate::unix::set_blocking(fd);
+            }
+            total_sent
+        },
+        "writev"
+    )
+}
+
+static PWRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t> =
+    init_hook!("pwritev");
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[no_mangle]
+pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t {
+    open_coroutine_core::unbreakable!(
+        {
+            let blocking = crate::unix::is_blocking(fd);
+            if blocking {
+                crate::unix::set_non_blocking(fd);
+            }
+            let vec: Vec<iovec> =
+                unsafe { Vec::from_raw_parts(iov as *mut iovec, iovcnt as usize, iovcnt as usize) };
+            let mut total_sent = 0;
+            for iovec in vec {
+                let length = iovec.iov_len;
+                let mut sent = 0;
+                let mut r = 0;
+                while sent < length {
+                    let inner = vec![iovec {
+                        iov_base: (iovec.iov_base as usize + sent) as *mut c_void,
+                        iov_len: iovec.iov_len - sent,
+                    }];
+                    r = (Lazy::force(&PWRITEV))(fd, inner.as_ptr(), 1, offset);
+                    if r != -1 {
+                        crate::unix::reset_errno();
+                        sent += r as size_t;
+                        if sent >= length {
+                            r = sent as ssize_t;
+                            break;
+                        }
+                    }
+                    let error_kind = std::io::Error::last_os_error().kind();
+                    if error_kind == std::io::ErrorKind::WouldBlock {
+                        //wait write event
+                        if open_coroutine_core::event_loop::EventLoops::wait_write_event(
+                            fd,
+                            Some(std::time::Duration::from_millis(10)),
+                        )
+                        .is_err()
+                        {
+                            return -1;
+                        }
+                    } else if error_kind != std::io::ErrorKind::Interrupted {
+                        return -1;
+                    }
+                }
+                total_sent += r;
+            }
+            if blocking {
+                crate::unix::set_blocking(fd);
+            }
+            total_sent
+        },
+        "pwritev"
+    )
+}
+
+static SENDMSG: Lazy<extern "C" fn(c_int, *const msghdr, c_int) -> ssize_t> = init_hook!("sendmsg");
+
+#[no_mangle]
+pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t {
+    open_coroutine_core::unbreakable!(
+        impl_write_hook!((Lazy::force(&SENDMSG))(fd, msg, flags)),
+        "sendmsg"
     )
 }

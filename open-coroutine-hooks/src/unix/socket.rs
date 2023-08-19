@@ -77,3 +77,18 @@ pub extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
     //unnecessary non blocking impl for listen
     open_coroutine_core::unbreakable!((Lazy::force(&LISTEN))(socket, backlog), "listen")
 }
+
+static ACCEPT: Lazy<extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int> =
+    init_hook!("accept");
+
+#[no_mangle]
+pub extern "C" fn accept(
+    socket: c_int,
+    address: *mut sockaddr,
+    address_len: *mut socklen_t,
+) -> c_int {
+    open_coroutine_core::unbreakable!(
+        impl_read_hook!((Lazy::force(&ACCEPT))(socket, address, address_len)),
+        "accept"
+    )
+}
