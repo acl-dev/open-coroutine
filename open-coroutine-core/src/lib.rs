@@ -77,7 +77,8 @@ macro_rules! unbreakable {
     };
 }
 
-#[cfg(all(unix, feature = "preemptive-schedule"))]
+#[allow(dead_code)]
+#[cfg(feature = "preemptive-schedule")]
 mod monitor;
 
 #[allow(
