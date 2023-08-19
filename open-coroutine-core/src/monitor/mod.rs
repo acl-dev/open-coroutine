@@ -28,6 +28,8 @@ impl Monitor {
                          target_os = "android",
                          target_os = "emscripten"))] {
                 libc::SIGRTMIN()
+            } else if #[cfg(windows)] {
+                windows_sys::Win32::System::Console::CTRL_C_EVENT.try_into().unwrap()
             } else {
                 libc::SIGURG
             }
@@ -48,34 +50,51 @@ impl Monitor {
         }
     }
 
-    fn new() -> Self {
-        #[allow(clippy::fn_to_numeric_cast)]
-        unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            // invoke by Monitor::signal()
-            if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
-                //获取当前信号屏蔽集
-                let mut current_mask: libc::sigset_t = std::mem::zeroed();
-                assert_eq!(
-                    0,
-                    libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
-                );
-                //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
-                assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
-                assert_eq!(
-                    0,
-                    libc::pthread_sigmask(libc::SIG_SETMASK, &current_mask, std::ptr::null_mut())
-                );
-                s.suspend();
+    fn init_signal_handler() {
+        cfg_if::cfg_if! {
+            if #[cfg(windows)] {
+                unsafe extern "system" fn sigint_handler(_: u32) -> windows_sys::Win32::Foundation::BOOL {
+                    // invoke by Monitor::signal()
+                    if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
+                        s.suspend();
+                    }
+                    windows_sys::Win32::Foundation::TRUE
+                }
+                assert_eq!(windows_sys::Win32::Foundation::TRUE,
+                    unsafe{ windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(sigint_handler), windows_sys::Win32::Foundation::TRUE) });
+            } else {
+                #[allow(clippy::fn_to_numeric_cast)]
+                unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
+                    // invoke by Monitor::signal()
+                    if let Some(s) = crate::coroutine::suspender::Suspender::<(), ()>::current() {
+                        //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                        let mut current_mask: libc::sigset_t = std::mem::zeroed();
+                        assert_eq!(
+                            0,
+                            libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
+                        );
+                        assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
+                        assert_eq!(
+                            0,
+                            libc::pthread_sigmask(libc::SIG_SETMASK, &current_mask, std::ptr::null_mut())
+                        );
+                        s.suspend();
+                    }
+                }
+                Monitor::register_handler(sigurg_handler as libc::sighandler_t);
             }
         }
-        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
+    }
+
+    fn new() -> Self {
+        Monitor::init_signal_handler();
         //通过这种方式来初始化monitor线程
         _ = MONITOR.get_or_init(|| {
             std::thread::Builder::new()
                 .name("open-coroutine-monitor".to_string())
                 .spawn(|| {
                     // todo pin this thread to the CPU core closest to the network card
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", windows))]
                     assert!(
                         core_affinity::set_for_current(core_affinity::CoreId { id: 0 }),
                         "pin monitor thread to a single CPU core failed !"
@@ -117,9 +136,18 @@ impl Monitor {
                         if CoroutineState::Running == (*coroutine).get_state() {
                             //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
                             //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
+                            #[cfg(unix)]
                             assert_eq!(
                                 0,
                                 libc::pthread_kill(node.get_pthread(), Monitor::signum())
+                            );
+                            #[cfg(windows)]
+                            assert_ne!(
+                                0,
+                                windows_sys::Win32::System::Console::GenerateConsoleCtrlEvent(
+                                    Monitor::signum().try_into().unwrap(),
+                                    0
+                                )
                             );
                         }
                     }
@@ -130,7 +158,13 @@ impl Monitor {
 
     pub(crate) fn add_task(time: u64, coroutine: Option<*const SchedulableCoroutine>) {
         unsafe {
-            let pthread = libc::pthread_self();
+            cfg_if::cfg_if! {
+                if #[cfg(windows)] {
+                    let pthread = windows_sys::Win32::System::Threading::GetCurrentThread();
+                } else {
+                    let pthread = libc::pthread_self();
+                }
+            }
             Monitor::global()
                 .task
                 .insert(time, TaskNode::new(pthread, coroutine));
@@ -140,7 +174,13 @@ impl Monitor {
     pub(crate) fn clean_task(time: u64) {
         if let Some(entry) = Monitor::global().task.get_entry(time) {
             unsafe {
-                let pthread = libc::pthread_self();
+                cfg_if::cfg_if! {
+                    if #[cfg(windows)] {
+                        let pthread = windows_sys::Win32::System::Threading::GetCurrentThread();
+                    } else {
+                        let pthread = libc::pthread_self();
+                    }
+                }
                 if !entry.is_empty() {
                     _ = entry.remove(&TaskNode::new(pthread, None));
                 }
@@ -149,12 +189,12 @@ impl Monitor {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[ignore]
+    #[cfg(unix)]
     #[test]
     fn test() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {
@@ -168,6 +208,30 @@ mod tests {
     }
 
     #[ignore]
+    #[cfg(windows)]
+    #[test]
+    fn test() {
+        unsafe extern "system" fn sigint_handler(_: u32) -> windows_sys::Win32::Foundation::BOOL {
+            println!("sigint handled");
+            windows_sys::Win32::Foundation::TRUE
+        }
+        unsafe {
+            assert_eq!(
+                windows_sys::Win32::Foundation::TRUE,
+                windows_sys::Win32::System::Console::SetConsoleCtrlHandler(
+                    Some(sigint_handler),
+                    windows_sys::Win32::Foundation::TRUE
+                )
+            )
+        };
+        let time = open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
+        Monitor::add_task(time, None);
+        std::thread::sleep(Duration::from_millis(20));
+        Monitor::clean_task(time);
+    }
+
+    #[ignore]
+    #[cfg(unix)]
     #[test]
     fn test_clean() {
         extern "C" fn sigurg_handler(_signal: libc::c_int) {

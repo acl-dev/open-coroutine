@@ -140,7 +140,7 @@ impl Scheduler {
                 Some(mut coroutine) => {
                     _ = coroutine.set_scheduler(self);
                     cfg_if::cfg_if! {
-                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+                        if #[cfg(feature = "preemptive-schedule")] {
                             let start = open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
                             crate::monitor::Monitor::add_task(start, Some(&coroutine));
                         }
@@ -175,7 +175,7 @@ impl Scheduler {
                         _ => unreachable!("should never execute to here"),
                     };
                     cfg_if::cfg_if! {
-                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+                        if #[cfg(feature = "preemptive-schedule")] {
                             //还没执行到10ms就主动yield或者执行完毕了，此时需要清理任务
                             //否则下一个协程执行不到10ms就会被抢占调度
                             crate::monitor::Monitor::clean_task(start);
@@ -317,6 +317,69 @@ mod tests {
         scheduler.try_schedule();
         std::thread::sleep(Duration::from_millis(100));
         scheduler.try_schedule();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn simple_preemptive_schedule() -> std::io::Result<()> {
+        //fixme not success now
+        use std::sync::{Arc, Condvar, Mutex};
+        static mut TEST_FLAG0: bool = true;
+        let pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let pair2 = Arc::clone(&pair);
+        let handler = std::thread::Builder::new()
+            .name("test_preemptive_schedule".to_string())
+            .spawn(move || {
+                let scheduler = Box::leak(Box::new(Scheduler::new()));
+                _ = scheduler.submit(
+                    |_, _| {
+                        unsafe {
+                            while TEST_FLAG0 {
+                                windows_sys::Win32::System::Threading::Sleep(10);
+                            }
+                        }
+                        1
+                    },
+                    None,
+                );
+                _ = scheduler.submit(
+                    |_, _| {
+                        unsafe { TEST_FLAG0 = false };
+                        2
+                    },
+                    None,
+                );
+                scheduler.try_schedule();
+
+                let (lock, cvar) = &*pair2;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                // notify the condvar that the value has changed.
+                cvar.notify_one();
+            })
+            .expect("failed to spawn thread");
+
+        // wait for the thread to start up
+        let (lock, cvar) = &*pair;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(3000),
+                |&mut pending| pending,
+            )
+            .unwrap();
+        if result.1.timed_out() {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "preemptive schedule failed",
+            ))
+        } else {
+            unsafe {
+                handler.join().unwrap();
+                assert!(!TEST_FLAG0);
+            }
+            Ok(())
+        }
     }
 
     #[cfg(all(unix, feature = "preemptive-schedule"))]
