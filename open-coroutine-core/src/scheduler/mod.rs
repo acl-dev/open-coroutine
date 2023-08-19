@@ -141,7 +141,8 @@ impl Scheduler {
                     _ = coroutine.set_scheduler(self);
                     cfg_if::cfg_if! {
                         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-                            let start = open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
+                            let start = open_coroutine_timer::get_timeout_time(Duration::from_millis(10))
+                                .min(timeout_time);
                             crate::monitor::Monitor::add_task(start, Some(&coroutine));
                         }
                     }

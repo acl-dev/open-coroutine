@@ -3,6 +3,7 @@ use std::time::Duration;
 
 #[no_mangle]
 pub extern "C" fn sleep(secs: libc::c_uint) -> libc::c_uint {
+    open_coroutine_core::info!("sleep hooked");
     _ = EventLoops::wait_event(Some(Duration::from_secs(u64::from(secs))));
     crate::unix::reset_errno();
     0
@@ -10,6 +11,7 @@ pub extern "C" fn sleep(secs: libc::c_uint) -> libc::c_uint {
 
 #[no_mangle]
 pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
+    open_coroutine_core::info!("usleep hooked");
     let time = match u64::from(secs).checked_mul(1_000) {
         Some(v) => Duration::from_nanos(v),
         None => Duration::MAX,
@@ -22,6 +24,7 @@ pub extern "C" fn usleep(secs: libc::c_uint) -> libc::c_int {
 #[no_mangle]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub extern "C" fn nanosleep(rqtp: *const libc::timespec, rmtp: *mut libc::timespec) -> libc::c_int {
+    open_coroutine_core::info!("nanosleep hooked");
     let rqtp = unsafe { *rqtp };
     if rqtp.tv_sec < 0 || rqtp.tv_nsec < 0 || rqtp.tv_nsec > 999_999_999 {
         crate::unix::set_errno(libc::EINVAL);

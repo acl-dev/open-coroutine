@@ -45,6 +45,8 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
+pub mod log;
+
 pub mod coroutine;
 
 pub mod scheduler;
@@ -53,7 +55,8 @@ pub mod pool;
 
 #[macro_export]
 macro_rules! unbreakable {
-    ( $f: expr , $syscall: expr ) => {
+    ( $f: expr , $syscall: expr ) => {{
+        $crate::info!("{} hooked", $syscall);
         if $crate::coroutine::suspender::Suspender::<(), ()>::current().is_some() {
             let co = $crate::scheduler::SchedulableCoroutine::current()
                 .unwrap_or_else(|| panic!("current coroutine not found !"));
@@ -74,7 +77,7 @@ macro_rules! unbreakable {
         } else {
             $f
         }
-    };
+    }};
 }
 
 #[cfg(all(unix, feature = "preemptive-schedule"))]

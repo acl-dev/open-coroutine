@@ -33,8 +33,12 @@ preemptive-schedule = [
     "open-coroutine-hooks/preemptive-schedule"
 ]
 
+# Print some help log.
+# Enable for default.
+logs = ["open-coroutine-core/logs", "open-coroutine-hooks/logs"]
+
 # Enable all features
-full = ["preemptive-schedule"]
+full = ["preemptive-schedule", "logs"]
 
 [[bench]]
 name = "benchmark"
