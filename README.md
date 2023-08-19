@@ -1,13 +1,165 @@
 # open-coroutine
 
-### What is open-coroutine ?
 The `open-coroutine` is a simple, efficient and generic stackful-coroutine library.
 
-### Status
+## Status
+
 Still under development, please `do not` use this library in the `production` environment !
 
-### Features
-#### todo
+## How to use this library ?
+
+### step1: add dependency to your Cargo.toml
+
+```toml
+[dependencies]
+# check https://crates.io/crates/open-coroutine
+open-coroutine = "x.y.z"
+```
+
+### step2: add macro
+
+```rust
+#[open_coroutine::main]
+fn main() {
+    //......
+}
+```
+
+### step3: enjoy the performance improvement brought by open-coroutine !
+
+## Examples
+
+### Amazing preemptive schedule
+
+Note: not supported for windows
+
+```rust
+#[open_coroutine::main]
+fn main() -> std::io::Result<()> {
+    cfg_if::cfg_if! {
+        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+            use open_coroutine_core::scheduler::Scheduler;
+            use std::sync::{Arc, Condvar, Mutex};
+            use std::time::Duration;
+
+            static mut TEST_FLAG1: bool = true;
+            static mut TEST_FLAG2: bool = true;
+            let pair = Arc::new((Mutex::new(true), Condvar::new()));
+            let pair2 = Arc::clone(&pair);
+            let handler = std::thread::Builder::new()
+                .name("preemptive".to_string())
+                .spawn(move || {
+                    let scheduler = Scheduler::new();
+                    _ = scheduler.submit(
+                        |_, _| {
+                            println!("coroutine1 launched");
+                            while unsafe { TEST_FLAG1 } {
+                                println!("loop1");
+                                _ = unsafe { libc::usleep(10_000) };
+                            }
+                            println!("loop1 end");
+                            1
+                        },
+                        None,
+                    );
+                    _ = scheduler.submit(
+                        |_, _| {
+                            println!("coroutine2 launched");
+                            while unsafe { TEST_FLAG2 } {
+                                println!("loop2");
+                                _ = unsafe { libc::usleep(10_000) };
+                            }
+                            println!("loop2 end");
+                            unsafe { TEST_FLAG1 = false };
+                            2
+                        },
+                        None,
+                    );
+                    _ = scheduler.submit(
+                        |_, _| {
+                            println!("coroutine3 launched");
+                            unsafe { TEST_FLAG2 = false };
+                            3
+                        },
+                        None,
+                    );
+                    scheduler.try_schedule();
+
+                    let (lock, cvar) = &*pair2;
+                    let mut pending = lock.lock().unwrap();
+                    *pending = false;
+                    // notify the condvar that the value has changed.
+                    cvar.notify_one();
+                })
+                .expect("failed to spawn thread");
+
+            // wait for the thread to start up
+            let (lock, cvar) = &*pair;
+            let result = cvar
+                .wait_timeout_while(
+                    lock.lock().unwrap(),
+                    Duration::from_millis(3000),
+                    |&mut pending| pending,
+                )
+                .unwrap();
+            if result.1.timed_out() {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "preemptive schedule failed",
+                ))
+            } else {
+                unsafe {
+                    handler.join().unwrap();
+                    assert!(!TEST_FLAG1);
+                }
+                Ok(())
+            }
+        } else {
+            println!("please enable preemptive-schedule feature");
+            Ok(())
+        }
+    }
+}
+```
+
+outputs
+
+```text
+coroutine1 launched
+loop1
+coroutine2 launched
+loop2
+coroutine3 launched
+loop1
+loop2 end
+loop1 end
+```
+
+### Arbitrary use of blocking syscalls
+
+```rust
+#[open_coroutine::main]
+fn main() {
+    std::thread::sleep(std::time::Duration::from_secs(1));
+}
+```
+
+outputs
+
+```text
+nanosleep hooked
+```
+
+## Features
+
+### todo
+
+- [ ] hook accept
+- [ ] hook shutdown
+- [ ] hook poll
+- [ ] hook select
+- [ ] Support and compatibility for AF_XDP socket
+- [ ] Supports and is compatible with io_uring in terms of local file IO
 - [ ] hook other syscall maybe interrupt by signal
   <details>
   <summary>syscalls</summary>
@@ -48,31 +200,41 @@ Still under development, please `do not` use this library in the `production` en
     - [ ] msgsnd
 
   </details>
-- [ ] support muti low_level coroutine create (just support [boost.context](https://github.com/boostorg/context) for now)
-- [ ] support `genawaiter` as low_level stackless coroutine ([click to see what impl have been tried](https://github.com/dragon-zhang/open-coroutine-core))
-- [ ] support `corosensei` as low_level coroutine
-- [x] support back trace
+- [ ] support muti low_level coroutine create (just support [boost.context](https://github.com/boostorg/context) for
+  now)
 - [ ] support `#[open_coroutine::join]` macro to wait coroutines
+
+### 0.4.x
+
+- [x] use log instead of println
+- [x] enhance `#[open_coroutine::main]` macro
+- [x] refactor hook impl, no need to publish dylibs now
+- [x] `Monitor` follow the `thread-per-core` guideline
+- [x] `EventLoop` follow the `thread-per-core` guideline
+
+### 0.3.x
+
+- [x] ~~support `genawaiter` as low_level stackless coroutine (can't support it due to hook)~~
+- [x] use `corosensei` as low_level coroutine
+- [x] support backtrace
 - [x] support `#[open_coroutine::co]` macro
 - [x] refactor `WorkStealQueue`
-- [ ] optimize `Stack` and `OpenCoroutine` to make `cache miss` happen less
-- [ ] `Monitor` follow the `thread-per-core` guideline
-- [ ] `EventLoop` follow the `thread-per-core` guideline, don't forget to consider the `Monitor` thread
 
-#### 0.2.0
+### 0.2.x
+
 - [x] use correct `epoll_event` struct
 - [x] use `rayon` for parallel computing
 - [x] support `#[open_coroutine::main]` macro
 - [x] hook almost all `read` syscall
   <details>
   <summary>read syscalls</summary>
-  
-  - [x] recv
-  - [x] readv
-  - [x] pread
-  - [x] preadv
-  - [x] recvfrom
-  - [x] recvmsg
+
+    - [x] recv
+    - [x] readv
+    - [x] pread
+    - [x] preadv
+    - [x] recvfrom
+    - [x] recvmsg
 
   </details>
 
@@ -80,157 +242,37 @@ Still under development, please `do not` use this library in the `production` en
   <details>
   <summary>write syscalls</summary>
 
-  - [x] send
-  - [x] write
-  - [x] writev
-  - [x] sendto
-  - [x] sendmsg
-  - [x] pwrite
-  - [x] pwritev
+    - [x] send
+    - [x] write
+    - [x] writev
+    - [x] sendto
+    - [x] sendmsg
+    - [x] pwrite
+    - [x] pwritev
 
   </details>
 
 - [x] hook other syscall
   <details>
   <summary>other syscalls</summary>
-  
-  - [x] sleep
-  - [x] usleep
-  - [x] nanosleep
-  - [x] connect
-  - [x] listen
-  - [x] accept
-  - [x] shutdown
-  - [x] poll
-  - [x] select
+
+    - [x] sleep
+    - [x] usleep
+    - [x] nanosleep
+    - [x] connect
+    - [x] listen
+    - [x] accept
+    - [x] shutdown
+    - [x] poll
+    - [x] select
 
   </details>
 
-#### 0.1.0
+### 0.1.x
+
 - [x] basic suspend/resume supported
 - [x] use jemalloc as memory pool
 - [x] higher level coroutine abstraction supported
 - [x] preemptive scheduling supported
 - [x] work stealing supported
 - [x] sleep system call hooks supported
-
-### How to use this library ?
-
-#### step1
-add dependency to your `Cargo.toml`
-```toml
-[dependencies]
-# check https://crates.io/crates/open-coroutine
-open-coroutine = "x.y.z"
-```
-
-#### step2 
-enable hooks
-```rust
-//step2 enable hooks
-#[open_coroutine::main]
-fn main() {
-    //......
-}
-```
-
-#### step3 
-enjoy the performance improvement brought by `open-coroutine` !
-
-### examples
-#### simplest example
-
-run hello example
-```shell
-cargo run --example hello
-```
-
-<details>
-<summary>Click to see code</summary>
-
-```rust
-use open_coroutine::co;
-use std::os::raw::c_void;
-use std::time::Duration;
-
-#[open_coroutine::main]
-fn main() {
-    co(
-        |_yielder, input: Option<&'static mut c_void>| {
-            println!("[coroutine1] launched");
-            input
-        },
-        None,
-        4096,
-    );
-    co(
-        |_yielder, input: Option<&'static mut c_void>| {
-            println!("[coroutine2] launched");
-            input
-        },
-        None,
-        4096,
-    );
-    std::thread::sleep(Duration::from_millis(50));
-    println!("scheduler finished successfully!");
-}
-```
-
-</details>
-
-#### preemptive example
-
-Note: not supported for windows
-
-run preemptive example
-```shell
-cargo run --example preemptive
-```
-
-<details>
-<summary>Click to see code</summary>
-
-```rust
-use open_coroutine::co;
-use std::os::raw::c_void;
-use std::time::Duration;
-
-#[open_coroutine::main]
-fn main() {
-    static mut EXAMPLE_FLAG: bool = true;
-    let handle = co(
-        |_yielder, input: Option<&'static mut i32>| {
-            println!("[coroutine1] launched");
-            unsafe {
-                while EXAMPLE_FLAG {
-                    println!("loop");
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-            }
-            input
-        },
-        Some(Box::leak(Box::new(1))),
-        4096,
-    );
-    co(
-        |_yielder, input: Option<&'static mut c_void>| {
-            println!("[coroutine2] launched");
-            unsafe {
-              EXAMPLE_FLAG = false;
-            }
-            input
-        },
-        None,
-        4096,
-    );
-    let result = handle.join();
-    unsafe {
-        assert_eq!(std::ptr::read_unaligned(result.unwrap() as *mut i32), 1);
-        assert!(!EXAMPLE_FLAG);
-    }
-    unsafe { assert!(!EXAMPLE_FLAG) };
-    println!("preemptive schedule finished successfully!");
-}
-```
-
-</details>

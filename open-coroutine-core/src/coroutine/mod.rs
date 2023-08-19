@@ -179,8 +179,12 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
 
     pub fn set_state(&self, state: CoroutineState) -> CoroutineState {
         let old = self.state.replace(state);
-        //方便定位问题，后续用打log的方式代替
-        println!("{} change state {}->{}", self.get_name(), old, state);
+        crate::info!(
+            "coroutine {} change state {}->{}",
+            self.get_name(),
+            old,
+            state
+        );
         old
     }
 
