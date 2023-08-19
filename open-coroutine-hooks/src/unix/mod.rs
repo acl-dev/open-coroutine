@@ -58,6 +58,42 @@ macro_rules! impl_expected_read_hook {
     }};
 }
 
+macro_rules! impl_read_hook {
+    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* )) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::is_blocking(socket);
+        if blocking {
+            $crate::unix::set_non_blocking(socket);
+        }
+        let mut r;
+        loop {
+            r = $fn($socket, $($arg, )*);
+            if r != -1 {
+                $crate::unix::reset_errno();
+                break;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //wait read event
+                if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                    socket,
+                    Some(std::time::Duration::from_millis(10)),
+                )
+                .is_err()
+                {
+                    break;
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::set_blocking(socket);
+        }
+        r
+    }};
+}
+
 macro_rules! impl_expected_write_hook {
     ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
         let socket = $socket;
@@ -113,6 +149,14 @@ pub mod socket;
 pub mod read;
 
 pub mod write;
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "l4re",
+    target_os = "android",
+    target_os = "emscripten"
+))]
+mod linux_like;
 
 extern "C" {
     #[cfg(not(any(target_os = "dragonfly", target_os = "vxworks")))]
