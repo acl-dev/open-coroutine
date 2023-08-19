@@ -1,4 +1,4 @@
-use libc::{c_int, off_t, size_t, sockaddr, socklen_t, ssize_t};
+use libc::{c_int, iovec, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
 
@@ -42,5 +42,122 @@ pub extern "C" fn pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: o
     open_coroutine_core::unbreakable!(
         impl_expected_write_hook!((Lazy::force(&PWRITE))(fd, buf, count, offset)),
         "pwrite"
+    )
+}
+
+static WRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int) -> ssize_t> = init_hook!("writev");
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[no_mangle]
+pub extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
+    open_coroutine_core::unbreakable!(
+        {
+            let blocking = crate::unix::is_blocking(fd);
+            if blocking {
+                crate::unix::set_non_blocking(fd);
+            }
+            let vec: Vec<iovec> =
+                unsafe { Vec::from_raw_parts(iov as *mut iovec, iovcnt as usize, iovcnt as usize) };
+            let mut total_sent = 0;
+            for iovec in vec {
+                let length = iovec.iov_len;
+                let mut sent = 0;
+                let mut r = 0;
+                while sent < length {
+                    let inner = vec![iovec {
+                        iov_base: (iovec.iov_base as usize + sent) as *mut c_void,
+                        iov_len: iovec.iov_len - sent,
+                    }];
+                    r = (Lazy::force(&WRITEV))(fd, inner.as_ptr(), 1);
+                    if r != -1 {
+                        crate::unix::reset_errno();
+                        sent += r as size_t;
+                        if sent >= length {
+                            r = sent as ssize_t;
+                            break;
+                        }
+                    }
+                    let error_kind = std::io::Error::last_os_error().kind();
+                    if error_kind == std::io::ErrorKind::WouldBlock {
+                        //wait write event
+                        if open_coroutine_core::event_loop::EventLoops::wait_write_event(
+                            fd,
+                            Some(std::time::Duration::from_millis(10)),
+                        )
+                        .is_err()
+                        {
+                            return -1;
+                        }
+                    } else if error_kind != std::io::ErrorKind::Interrupted {
+                        return -1;
+                    }
+                }
+                total_sent += r;
+            }
+            if blocking {
+                crate::unix::set_blocking(fd);
+            }
+            total_sent
+        },
+        "writev"
+    )
+}
+
+static PWRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t> =
+    init_hook!("pwritev");
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[no_mangle]
+pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t {
+    open_coroutine_core::unbreakable!(
+        {
+            let blocking = crate::unix::is_blocking(fd);
+            if blocking {
+                crate::unix::set_non_blocking(fd);
+            }
+            let vec: Vec<iovec> =
+                unsafe { Vec::from_raw_parts(iov as *mut iovec, iovcnt as usize, iovcnt as usize) };
+            let mut total_sent = 0;
+            for iovec in vec {
+                let length = iovec.iov_len;
+                let mut sent = 0;
+                let mut r = 0;
+                while sent < length {
+                    let inner = vec![iovec {
+                        iov_base: (iovec.iov_base as usize + sent) as *mut c_void,
+                        iov_len: iovec.iov_len - sent,
+                    }];
+                    r = (Lazy::force(&PWRITEV))(fd, inner.as_ptr(), 1, offset);
+                    if r != -1 {
+                        crate::unix::reset_errno();
+                        sent += r as size_t;
+                        if sent >= length {
+                            r = sent as ssize_t;
+                            break;
+                        }
+                    }
+                    let error_kind = std::io::Error::last_os_error().kind();
+                    if error_kind == std::io::ErrorKind::WouldBlock {
+                        //wait write event
+                        if open_coroutine_core::event_loop::EventLoops::wait_write_event(
+                            fd,
+                            Some(std::time::Duration::from_millis(10)),
+                        )
+                        .is_err()
+                        {
+                            return -1;
+                        }
+                    } else if error_kind != std::io::ErrorKind::Interrupted {
+                        return -1;
+                    }
+                }
+                total_sent += r;
+            }
+            if blocking {
+                crate::unix::set_blocking(fd);
+            }
+            total_sent
+        },
+        "pwritev"
     )
 }
