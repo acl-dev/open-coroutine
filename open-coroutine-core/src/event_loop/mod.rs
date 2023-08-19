@@ -21,7 +21,7 @@ pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 static BIND: Lazy<bool> = Lazy::new(|| unsafe { EVENT_LOOPS.len() } <= num_cpus::get());
 
 static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
@@ -82,7 +82,7 @@ impl EventLoops {
                         std::thread::Builder::new()
                             .name(format!("open-coroutine-event-loop-{i}"))
                             .spawn(move || {
-                                #[cfg(target_os = "linux")]
+                                #[cfg(any(target_os = "linux", windows))]
                                 if *BIND {
                                     assert!(
                                         core_affinity::set_for_current(core_affinity::CoreId {
