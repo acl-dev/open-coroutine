@@ -12,6 +12,42 @@ macro_rules! init_hook {
     };
 }
 
+macro_rules! impl_read_hook {
+    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* )) => {{
+        let socket = $socket;
+        let blocking = $crate::unix::is_blocking(socket);
+        if blocking {
+            $crate::unix::set_non_blocking(socket);
+        }
+        let mut r;
+        loop {
+            r = $fn($socket, $($arg, )*);
+            if r != -1 {
+                $crate::unix::reset_errno();
+                break;
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //wait read event
+                if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                    socket,
+                    Some(std::time::Duration::from_millis(10)),
+                )
+                .is_err()
+                {
+                    break;
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        if blocking {
+            $crate::unix::set_blocking(socket);
+        }
+        r
+    }};
+}
+
 macro_rules! impl_expected_read_hook {
     ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
         let socket = $socket;
@@ -58,39 +94,54 @@ macro_rules! impl_expected_read_hook {
     }};
 }
 
-macro_rules! impl_read_hook {
-    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* )) => {{
+macro_rules! impl_expected_batch_read_hook {
+    ( ($fn: expr) ( $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
         let socket = $socket;
         let blocking = $crate::unix::is_blocking(socket);
         if blocking {
             $crate::unix::set_non_blocking(socket);
         }
-        let mut r;
-        loop {
-            r = $fn($socket, $($arg, )*);
-            if r != -1 {
-                $crate::unix::reset_errno();
-                break;
-            }
-            let error_kind = std::io::Error::last_os_error().kind();
-            if error_kind == std::io::ErrorKind::WouldBlock {
-                //wait read event
-                if open_coroutine_core::event_loop::EventLoops::wait_read_event(
-                    socket,
-                    Some(std::time::Duration::from_millis(10)),
-                )
-                .is_err()
-                {
-                    break;
+        let vec = unsafe { Vec::from_raw_parts($iov as *mut iovec, $length as usize, $length as usize) };
+        let mut total_received = 0;
+        for iovec in vec {
+            let length = iovec.iov_len;
+            let mut received = 0;
+            let mut r = 0;
+            while received < length {
+                let inner = vec![iovec {
+                    iov_base: (iovec.iov_base as usize + received) as *mut c_void,
+                    iov_len: iovec.iov_len - received,
+                }];
+                r = $fn($socket, inner.as_ptr(), 1, $($arg, )*);
+                if r != -1 {
+                    $crate::unix::reset_errno();
+                    received += r as size_t;
+                    if received >= length || r == 0 {
+                        r = received as ssize_t;
+                        break;
+                    }
                 }
-            } else if error_kind != std::io::ErrorKind::Interrupted {
-                break;
+                let error_kind = std::io::Error::last_os_error().kind();
+                if error_kind == std::io::ErrorKind::WouldBlock {
+                    //wait read event
+                    if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                        socket,
+                        Some(std::time::Duration::from_millis(10)),
+                    )
+                    .is_err()
+                    {
+                        return -1;
+                    }
+                } else if error_kind != std::io::ErrorKind::Interrupted {
+                    return -1;
+                }
             }
+            total_received += r;
         }
         if blocking {
             $crate::unix::set_blocking(socket);
         }
-        r
+        total_received
     }};
 }
 
