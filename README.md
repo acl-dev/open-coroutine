@@ -153,7 +153,8 @@ nanosleep hooked
 ## Features
 
 ### todo
-
+- [ ] hook sendmsg
+- [ ] hook recvfrom
 - [ ] hook shutdown
 - [ ] Support and compatibility for AF_XDP socket
 - [ ] Supports and is compatible with io_uring in terms of local file IO

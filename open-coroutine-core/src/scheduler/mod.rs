@@ -161,9 +161,8 @@ impl Scheduler {
                             self.on_syscall(&coroutine, syscall_name);
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
-                            unsafe {
-                                assert!(SYSTEM_CALL_TABLE.insert(co_name, coroutine).is_none());
-                            }
+                            //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
+                            unsafe { _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine) };
                         }
                         CoroutineState::CopyStack => {
                             todo!()
