@@ -116,13 +116,15 @@ impl EventLoop {
 
     pub fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
         unsafe {
-            let token = READABLE_TOKEN_RECORDS
-                .remove(&fd)
-                .or(WRITABLE_TOKEN_RECORDS.remove(&fd))
-                .unwrap_or(0);
-            self.selector.deregister(fd, token)?;
-            _ = READABLE_RECORDS.remove(&fd);
-            _ = WRITABLE_RECORDS.remove(&fd);
+            if READABLE_RECORDS.contains(&fd) || WRITABLE_RECORDS.contains(&fd) {
+                let token = READABLE_TOKEN_RECORDS
+                    .remove(&fd)
+                    .or(WRITABLE_TOKEN_RECORDS.remove(&fd))
+                    .unwrap_or(0);
+                self.selector.deregister(fd, token)?;
+                _ = READABLE_RECORDS.remove(&fd);
+                _ = WRITABLE_RECORDS.remove(&fd);
+            }
         }
         Ok(())
     }
