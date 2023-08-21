@@ -87,7 +87,7 @@ pub fn add_timeout_time(time: u64) -> u64 {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct TimerEntry<T> {
     time: u64,
     inner: VecDeque<T>,
@@ -193,12 +193,20 @@ impl<T> TimerList<T> {
         self.dequeue.is_empty()
     }
 
-    pub fn get_entry(&mut self, time: u64) -> Option<&mut TimerEntry<T>> {
+    pub fn get_entry(&mut self, time: &u64) -> Option<&mut TimerEntry<T>> {
         let index = self
             .dequeue
-            .binary_search_by(|x| x.time.cmp(&time))
+            .binary_search_by(|x| x.time.cmp(time))
             .unwrap_or_else(|x| x);
         self.dequeue.get_mut(index)
+    }
+
+    pub fn remove(&mut self, time: &u64) -> Option<TimerEntry<T>> {
+        let index = self
+            .dequeue
+            .binary_search_by(|x| x.time.cmp(time))
+            .unwrap_or_else(|x| x);
+        self.dequeue.remove(index)
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_, TimerEntry<T>> {

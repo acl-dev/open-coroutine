@@ -42,6 +42,14 @@ pub struct CoroutinePool {
     inited: AtomicBool,
 }
 
+impl Drop for CoroutinePool {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.is_empty(), "there are still tasks to be carried out !");
+        }
+    }
+}
+
 impl CoroutinePool {
     pub fn new(
         stack_size: usize,
@@ -70,8 +78,30 @@ impl CoroutinePool {
     ) -> &'static str {
         let name: Box<str> = Box::from(Uuid::new_v4().to_string());
         let clone = Box::leak(name.clone());
-        self.task_queue.push(Task::new(name, f));
+        self.submit_raw(Task::new(name, f));
         clone
+    }
+
+    pub(crate) fn submit_raw(&self, task: Task<'static>) {
+        self.task_queue.push(task);
+    }
+
+    pub fn pop(&self) -> Option<Task> {
+        // Fast path, if len == 0, then there are no values
+        if self.is_empty() {
+            return None;
+        }
+        loop {
+            match self.task_queue.steal() {
+                Steal::Success(item) => return Some(item),
+                Steal::Retry => continue,
+                Steal::Empty => return None,
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.task_queue.is_empty()
     }
 
     fn grow(&'static self) -> std::io::Result<()> {

@@ -153,6 +153,7 @@ nanosleep hooked
 ## Features
 
 ### todo
+
 - [ ] hook sendmsg
 - [ ] hook recvfrom
 - [ ] Support and compatibility for AF_XDP socket
@@ -203,6 +204,7 @@ nanosleep hooked
 
 ### 0.4.x
 
+- [x] elegant shutdown
 - [x] use log instead of println
 - [x] enhance `#[open_coroutine::main]` macro
 - [x] refactor hook impl, no need to publish dylibs now

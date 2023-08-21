@@ -55,10 +55,16 @@ pub mod coroutine;
 
 extern "C" {
     fn init_config(config: Config);
+
+    fn shutdowns();
 }
 
 pub fn init(config: Config) {
     unsafe { init_config(config) };
+}
+
+pub fn shutdown() {
+    unsafe { shutdowns() };
 }
 
 #[cfg(test)]

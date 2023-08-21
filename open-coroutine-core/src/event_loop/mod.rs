@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::coroutine::suspender::Suspender;
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
+use crate::pool::task::Task;
 use once_cell::sync::{Lazy, OnceCell};
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -41,7 +42,7 @@ static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
         .collect()
 });
 
-static EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCell::new();
+static mut EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCell::new();
 
 static EVENT_LOOP_STARTED: Lazy<AtomicBool> = Lazy::new(AtomicBool::default);
 
@@ -76,30 +77,35 @@ impl EventLoops {
             .is_ok()
         {
             //初始化event_loop线程
-            _ = EVENT_LOOP_WORKERS.get_or_init(|| {
-                (1..unsafe { EVENT_LOOPS.len() })
-                    .map(|i| {
-                        std::thread::Builder::new()
-                            .name(format!("open-coroutine-event-loop-{i}"))
-                            .spawn(move || {
-                                #[cfg(any(target_os = "linux", windows))]
-                                if *BIND {
-                                    assert!(
-                                        core_affinity::set_for_current(core_affinity::CoreId {
-                                            id: i
-                                        }),
-                                        "pin event loop thread to a single CPU core failed !"
-                                    );
-                                }
-                                let event_loop = EventLoops::next(true);
-                                while EVENT_LOOP_STARTED.load(Ordering::Acquire) {
-                                    _ = event_loop.wait_event(Some(Duration::from_millis(10)));
-                                }
-                            })
-                            .expect("failed to spawn event-loop thread")
-                    })
-                    .collect()
-            });
+            unsafe {
+                _ = EVENT_LOOP_WORKERS.get_or_init(|| {
+                    (1..EVENT_LOOPS.len())
+                        .map(|i| {
+                            std::thread::Builder::new()
+                                .name(format!("open-coroutine-event-loop-{i}"))
+                                .spawn(move || {
+                                    #[cfg(any(target_os = "linux", windows))]
+                                    if *BIND {
+                                        assert!(
+                                            core_affinity::set_for_current(core_affinity::CoreId {
+                                                id: i
+                                            }),
+                                            "pin event loop thread to a single CPU core failed !"
+                                        );
+                                    }
+                                    let event_loop = EventLoops::next(true);
+                                    while EVENT_LOOP_STARTED.load(Ordering::Acquire)
+                                        || !event_loop.is_empty()
+                                    {
+                                        _ = event_loop.wait_event(Some(Duration::from_millis(10)));
+                                    }
+                                    crate::warn!("open-coroutine-event-loop-{i} has stopped");
+                                })
+                                .expect("failed to spawn event-loop thread")
+                        })
+                        .collect()
+                });
+            }
         }
     }
 
@@ -107,12 +113,23 @@ impl EventLoops {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         crate::monitor::Monitor::stop();
         EVENT_LOOP_STARTED.store(false, Ordering::Release);
+        unsafe {
+            if let Some(workers) = EVENT_LOOP_WORKERS.take() {
+                for worker in workers.into_vec() {
+                    worker.join().expect("stop open-coroutine-failed !");
+                }
+            }
+        }
     }
 
     /// todo This is actually an API for creating tasks, adding an API for creating coroutines
     pub fn submit(f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static) -> JoinHandle {
         EventLoops::start();
         EventLoops::next(true).submit(f)
+    }
+
+    pub(crate) fn submit_raw(task: Task<'static>) {
+        EventLoops::next(true).submit_raw(task);
     }
 
     fn slice_wait(
