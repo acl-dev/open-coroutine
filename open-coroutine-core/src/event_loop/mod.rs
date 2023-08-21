@@ -131,7 +131,16 @@ impl EventLoops {
             .wait_timeout_while(
                 lock.lock().unwrap(),
                 Duration::from_millis(30000),
-                |stopped| stopped.load(Ordering::Acquire) < unsafe { EVENT_LOOPS.len() },
+                |stopped| {
+                    cfg_if::cfg_if! {
+                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+                            let condition = unsafe { EVENT_LOOPS.len() };
+                        } else {
+                            let condition = unsafe { EVENT_LOOPS.len() } - 1;
+                        }
+                    }
+                    stopped.load(Ordering::Acquire) < condition
+                },
             )
             .unwrap()
             .1;
