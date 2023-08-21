@@ -92,3 +92,25 @@ pub extern "C" fn accept(
         "accept"
     )
 }
+
+static SHUTDOWN: Lazy<extern "C" fn(c_int, c_int) -> c_int> = init_hook!("shutdown");
+
+#[no_mangle]
+pub extern "C" fn shutdown(socket: c_int, how: c_int) -> c_int {
+    open_coroutine_core::unbreakable!(
+        {
+            //取消对fd的监听
+            match how {
+                libc::SHUT_RD => EventLoops::del_read_event(socket),
+                libc::SHUT_WR => EventLoops::del_write_event(socket),
+                libc::SHUT_RDWR => EventLoops::del_event(socket),
+                _ => {
+                    crate::unix::set_errno(libc::EINVAL);
+                    return -1;
+                }
+            };
+            (Lazy::force(&SHUTDOWN))(socket, how)
+        },
+        "shutdown"
+    )
+}
