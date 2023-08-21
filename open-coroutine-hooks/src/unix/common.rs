@@ -1,5 +1,6 @@
 use libc::{c_int, c_uint, fd_set, nfds_t, pollfd, timeval};
 use once_cell::sync::Lazy;
+use open_coroutine_core::event_loop::EventLoops;
 
 static POLL: Lazy<extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int> = init_hook!("poll");
 
@@ -103,5 +104,18 @@ pub extern "C" fn select(
             r
         },
         "select"
+    )
+}
+
+static CLOSE: Lazy<extern "C" fn(c_int) -> c_int> = init_hook!("close");
+
+#[no_mangle]
+pub extern "C" fn close(fd: c_int) -> c_int {
+    open_coroutine_core::unbreakable!(
+        {
+            EventLoops::del_event(fd);
+            Lazy::force(&CLOSE)(fd)
+        },
+        "close"
     )
 }
