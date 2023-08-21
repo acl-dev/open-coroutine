@@ -155,7 +155,6 @@ nanosleep hooked
 ### todo
 - [ ] hook sendmsg
 - [ ] hook recvfrom
-- [ ] hook shutdown
 - [ ] Support and compatibility for AF_XDP socket
 - [ ] Supports and is compatible with io_uring in terms of local file IO
 - [ ] hook other syscall maybe interrupt by signal
