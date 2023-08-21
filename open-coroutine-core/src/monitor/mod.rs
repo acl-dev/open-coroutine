@@ -105,6 +105,11 @@ impl Monitor {
                         }
                     }
                     crate::warn!("open-coroutine-monitor has exited");
+                    let pair = EventLoops::new_condition();
+                    let (lock, cvar) = pair.as_ref();
+                    let pending = lock.lock().unwrap();
+                    _ = pending.fetch_add(1, Ordering::Release);
+                    cvar.notify_one();
                 })
                 .expect("failed to spawn monitor thread")
         });

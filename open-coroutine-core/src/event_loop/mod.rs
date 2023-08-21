@@ -6,6 +6,7 @@ use crate::pool::task::Task;
 use once_cell::sync::{Lazy, OnceCell};
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 pub mod join;
@@ -42,9 +43,12 @@ static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
         .collect()
 });
 
-static mut EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCell::new();
+static EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCell::new();
 
 static EVENT_LOOP_STARTED: Lazy<AtomicBool> = Lazy::new(AtomicBool::default);
+
+static EVENT_LOOP_STOP: Lazy<Arc<(Mutex<AtomicUsize>, Condvar)>> =
+    Lazy::new(|| Arc::new((Mutex::new(AtomicUsize::new(0)), Condvar::new())));
 
 impl EventLoops {
     fn next(skip_monitor: bool) -> &'static mut EventLoop {
@@ -71,41 +75,48 @@ impl EventLoops {
         }
     }
 
+    pub(crate) fn new_condition() -> Arc<(Mutex<AtomicUsize>, Condvar)> {
+        Arc::clone(&EVENT_LOOP_STOP)
+    }
+
     fn start() {
         if EVENT_LOOP_STARTED
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
         {
             //初始化event_loop线程
-            unsafe {
-                _ = EVENT_LOOP_WORKERS.get_or_init(|| {
-                    (0..EVENT_LOOPS.len() - 1)
-                        .map(|i| {
-                            std::thread::Builder::new()
-                                .name(format!("open-coroutine-event-loop-{i}"))
-                                .spawn(move || {
-                                    #[cfg(any(target_os = "linux", windows))]
-                                    if *BIND {
-                                        assert!(
-                                            core_affinity::set_for_current(core_affinity::CoreId {
-                                                id: i
-                                            }),
-                                            "pin event loop thread to a single CPU core failed !"
-                                        );
-                                    }
-                                    let event_loop = EventLoops::next(true);
-                                    while EVENT_LOOP_STARTED.load(Ordering::Acquire)
-                                        || !event_loop.is_empty()
-                                    {
-                                        _ = event_loop.wait_event(Some(Duration::from_millis(10)));
-                                    }
-                                    crate::warn!("open-coroutine-event-loop-{i} has exited");
-                                })
-                                .expect("failed to spawn event-loop thread")
-                        })
-                        .collect()
-                });
-            }
+            _ = EVENT_LOOP_WORKERS.get_or_init(|| {
+                (1..unsafe { EVENT_LOOPS.len() })
+                    .map(|i| {
+                        std::thread::Builder::new()
+                            .name(format!("open-coroutine-event-loop-{i}"))
+                            .spawn(move || {
+                                #[cfg(any(target_os = "linux", windows))]
+                                if *BIND {
+                                    assert!(
+                                        core_affinity::set_for_current(core_affinity::CoreId {
+                                            id: i
+                                        }),
+                                        "pin event loop thread to a single CPU core failed !"
+                                    );
+                                }
+                                let event_loop = EventLoops::next(true);
+                                while EVENT_LOOP_STARTED.load(Ordering::Acquire)
+                                    || !event_loop.is_empty()
+                                {
+                                    _ = event_loop.wait_event(Some(Duration::from_millis(10)));
+                                }
+                                crate::warn!("open-coroutine-event-loop-{i} has exited");
+                                let pair = EventLoops::new_condition();
+                                let (lock, cvar) = pair.as_ref();
+                                let pending = lock.lock().unwrap();
+                                _ = pending.fetch_add(1, Ordering::Release);
+                                cvar.notify_one();
+                            })
+                            .expect("failed to spawn event-loop thread")
+                    })
+                    .collect()
+            });
         }
     }
 
@@ -114,29 +125,20 @@ impl EventLoops {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         crate::monitor::Monitor::stop();
         EVENT_LOOP_STARTED.store(false, Ordering::Release);
-        unsafe {
-            if let Some(workers) = EVENT_LOOP_WORKERS.take() {
-                let timeout_time = open_coroutine_timer::get_timeout_time(Duration::from_secs(30));
-                loop {
-                    if open_coroutine_timer::now() > timeout_time {
-                        crate::error!(
-                            "open-coroutine didn't exit successfully within 30 seconds !"
-                        );
-                        break;
-                    }
-                    let mut count = 0;
-                    for worker in workers.iter() {
-                        if worker.is_finished() {
-                            count += 1;
-                        }
-                    }
-                    if count == workers.len() {
-                        crate::info!("open-coroutine exit successfully !");
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-            }
+        // wait for the event-loops to stop
+        let (lock, cvar) = EVENT_LOOP_STOP.as_ref();
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(30000),
+                |stopped| stopped.load(Ordering::Acquire) < unsafe { EVENT_LOOPS.len() },
+            )
+            .unwrap()
+            .1;
+        if result.timed_out() {
+            crate::error!("open-coroutine didn't exit successfully within 30 seconds !");
+        } else {
+            crate::info!("open-coroutine exit successfully !");
         }
     }
 
