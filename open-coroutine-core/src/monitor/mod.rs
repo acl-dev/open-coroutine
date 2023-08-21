@@ -16,8 +16,19 @@ static MONITOR: OnceCell<JoinHandle<()>> = OnceCell::new();
 
 #[derive(Debug)]
 pub(crate) struct Monitor {
-    task: TimerList<TaskNode>,
+    tasks: TimerList<TaskNode>,
     started: AtomicBool,
+}
+
+impl Drop for Monitor {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(
+                Monitor::global().tasks.is_empty(),
+                "there are still timer tasks to be carried out !"
+            );
+        }
+    }
 }
 
 impl Monitor {
@@ -82,16 +93,28 @@ impl Monitor {
                     );
                     let event_loop = EventLoops::monitor();
                     let monitor = Monitor::global();
-                    while monitor.started.load(Ordering::Acquire) {
+                    while monitor.started.load(Ordering::Acquire) || !monitor.tasks.is_empty() {
                         monitor.signal();
                         //monitor线程不执行协程计算任务，每次循环至少wait 1ms
                         _ = event_loop.wait_just(Some(Duration::from_millis(1)));
+                        //push tasks to other event-loop
+                        while !event_loop.is_empty() {
+                            if let Some(task) = event_loop.pop() {
+                                EventLoops::submit_raw(task);
+                            }
+                        }
                     }
+                    crate::warn!("open-coroutine-monitor has exited");
+                    let pair = EventLoops::new_condition();
+                    let (lock, cvar) = pair.as_ref();
+                    let pending = lock.lock().unwrap();
+                    _ = pending.fetch_add(1, Ordering::Release);
+                    cvar.notify_one();
                 })
                 .expect("failed to spawn monitor thread")
         });
         Monitor {
-            task: TimerList::new(),
+            tasks: TimerList::new(),
             started: AtomicBool::new(true),
         }
     }
@@ -106,7 +129,7 @@ impl Monitor {
 
     fn signal(&mut self) {
         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-        for entry in self.task.iter() {
+        for entry in self.tasks.iter() {
             let exec_time = entry.get_time();
             if open_coroutine_timer::now() < exec_time {
                 break;
@@ -132,18 +155,17 @@ impl Monitor {
         unsafe {
             let pthread = libc::pthread_self();
             Monitor::global()
-                .task
+                .tasks
                 .insert(time, TaskNode::new(pthread, coroutine));
         }
     }
 
     pub(crate) fn clean_task(time: u64) {
-        if let Some(entry) = Monitor::global().task.get_entry(time) {
-            unsafe {
-                let pthread = libc::pthread_self();
-                if !entry.is_empty() {
-                    _ = entry.remove(&TaskNode::new(pthread, None));
-                }
+        let tasks = &mut Monitor::global().tasks;
+        if let Some(entry) = tasks.get_entry(&time) {
+            let pthread = unsafe { libc::pthread_self() };
+            if !entry.is_empty() {
+                _ = entry.remove(&TaskNode::new(pthread, None));
             }
         }
     }

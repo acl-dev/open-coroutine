@@ -12,9 +12,9 @@ readme = "../README.md"
 
 [dependencies]
 libc = "0.2.119"
-open-coroutine-core = { version = "0.4.0", path = "../open-coroutine-core" }
-open-coroutine-hooks = { version = "0.4.0", path = "../open-coroutine-hooks" }
-open-coroutine-macros = { version = "0.1.1", path = "../open-coroutine-macros" }
+open-coroutine-core = { version = "0.4.1", path = "../open-coroutine-core" }
+open-coroutine-hooks = { version = "0.4.1", path = "../open-coroutine-hooks" }
+open-coroutine-macros = { version = "0.1.2", path = "../open-coroutine-macros" }
 
 [dev-dependencies]
 # benchmark

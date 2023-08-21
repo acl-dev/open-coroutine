@@ -2,9 +2,11 @@ use crate::config::Config;
 use crate::coroutine::suspender::Suspender;
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
+use crate::pool::task::Task;
 use once_cell::sync::{Lazy, OnceCell};
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 pub mod join;
@@ -45,6 +47,9 @@ static EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCe
 
 static EVENT_LOOP_STARTED: Lazy<AtomicBool> = Lazy::new(AtomicBool::default);
 
+static EVENT_LOOP_STOP: Lazy<Arc<(Mutex<AtomicUsize>, Condvar)>> =
+    Lazy::new(|| Arc::new((Mutex::new(AtomicUsize::new(0)), Condvar::new())));
+
 impl EventLoops {
     fn next(skip_monitor: bool) -> &'static mut EventLoop {
         unsafe {
@@ -70,6 +75,10 @@ impl EventLoops {
         }
     }
 
+    pub(crate) fn new_condition() -> Arc<(Mutex<AtomicUsize>, Condvar)> {
+        Arc::clone(&EVENT_LOOP_STOP)
+    }
+
     fn start() {
         if EVENT_LOOP_STARTED
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -92,9 +101,17 @@ impl EventLoops {
                                     );
                                 }
                                 let event_loop = EventLoops::next(true);
-                                while EVENT_LOOP_STARTED.load(Ordering::Acquire) {
+                                while EVENT_LOOP_STARTED.load(Ordering::Acquire)
+                                    || !event_loop.is_empty()
+                                {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                 }
+                                crate::warn!("open-coroutine-event-loop-{i} has exited");
+                                let pair = EventLoops::new_condition();
+                                let (lock, cvar) = pair.as_ref();
+                                let pending = lock.lock().unwrap();
+                                _ = pending.fetch_add(1, Ordering::Release);
+                                cvar.notify_one();
                             })
                             .expect("failed to spawn event-loop thread")
                     })
@@ -104,15 +121,44 @@ impl EventLoops {
     }
 
     pub fn stop() {
+        crate::warn!("open-coroutine is exiting...");
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         crate::monitor::Monitor::stop();
         EVENT_LOOP_STARTED.store(false, Ordering::Release);
+        // wait for the event-loops to stop
+        let (lock, cvar) = EVENT_LOOP_STOP.as_ref();
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(30000),
+                |stopped| {
+                    cfg_if::cfg_if! {
+                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
+                            let condition = unsafe { EVENT_LOOPS.len() };
+                        } else {
+                            let condition = unsafe { EVENT_LOOPS.len() } - 1;
+                        }
+                    }
+                    stopped.load(Ordering::Acquire) < condition
+                },
+            )
+            .unwrap()
+            .1;
+        if result.timed_out() {
+            crate::error!("open-coroutine didn't exit successfully within 30 seconds !");
+        } else {
+            crate::info!("open-coroutine exit successfully !");
+        }
     }
 
     /// todo This is actually an API for creating tasks, adding an API for creating coroutines
     pub fn submit(f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static) -> JoinHandle {
         EventLoops::start();
         EventLoops::next(true).submit(f)
+    }
+
+    pub(crate) fn submit_raw(task: Task<'static>) {
+        EventLoops::next(true).submit_raw(task);
     }
 
     fn slice_wait(

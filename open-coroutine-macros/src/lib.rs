@@ -99,7 +99,9 @@ pub fn main(args: TokenStream, func: TokenStream) -> TokenStream {
                     .set_max_size(#max_size)
                     .set_keep_alive_time(#keep_alive_time);
             open_coroutine::init(open_coroutine_config);
-            #func_block
+            let _open_coroutine_result = #func_block;
+            open_coroutine::shutdown();
+            _open_coroutine_result
         }
     };
     caller.into()

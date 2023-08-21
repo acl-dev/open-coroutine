@@ -44,7 +44,7 @@ impl Drop for Scheduler {
         if !std::thread::panicking() {
             assert!(
                 self.ready.is_empty(),
-                "there are still tasks to be carried out !"
+                "there are still coroutines to be carried out !"
             );
         }
     }

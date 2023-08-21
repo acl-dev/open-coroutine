@@ -2,6 +2,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::event_loop::blocker::SelectBlocker;
 use crate::event_loop::join::JoinHandle;
 use crate::event_loop::selector::Selector;
+use crate::pool::task::Task;
 use crate::pool::CoroutinePool;
 use crate::scheduler::SchedulableCoroutine;
 use once_cell::sync::Lazy;
@@ -58,6 +59,18 @@ impl EventLoop {
     ) -> JoinHandle {
         let task_name = unsafe { self.pool.assume_init_ref().submit(f) };
         JoinHandle::new(self, task_name)
+    }
+
+    pub(crate) fn submit_raw(&self, task: Task<'static>) {
+        unsafe { self.pool.assume_init_ref().submit_raw(task) };
+    }
+
+    pub fn pop(&self) -> Option<Task> {
+        unsafe { self.pool.assume_init_ref().pop() }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        unsafe { self.pool.assume_init_ref().is_empty() }
     }
 
     fn token() -> usize {
