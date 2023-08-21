@@ -190,7 +190,12 @@ impl<T> TimerList<T> {
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.dequeue.is_empty()
+        for entry in &self.dequeue {
+            if !entry.is_empty() {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn get_entry(&mut self, time: &u64) -> Option<&mut TimerEntry<T>> {

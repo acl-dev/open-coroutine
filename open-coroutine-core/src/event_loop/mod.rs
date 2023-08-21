@@ -79,7 +79,7 @@ impl EventLoops {
             //初始化event_loop线程
             unsafe {
                 _ = EVENT_LOOP_WORKERS.get_or_init(|| {
-                    (1..EVENT_LOOPS.len())
+                    (0..EVENT_LOOPS.len() - 1)
                         .map(|i| {
                             std::thread::Builder::new()
                                 .name(format!("open-coroutine-event-loop-{i}"))
@@ -99,7 +99,7 @@ impl EventLoops {
                                     {
                                         _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                     }
-                                    crate::warn!("open-coroutine-event-loop-{i} has stopped");
+                                    crate::warn!("open-coroutine-event-loop-{i} has exited");
                                 })
                                 .expect("failed to spawn event-loop thread")
                         })
@@ -110,13 +110,31 @@ impl EventLoops {
     }
 
     pub fn stop() {
+        crate::warn!("open-coroutine is exiting...");
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         crate::monitor::Monitor::stop();
         EVENT_LOOP_STARTED.store(false, Ordering::Release);
         unsafe {
             if let Some(workers) = EVENT_LOOP_WORKERS.take() {
-                for worker in workers.into_vec() {
-                    worker.join().expect("stop open-coroutine-failed !");
+                let timeout_time = open_coroutine_timer::get_timeout_time(Duration::from_secs(30));
+                loop {
+                    if open_coroutine_timer::now() > timeout_time {
+                        crate::error!(
+                            "open-coroutine didn't exit successfully within 30 seconds !"
+                        );
+                        break;
+                    }
+                    let mut count = 0;
+                    for worker in workers.iter() {
+                        if worker.is_finished() {
+                            count += 1;
+                        }
+                    }
+                    if count == workers.len() {
+                        crate::info!("open-coroutine exit successfully !");
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
                 }
             }
         }

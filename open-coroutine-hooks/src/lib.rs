@@ -64,9 +64,7 @@ pub extern "C" fn init_config(config: Config) {
 
 #[no_mangle]
 pub extern "C" fn shutdowns() {
-    open_coroutine_core::warn!("open-coroutine is stopping");
     EventLoops::stop();
-    open_coroutine_core::warn!("open-coroutine has stopped");
 }
 
 pub mod coroutine;

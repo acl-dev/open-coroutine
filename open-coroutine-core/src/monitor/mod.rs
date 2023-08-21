@@ -104,7 +104,7 @@ impl Monitor {
                             }
                         }
                     }
-                    crate::warn!("open-coroutine-monitor has stopped");
+                    crate::warn!("open-coroutine-monitor has exited");
                 })
                 .expect("failed to spawn monitor thread")
         });

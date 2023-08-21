@@ -70,3 +70,29 @@ macro_rules! warn {
         }
     }
 }
+
+#[macro_export]
+macro_rules! error {
+    // error!(target: "my_target", key1 = 42, key2 = true; "a {} event", "log")
+    // error!(target: "my_target", "a {} event", "log")
+    (target: $target:expr, $($arg:tt)+) => {
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "logs")] {
+                $crate::init_log!();
+                log::log!(target: $target, log::Level::Error, $($arg)+)
+            }
+        }
+
+    };
+
+    // error!("a {} event", "log")
+    ($($arg:tt)+) => {
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "logs")] {
+                $crate::init_log!();
+                log::log!(log::Level::Error, $($arg)+)
+            }
+        }
+
+    }
+}
