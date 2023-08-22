@@ -82,62 +82,95 @@ pub extern "C" fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t 
                 crate::unix::set_non_blocking(fd);
             }
             let msghdr = unsafe { *msg };
-            let vec = unsafe {
+            let mut vec = std::collections::VecDeque::from(unsafe {
                 Vec::from_raw_parts(
                     msghdr.msg_iov,
                     msghdr.msg_iovlen as usize,
                     msghdr.msg_iovlen as usize,
                 )
-            };
-            let mut total_received = 0;
-            for iovec in vec {
-                let length = iovec.iov_len;
-                let mut received = 0;
-                let mut r = 0;
-                while received < length {
-                    let mut inner_iovec = iovec {
-                        iov_base: (iovec.iov_base as usize + received) as *mut c_void,
-                        iov_len: length - received,
-                    };
-                    let mut inner_msghdr = msghdr {
-                        msg_name: msghdr.msg_name,
-                        msg_namelen: msghdr.msg_namelen,
-                        msg_iov: &mut inner_iovec,
-                        msg_iovlen: 1,
-                        msg_control: msghdr.msg_control,
-                        msg_controllen: msghdr.msg_controllen,
-                        msg_flags: msghdr.msg_flags,
-                    };
-                    r = (Lazy::force(&RECVMSG))(fd, &mut inner_msghdr, flags);
-                    if r != -1 {
-                        crate::unix::reset_errno();
-                        received += r as size_t;
-                        if received >= length || r == 0 {
-                            r = received as ssize_t;
-                            break;
-                        }
-                    }
-                    let error_kind = std::io::Error::last_os_error().kind();
-                    if error_kind == std::io::ErrorKind::WouldBlock {
-                        //wait read event
-                        if open_coroutine_core::event_loop::EventLoops::wait_read_event(
-                            fd,
-                            Some(std::time::Duration::from_millis(10)),
-                        )
-                        .is_err()
-                        {
-                            return -1;
-                        }
-                    } else if error_kind != std::io::ErrorKind::Interrupted {
-                        return -1;
+            });
+            let mut length = 0;
+            let mut pices = std::collections::VecDeque::new();
+            for iovec in &vec {
+                length += iovec.iov_len;
+                pices.push_back(length);
+            }
+            let mut received = 0;
+            let mut r = 0;
+            while received < length {
+                // find from-index
+                let mut from_index = 0;
+                for (i, v) in pices.iter().enumerate() {
+                    if received < *v {
+                        from_index = i;
+                        break;
                     }
                 }
-                total_received += r;
+                // calculate offset
+                let current_received_offset = if from_index > 0 {
+                    received.saturating_sub(pices[from_index.saturating_sub(1)])
+                } else {
+                    received
+                };
+                // remove already received
+                for _ in 0..from_index {
+                    _ = vec.pop_front();
+                    _ = pices.pop_front();
+                }
+                // build syscall args
+                vec[0] = iovec {
+                    iov_base: (vec[0].iov_base as usize + current_received_offset) as *mut c_void,
+                    iov_len: vec[0].iov_len - current_received_offset,
+                };
+                cfg_if::cfg_if! {
+                    if #[cfg(any(
+                        target_os = "linux",
+                        target_os = "l4re",
+                        target_os = "android",
+                        target_os = "emscripten"
+                    ))] {
+                        let len = vec.len();
+                    } else {
+                        let len = c_int::try_from(vec.len()).unwrap();
+                    }
+                }
+                let mut new_msg = msghdr {
+                    msg_name: msghdr.msg_name,
+                    msg_namelen: msghdr.msg_namelen,
+                    msg_iov: vec.get_mut(0).unwrap(),
+                    msg_iovlen: len,
+                    msg_control: msghdr.msg_control,
+                    msg_controllen: msghdr.msg_controllen,
+                    msg_flags: msghdr.msg_flags,
+                };
+                r = (Lazy::force(&RECVMSG))(fd, &mut new_msg, flags);
+                if r != -1 {
+                    crate::unix::reset_errno();
+                    received += r as usize;
+                    if received >= length || r == 0 {
+                        r = received as ssize_t;
+                        break;
+                    }
+                }
+                let error_kind = std::io::Error::last_os_error().kind();
+                if error_kind == std::io::ErrorKind::WouldBlock {
+                    //wait read event
+                    if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                        fd,
+                        Some(std::time::Duration::from_millis(10)),
+                    )
+                    .is_err()
+                    {
+                        break;
+                    }
+                } else if error_kind != std::io::ErrorKind::Interrupted {
+                    break;
+                }
             }
             if blocking {
                 crate::unix::set_blocking(fd);
             }
-            total_received
+            r
         },
         "recvmsg"
     )
