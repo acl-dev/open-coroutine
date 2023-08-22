@@ -1,4 +1,4 @@
-use libc::{c_int, iovec, off_t, size_t, sockaddr, socklen_t, ssize_t};
+use libc::{c_int, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
 
@@ -62,5 +62,83 @@ pub extern "C" fn preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: of
     open_coroutine_core::unbreakable!(
         impl_expected_batch_read_hook!((Lazy::force(&PREADV))(fd, iov, iovcnt, offset)),
         "preadv"
+    )
+}
+
+static RECVMSG: Lazy<extern "C" fn(c_int, *mut msghdr, c_int) -> ssize_t> = init_hook!("recvmsg");
+
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
+    trivial_numeric_casts
+)]
+#[no_mangle]
+pub extern "C" fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t {
+    open_coroutine_core::unbreakable!(
+        {
+            let blocking = crate::unix::is_blocking(fd);
+            if blocking {
+                crate::unix::set_non_blocking(fd);
+            }
+            let msghdr = unsafe { *msg };
+            let vec = unsafe {
+                Vec::from_raw_parts(
+                    msghdr.msg_iov,
+                    msghdr.msg_iovlen as usize,
+                    msghdr.msg_iovlen as usize,
+                )
+            };
+            let mut total_received = 0;
+            for iovec in vec {
+                let length = iovec.iov_len;
+                let mut received = 0;
+                let mut r = 0;
+                while received < length {
+                    let mut inner_iovec = iovec {
+                        iov_base: (iovec.iov_base as usize + received) as *mut c_void,
+                        iov_len: length - received,
+                    };
+                    let mut inner_msghdr = msghdr {
+                        msg_name: msghdr.msg_name,
+                        msg_namelen: msghdr.msg_namelen,
+                        msg_iov: &mut inner_iovec,
+                        msg_iovlen: 1,
+                        msg_control: msghdr.msg_control,
+                        msg_controllen: msghdr.msg_controllen,
+                        msg_flags: msghdr.msg_flags,
+                    };
+                    r = (Lazy::force(&RECVMSG))(fd, &mut inner_msghdr, flags);
+                    if r != -1 {
+                        crate::unix::reset_errno();
+                        received += r as size_t;
+                        if received >= length || r == 0 {
+                            r = received as ssize_t;
+                            break;
+                        }
+                    }
+                    let error_kind = std::io::Error::last_os_error().kind();
+                    if error_kind == std::io::ErrorKind::WouldBlock {
+                        //wait read event
+                        if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                            fd,
+                            Some(std::time::Duration::from_millis(10)),
+                        )
+                        .is_err()
+                        {
+                            return -1;
+                        }
+                    } else if error_kind != std::io::ErrorKind::Interrupted {
+                        return -1;
+                    }
+                }
+                total_received += r;
+            }
+            if blocking {
+                crate::unix::set_blocking(fd);
+            }
+            total_received
+        },
+        "recvmsg"
     )
 }
