@@ -70,7 +70,11 @@ pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: o
 
 static SENDMSG: Lazy<extern "C" fn(c_int, *const msghdr, c_int) -> ssize_t> = init_hook!("sendmsg");
 
-#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    trivial_numeric_casts
+)]
 #[no_mangle]
 pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
@@ -120,11 +124,23 @@ pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_
                     iov_base: (vec[0].iov_base as usize + current_sent_offset) as *mut c_void,
                     iov_len: vec[0].iov_len - current_sent_offset,
                 };
+
                 let new_msg = msghdr {
                     msg_name: msghdr.msg_name,
                     msg_namelen: msghdr.msg_namelen,
                     msg_iov: vec.get_mut(0).unwrap(),
-                    msg_iovlen: c_int::try_from(vec.len()).unwrap(),
+                    msg_iovlen: cfg_if::cfg_if! {
+                        if #[cfg(any(
+                            target_os = "linux",
+                            target_os = "l4re",
+                            target_os = "android",
+                            target_os = "emscripten"
+                        ))] {
+                            vec.len()
+                        } else {
+                            c_int::try_from(vec.len()).unwrap()
+                        }
+                    },
                     msg_control: msghdr.msg_control,
                     msg_controllen: msghdr.msg_controllen,
                     msg_flags: msghdr.msg_flags,
