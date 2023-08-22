@@ -70,7 +70,11 @@ pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: o
 
 static SENDMSG: Lazy<extern "C" fn(c_int, *const msghdr, c_int) -> ssize_t> = init_hook!("sendmsg");
 
-#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast
+)]
 #[no_mangle]
 pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(

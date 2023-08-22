@@ -67,7 +67,11 @@ pub extern "C" fn preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: of
 
 static RECVMSG: Lazy<extern "C" fn(c_int, *mut msghdr, c_int) -> ssize_t> = init_hook!("recvmsg");
 
-#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast
+)]
 #[no_mangle]
 pub extern "C" fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
