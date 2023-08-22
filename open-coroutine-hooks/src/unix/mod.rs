@@ -198,47 +198,70 @@ macro_rules! impl_expected_batch_write_hook {
         if blocking {
             $crate::unix::set_non_blocking(socket);
         }
-        let vec = unsafe { Vec::from_raw_parts($iov as *mut iovec, $length as usize, $length as usize) };
-        let mut total_sent = 0;
-        for iovec in vec {
-            let length = iovec.iov_len;
-            let mut sent = 0;
-            let mut r = 0;
-            while sent < length {
-                let inner = vec![iovec {
-                    iov_base: (iovec.iov_base as usize + sent) as *mut c_void,
-                    iov_len: iovec.iov_len - sent,
-                }];
-                r = $fn($socket, inner.as_ptr(), 1, $($arg, )*);
-                if r != -1 {
-                    $crate::unix::reset_errno();
-                    sent += r as size_t;
-                    if sent >= length {
-                        r = sent as ssize_t;
-                        break;
-                    }
-                }
-                let error_kind = std::io::Error::last_os_error().kind();
-                if error_kind == std::io::ErrorKind::WouldBlock {
-                    //wait write event
-                    if open_coroutine_core::event_loop::EventLoops::wait_write_event(
-                        socket,
-                        Some(std::time::Duration::from_millis(10)),
-                    )
-                    .is_err()
-                    {
-                        return -1;
-                    }
-                } else if error_kind != std::io::ErrorKind::Interrupted {
-                    return -1;
+        let mut vec = std::collections::VecDeque::from(unsafe {
+            Vec::from_raw_parts($iov as *mut iovec, $length as usize, $length as usize)
+        });
+        let mut length = 0;
+        let mut pices = std::collections::VecDeque::new();
+        for iovec in &vec {
+            length += iovec.iov_len;
+            pices.push_back(length);
+        }
+        let mut sent = 0;
+        let mut r = 0;
+        while sent < length {
+            // find from index
+            let mut from_index = 0;
+            for (i, v) in pices.iter().enumerate() {
+                if sent < *v {
+                    from_index = i;
+                    break;
                 }
             }
-            total_sent += r;
+            // calculate offset
+            let current_sent_offset = if from_index > 0 {
+                sent.saturating_sub(pices[from_index.saturating_sub(1)])
+            } else {
+                sent
+            };
+            // remove already sent
+            for _ in 0..from_index {
+                _ = vec.pop_front();
+                _ = pices.pop_front();
+            }
+            // build syscall args
+            vec[0] = iovec {
+                iov_base: (vec[0].iov_base as usize + current_sent_offset) as *mut c_void,
+                iov_len: vec[0].iov_len - current_sent_offset,
+            };
+            r = $fn($socket, vec.get(0).unwrap(), c_int::try_from(vec.len()).unwrap(), $($arg, )*);
+            if r != -1 {
+                $crate::unix::reset_errno();
+                sent += r as usize;
+                if sent >= length {
+                    r = sent as ssize_t;
+                    break;
+                }
+            }
+            let error_kind = std::io::Error::last_os_error().kind();
+            if error_kind == std::io::ErrorKind::WouldBlock {
+                //wait write event
+                if open_coroutine_core::event_loop::EventLoops::wait_write_event(
+                    socket,
+                    Some(std::time::Duration::from_millis(10)),
+                )
+                .is_err()
+                {
+                    break;
+                }
+            } else if error_kind != std::io::ErrorKind::Interrupted {
+                break;
+            }
         }
         if blocking {
             $crate::unix::set_blocking(socket);
         }
-        total_sent
+        r
     }};
 }
 
