@@ -62,6 +62,7 @@ static PWRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t
 #[allow(
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
     trivial_numeric_casts
 )]
 #[no_mangle]
