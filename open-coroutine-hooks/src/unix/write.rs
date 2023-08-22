@@ -73,6 +73,7 @@ static SENDMSG: Lazy<extern "C" fn(c_int, *const msghdr, c_int) -> ssize_t> = in
 #[allow(
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
     trivial_numeric_casts
 )]
 #[no_mangle]
