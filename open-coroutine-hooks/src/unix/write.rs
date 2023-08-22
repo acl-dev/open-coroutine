@@ -101,7 +101,7 @@ pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_
             let mut sent = 0;
             let mut r = 0;
             while sent < length {
-                // find from index
+                // find from-index
                 let mut from_index = 0;
                 for (i, v) in pices.iter().enumerate() {
                     if sent < *v {
