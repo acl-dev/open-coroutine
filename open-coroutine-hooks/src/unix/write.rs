@@ -59,7 +59,11 @@ pub extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t
 static PWRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t> =
     init_hook!("pwritev");
 
-#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    trivial_numeric_casts
+)]
 #[no_mangle]
 pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
@@ -73,7 +77,7 @@ static SENDMSG: Lazy<extern "C" fn(c_int, *const msghdr, c_int) -> ssize_t> = in
 #[allow(
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
-    clippy::unnecessary_cast
+    trivial_numeric_casts
 )]
 #[no_mangle]
 pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t {
