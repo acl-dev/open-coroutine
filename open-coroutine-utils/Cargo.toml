@@ -1,0 +1,17 @@
+[package]
+name = "open-coroutine-utils"
+version = "0.1.0"
+edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "The version utils."
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-utils"
+keywords = ["open-coroutine", "version"]
+categories = ["data-structures"]
+license = "LGPL-3.0 OR Apache-2.0"
+
+[dependencies]
+cfg-if = "1.0.0"
+
+[build-dependencies]
+cfg-if = "1.0.0"
+cc = "1.0.83"

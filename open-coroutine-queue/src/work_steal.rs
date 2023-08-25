@@ -19,7 +19,7 @@ pub struct WorkStealQueue<T: Debug> {
 impl<T: Debug> Drop for WorkStealQueue<T> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
-            for local_queue in self.local_queues.iter() {
+            for local_queue in &*self.local_queues {
                 assert!(local_queue.pop().is_none(), "local queue not empty");
             }
             assert!(self.pop().is_none(), "global queue not empty");

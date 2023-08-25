@@ -30,7 +30,7 @@ impl PartialEq<Self> for TaskNode {
 
 impl PartialOrd<Self> for TaskNode {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.pthread.partial_cmp(&other.pthread)
+        Some(self.cmp(other))
     }
 }
 
