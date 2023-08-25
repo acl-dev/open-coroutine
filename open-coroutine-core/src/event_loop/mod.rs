@@ -163,7 +163,7 @@ impl EventLoops {
 
     fn slice_wait(
         timeout: Option<Duration>,
-        event_loop: &'static mut EventLoop,
+        event_loop: &'static EventLoop,
     ) -> std::io::Result<()> {
         let time = timeout.unwrap_or(Duration::MAX);
         if let Some(suspender) = Suspender::<(), ()>::current() {

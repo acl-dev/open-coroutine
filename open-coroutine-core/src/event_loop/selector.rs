@@ -43,7 +43,7 @@ impl Selector {
         }
         self.0
             .add_with_mode(source, interests, self.get_mode())
-            .map(|_| {
+            .map(|()| {
                 _ = unsafe { TOKEN_FD.insert(token, fd) };
             })
     }
@@ -63,7 +63,7 @@ impl Selector {
         }
         self.0
             .modify_with_mode(source, interests, self.get_mode())
-            .map(|_| {
+            .map(|()| {
                 _ = unsafe { TOKEN_FD.insert(token, fd) };
             })
     }
@@ -76,7 +76,7 @@ impl Selector {
                 let source = fd;
             }
         }
-        self.0.delete(source).map(|_| {
+        self.0.delete(source).map(|()| {
             _ = unsafe { TOKEN_FD.remove(&token) };
         })
     }

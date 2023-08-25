@@ -113,7 +113,7 @@ impl CoroutinePool {
         }
         let create_time = open_coroutine_timer::now();
         _ = self.workers.submit(
-            move |suspender, _| {
+            move |suspender, ()| {
                 loop {
                     match self.task_queue.steal() {
                         Steal::Empty => {

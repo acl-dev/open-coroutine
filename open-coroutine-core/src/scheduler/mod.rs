@@ -197,25 +197,25 @@ impl Scheduler {
     }
 
     fn on_create(&self, coroutine: &SchedulableCoroutine) {
-        for listener in self.listeners.borrow().iter() {
+        for listener in &*self.listeners.borrow() {
             listener.on_create(coroutine);
         }
     }
 
     fn on_suspend(&self, coroutine: &SchedulableCoroutine) {
-        for listener in self.listeners.borrow().iter() {
+        for listener in &*self.listeners.borrow() {
             listener.on_suspend(coroutine);
         }
     }
 
     fn on_syscall(&self, coroutine: &SchedulableCoroutine, syscall_name: &str) {
-        for listener in self.listeners.borrow().iter() {
+        for listener in &*self.listeners.borrow() {
             listener.on_syscall(coroutine, syscall_name);
         }
     }
 
     fn on_finish(&self, coroutine: &SchedulableCoroutine) {
-        for listener in self.listeners.borrow().iter() {
+        for listener in &*self.listeners.borrow() {
             listener.on_finish(coroutine);
         }
     }
