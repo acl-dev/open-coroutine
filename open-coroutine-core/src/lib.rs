@@ -93,3 +93,7 @@ mod monitor;
 pub mod event_loop;
 
 pub mod config;
+
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+mod version;
