@@ -5,9 +5,6 @@ use crate::event_loop::selector::Selector;
 use crate::pool::task::Task;
 use crate::pool::CoroutinePool;
 use crate::scheduler::SchedulableCoroutine;
-use once_cell::sync::Lazy;
-use polling::Event;
-use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,14 +18,6 @@ pub struct EventLoop {
     //协程池
     pool: MaybeUninit<CoroutinePool>,
 }
-
-static mut READABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new);
-
-static mut READABLE_TOKEN_RECORDS: Lazy<HashMap<libc::c_int, usize>> = Lazy::new(HashMap::new);
-
-static mut WRITABLE_RECORDS: Lazy<HashSet<libc::c_int>> = Lazy::new(HashSet::new);
-
-static mut WRITABLE_TOKEN_RECORDS: Lazy<HashMap<libc::c_int, usize>> = Lazy::new(HashMap::new);
 
 impl EventLoop {
     pub fn new(
@@ -86,96 +75,23 @@ impl EventLoop {
     }
 
     pub fn add_read_event(&self, fd: libc::c_int) -> std::io::Result<()> {
-        unsafe {
-            if READABLE_RECORDS.contains(&fd) {
-                return Ok(());
-            }
-            let token = EventLoop::token();
-            if WRITABLE_RECORDS.contains(&fd) {
-                //同时对读写事件感兴趣
-                let interests = Event::all(token);
-                self.selector
-                    .reregister(fd, token, interests)
-                    .or(self.selector.register(fd, token, interests))
-            } else {
-                self.selector.register(fd, token, Event::readable(token))
-            }?;
-            _ = READABLE_RECORDS.insert(fd);
-            _ = READABLE_TOKEN_RECORDS.insert(fd, token);
-        }
-        Ok(())
+        self.selector.add_read_event(fd, EventLoop::token())
     }
 
     pub fn add_write_event(&self, fd: libc::c_int) -> std::io::Result<()> {
-        unsafe {
-            if WRITABLE_RECORDS.contains(&fd) {
-                return Ok(());
-            }
-            let token = EventLoop::token();
-            if READABLE_RECORDS.contains(&fd) {
-                //同时对读写事件感兴趣
-                let interests = Event::all(token);
-                self.selector
-                    .reregister(fd, token, interests)
-                    .or(self.selector.register(fd, token, interests))
-            } else {
-                self.selector.register(fd, token, Event::writable(token))
-            }?;
-            _ = WRITABLE_RECORDS.insert(fd);
-            _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
-        }
-        Ok(())
+        self.selector.add_write_event(fd, EventLoop::token())
     }
 
-    pub fn del_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        unsafe {
-            if READABLE_RECORDS.contains(&fd) || WRITABLE_RECORDS.contains(&fd) {
-                let token = READABLE_TOKEN_RECORDS
-                    .remove(&fd)
-                    .or(WRITABLE_TOKEN_RECORDS.remove(&fd))
-                    .unwrap_or(0);
-                self.selector.deregister(fd, token)?;
-                _ = READABLE_RECORDS.remove(&fd);
-                _ = WRITABLE_RECORDS.remove(&fd);
-            }
-        }
-        Ok(())
+    pub fn del_event(&self, fd: libc::c_int) -> std::io::Result<()> {
+        self.selector.del_event(fd)
     }
 
-    pub fn del_read_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        unsafe {
-            if READABLE_RECORDS.contains(&fd) {
-                if WRITABLE_RECORDS.contains(&fd) {
-                    //写事件不能删
-                    let token = *WRITABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0);
-                    self.selector
-                        .reregister(fd, token, Event::writable(token))?;
-                    assert!(READABLE_RECORDS.remove(&fd));
-                    assert!(READABLE_TOKEN_RECORDS.remove(&fd).is_some());
-                } else {
-                    self.del_event(fd)?;
-                }
-            }
-        }
-        Ok(())
+    pub fn del_read_event(&self, fd: libc::c_int) -> std::io::Result<()> {
+        self.selector.del_read_event(fd)
     }
 
-    pub fn del_write_event(&mut self, fd: libc::c_int) -> std::io::Result<()> {
-        unsafe {
-            if WRITABLE_RECORDS.contains(&fd) {
-                if READABLE_RECORDS.contains(&fd) {
-                    //读事件不能删
-                    let token = *READABLE_TOKEN_RECORDS.get(&fd).unwrap_or(&0);
-                    self.selector
-                        .reregister(fd, token, Event::readable(token))?;
-                    assert!(WRITABLE_RECORDS.remove(&fd));
-                    assert!(WRITABLE_TOKEN_RECORDS.remove(&fd).is_some());
-                } else {
-                    self.del_event(fd)?;
-                }
-            }
-        }
-        Ok(())
+    pub fn del_write_event(&self, fd: libc::c_int) -> std::io::Result<()> {
+        self.selector.del_write_event(fd)
     }
 
     pub fn wait_just(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
@@ -215,16 +131,8 @@ impl EventLoop {
         self.waiting.store(false, Ordering::Release);
         for event in &events {
             let token = event.key;
-            let fd = Selector::fd(token);
-            unsafe {
-                if event.readable {
-                    _ = READABLE_TOKEN_RECORDS.remove(&fd);
-                    self.resume(token);
-                }
-                if event.writable {
-                    _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
-                    self.resume(token);
-                }
+            if event.readable || event.writable {
+                unsafe { self.resume(token) };
             }
         }
         Ok(())
