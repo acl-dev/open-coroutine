@@ -2,6 +2,12 @@
 
 The `open-coroutine` is a simple, efficient and generic stackful-coroutine library.
 
+<div style="text-align: center;">
+    <img src="docs/img/architecture.png" width="100%">
+</div>
+
+[我有故事,你有酒吗?](docs/README.md)
+
 ## Status
 
 Still under development, please `do not` use this library in the `production` environment !
