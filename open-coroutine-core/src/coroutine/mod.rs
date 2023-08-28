@@ -2,6 +2,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
+use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Display, Formatter};
@@ -67,6 +68,7 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     name: &'c str,
     sp: ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>,
     state: Cell<CoroutineState>,
+    context: DashMap<&'c str, *mut c_void>,
     yields: MaybeUninit<ManuallyDrop<Yield>>,
     //调用用户函数的返回值
     result: MaybeUninit<ManuallyDrop<Return>>,
@@ -134,6 +136,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             name: Box::leak(name),
             sp,
             state: Cell::new(CoroutineState::Created),
+            context: DashMap::new(),
             yields: MaybeUninit::uninit(),
             result: MaybeUninit::uninit(),
             scheduler: None,
@@ -171,6 +174,31 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
 
     pub fn get_name(&self) -> &str {
         self.name
+    }
+
+    pub fn put<V>(&self, key: &'c str, val: V) -> Option<V> {
+        let v = Box::leak(Box::new(val));
+        self.context
+            .insert(key, (v as *mut V).cast::<c_void>())
+            .map(|ptr| unsafe { *Box::from_raw(ptr.cast::<V>()) })
+    }
+
+    pub fn get<V>(&self, key: &'c str) -> Option<&V> {
+        self.context
+            .get(key)
+            .map(|ptr| unsafe { &*ptr.cast::<V>() })
+    }
+
+    pub fn get_mut<V>(&self, key: &'c str) -> Option<&mut V> {
+        self.context
+            .get(key)
+            .map(|ptr| unsafe { &mut *ptr.cast::<V>() })
+    }
+
+    pub fn remove<V>(&self, key: &'c str) -> Option<V> {
+        self.context
+            .remove(key)
+            .map(|ptr| unsafe { *Box::from_raw(ptr.1.cast::<V>()) })
     }
 
     pub fn get_state(&self) -> CoroutineState {
@@ -275,6 +303,7 @@ impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return> {
         f.debug_struct("Coroutine")
             .field("name", &self.name)
             .field("status", &self.state)
+            .field("context", &self.context)
             .field("scheduler", &self.scheduler)
             .finish()
     }
@@ -390,5 +419,20 @@ mod tests {
         assert_eq!(Some(2), coroutine.get_yield());
         assert_eq!(CoroutineState::Finished, coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_result());
+    }
+
+    #[test]
+    fn test_context() {
+        let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
+            let current = Coroutine::<(), (), ()>::current().unwrap();
+            assert_eq!(2, *current.get("1").unwrap());
+            *current.get_mut("1").unwrap() = 3;
+            ()
+        });
+        assert!(coroutine.put("1", 1).is_none());
+        assert_eq!(Some(1), coroutine.put("1", 2));
+        assert_eq!(CoroutineState::Finished, coroutine.resume());
+        assert_eq!(Some(()), coroutine.get_result());
+        assert_eq!(Some(3), coroutine.remove("1"));
     }
 }
