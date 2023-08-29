@@ -3,6 +3,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
 use crate::pool::task::Task;
+use libc::c_int;
 use once_cell::sync::{Lazy, OnceCell};
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -31,14 +32,14 @@ static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
     let config = Config::get_instance();
     (0..config.get_event_loop_size())
-        .map(|_| {
+        .map(|i| {
             EventLoop::new(
                 config.get_stack_size(),
                 config.get_min_size(),
                 config.get_max_size(),
                 config.get_keep_alive_time(),
             )
-            .expect("init event loop failed!")
+            .unwrap_or_else(|_| panic!("init event-loop-{i} failed!"))
         })
         .collect()
 });
@@ -188,31 +189,31 @@ impl EventLoops {
         Self::slice_wait(timeout, EventLoops::next(false))
     }
 
-    pub fn wait_read_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
+    pub fn wait_read_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = EventLoops::next(false);
         event_loop.add_read_event(fd)?;
         Self::slice_wait(timeout, event_loop)
     }
 
-    pub fn wait_write_event(fd: libc::c_int, timeout: Option<Duration>) -> std::io::Result<()> {
+    pub fn wait_write_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = EventLoops::next(false);
         event_loop.add_write_event(fd)?;
         Self::slice_wait(timeout, event_loop)
     }
 
-    pub fn del_event(fd: libc::c_int) {
+    pub fn del_event(fd: c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
             _ = EventLoops::next(false).del_event(fd);
         });
     }
 
-    pub fn del_read_event(fd: libc::c_int) {
+    pub fn del_read_event(fd: c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
             _ = EventLoops::next(false).del_read_event(fd);
         });
     }
 
-    pub fn del_write_event(fd: libc::c_int) {
+    pub fn del_write_event(fd: c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
             _ = EventLoops::next(false).del_write_event(fd);
         });

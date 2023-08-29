@@ -4,8 +4,8 @@ use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
 use crate::scheduler::Scheduler;
 use crossbeam_deque::{Injector, Steal};
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
@@ -16,7 +16,7 @@ pub mod blocker;
 
 mod creator;
 
-static mut RESULT_TABLE: Lazy<HashMap<&str, usize>> = Lazy::new(HashMap::new);
+static RESULT_TABLE: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
 
 #[derive(Debug)]
 pub struct CoroutinePool {
@@ -144,7 +144,10 @@ impl CoroutinePool {
                             _ = self.idle.fetch_sub(1, Ordering::Release);
                             let task_name = task.get_name();
                             let result = task.run(suspender);
-                            unsafe { assert!(RESULT_TABLE.insert(task_name, result).is_none()) }
+                            assert!(
+                                RESULT_TABLE.insert(task_name, result).is_none(),
+                                "The previous result was not retrieved in a timely manner"
+                            );
                         }
                         Steal::Retry => continue,
                     }
@@ -179,7 +182,7 @@ impl CoroutinePool {
     }
 
     pub fn get_result(task_name: &'static str) -> Option<usize> {
-        unsafe { RESULT_TABLE.remove(&task_name) }
+        RESULT_TABLE.remove(&task_name).map(|r| r.1)
     }
 }
 

@@ -238,7 +238,7 @@ pub fn sleep_test(millis: u64) {
     let start = now();
     std::thread::sleep(Duration::from_millis(millis));
     let end = now();
-    assert!(end - start >= millis);
+    assert!(end - start >= millis, "Time consumption less than expected");
 }
 
 pub fn sleep_test_co(millis: u64) {
@@ -247,7 +247,7 @@ pub fn sleep_test_co(millis: u64) {
             let start = now();
             std::thread::sleep(Duration::from_millis(millis));
             let end = now();
-            assert!(end - start >= millis);
+            assert!(end - start >= millis, "Time consumption less than expected");
             println!("[coroutine1] launched");
         },
         (),

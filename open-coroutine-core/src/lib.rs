@@ -96,4 +96,4 @@ pub mod config;
 
 #[cfg(target_os = "linux")]
 #[allow(dead_code)]
-mod version;
+pub mod version;
