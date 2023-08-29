@@ -353,11 +353,17 @@ pub extern "C" fn set_errno(errno: libc::c_int) {
 }
 
 extern "C" fn set_non_blocking(socket: libc::c_int) {
-    assert!(set_non_blocking_flag(socket, true));
+    assert!(
+        set_non_blocking_flag(socket, true),
+        "set_non_blocking failed !"
+    );
 }
 
 extern "C" fn set_blocking(socket: libc::c_int) {
-    assert!(set_non_blocking_flag(socket, false));
+    assert!(
+        set_non_blocking_flag(socket, false),
+        "set_blocking failed !"
+    );
 }
 
 extern "C" fn set_non_blocking_flag(socket: libc::c_int, on: bool) -> bool {

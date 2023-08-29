@@ -73,7 +73,7 @@ fn main() -> std::io::Result<()> {
             } else {
                 unsafe {
                     handler.join().unwrap();
-                    assert!(!TEST_FLAG1);
+                    assert!(!TEST_FLAG1, "preemptive schedule failed");
                 }
                 Ok(())
             }
