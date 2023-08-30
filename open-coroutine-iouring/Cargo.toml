@@ -1,0 +1,26 @@
+[package]
+name = "open-coroutine-iouring"
+version = "0.1.0"
+edition = "2021"
+authors = ["zhangzicheng@apache.org"]
+description = "The io_uring support for open-coroutine"
+repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-iouring"
+keywords = ["open-coroutine", "iouring", "io_uring", "io-uring"]
+categories = ["concurrency", "asynchronous"]
+license = "LGPL-3.0 OR Apache-2.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = "0.6.1"
+libc = "0.2.147"
+cfg-if = "1.0.0"
+once_cell = "1.18.0"
+
+[build-dependencies]
+cfg-if = "1.0.0"
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+cc = "1.0.82"
+
+[dev-dependencies]
+anyhow = "1.0.75"
+slab = "0.4.8"

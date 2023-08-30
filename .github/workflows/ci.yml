@@ -71,6 +71,11 @@ jobs:
         run: |
           cd ${{ github.workspace }}/open-coroutine-core
           sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example preemptive --release --features preemptive-schedule"
+      - name: Run cargo release test io_uring
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/open-coroutine-iouring
+          sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo test --release"
       - name: Run cargo release sleep not coroutine example
         if: always()
         run: |
