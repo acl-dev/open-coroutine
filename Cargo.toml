@@ -2,6 +2,7 @@
 members = [
     "open-coroutine-timer",
     "open-coroutine-queue",
+    "open-coroutine-iouring",
     "open-coroutine-core",
     "open-coroutine-hooks",
     "open-coroutine-macros",
