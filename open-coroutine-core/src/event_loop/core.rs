@@ -46,8 +46,8 @@ impl EventLoop {
         &self,
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
     ) -> JoinHandle {
-        let task_name = unsafe { self.pool.assume_init_ref().submit(f) };
-        JoinHandle::new(self, task_name)
+        let arc = unsafe { self.pool.assume_init_ref().submit(f) };
+        JoinHandle::new(self, arc)
     }
 
     pub(crate) fn submit_raw(&self, task: Task<'static>) {
@@ -145,11 +145,6 @@ impl EventLoop {
         if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
             self.pool.assume_init_ref().resume_syscall(co_name);
         }
-    }
-
-    #[must_use]
-    pub fn get_result(task_name: &'static str) -> Option<usize> {
-        CoroutinePool::get_result(task_name)
     }
 }
 

@@ -7,6 +7,7 @@ use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -16,7 +17,9 @@ pub mod blocker;
 
 mod creator;
 
-static RESULT_TABLE: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
+#[allow(clippy::type_complexity)]
+static WAIT_TABLE: Lazy<DashMap<&str, Arc<(Mutex<Option<usize>>, Condvar)>>> =
+    Lazy::new(DashMap::new);
 
 #[derive(Debug)]
 pub struct CoroutinePool {
@@ -75,11 +78,16 @@ impl CoroutinePool {
     pub fn submit(
         &self,
         f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
-    ) -> &'static str {
+    ) -> Arc<(Mutex<Option<usize>>, Condvar)> {
         let name: Box<str> = Box::from(Uuid::new_v4().to_string());
         let clone = Box::leak(name.clone());
         self.submit_raw(Task::new(name, f));
-        clone
+        let arc = Arc::new((Mutex::new(None), Condvar::new()));
+        assert!(
+            WAIT_TABLE.insert(clone, arc.clone()).is_none(),
+            "The previous task was not retrieved"
+        );
+        arc
     }
 
     pub(crate) fn submit_raw(&self, task: Task<'static>) {
@@ -144,10 +152,12 @@ impl CoroutinePool {
                             _ = self.idle.fetch_sub(1, Ordering::Release);
                             let task_name = task.get_name();
                             let result = task.run(suspender);
-                            assert!(
-                                RESULT_TABLE.insert(task_name, result).is_none(),
-                                "The previous result was not retrieved in a timely manner"
-                            );
+                            let pair = WAIT_TABLE.remove(task_name).unwrap().1;
+                            let (lock, cvar) = &*pair;
+                            let mut pending = lock.lock().unwrap();
+                            *pending = Some(result);
+                            // Notify the condvar that the value has changed.
+                            cvar.notify_one();
                         }
                         Steal::Retry => continue,
                     }
@@ -179,10 +189,6 @@ impl CoroutinePool {
     //只有框架级crate才需要使用此方法
     pub fn resume_syscall(&self, co_name: &'static str) {
         self.workers.resume_syscall(co_name);
-    }
-
-    pub fn get_result(task_name: &'static str) -> Option<usize> {
-        RESULT_TABLE.remove(&task_name).map(|r| r.1)
     }
 }
 

@@ -4,6 +4,7 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 ///创建协程
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle {
     let _stack_size = if stack_size > 0 {
@@ -15,6 +16,7 @@ pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) 
 }
 
 ///等待协程完成
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn coroutine_join(handle: JoinHandle) -> libc::c_long {
     match handle.join() {

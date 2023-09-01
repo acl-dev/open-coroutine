@@ -10,13 +10,13 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-pub mod join;
-
 mod selector;
 
 mod blocker;
 
 pub mod core;
+
+pub mod join;
 
 /// 做C兼容时会用到
 pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;

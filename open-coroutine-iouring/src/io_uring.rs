@@ -132,6 +132,12 @@ impl IoUringOperator {
 
     pub fn select(&self, timeout: Option<Duration>) -> std::io::Result<(usize, CompletionQueue)> {
         if crate::version::support_io_uring() {
+            let mut sq = unsafe { self.io_uring.submission_shared() };
+            let mut cq = unsafe { self.io_uring.completion_shared() };
+            if sq.is_empty() {
+                // avoid ineffective blocking
+                return Ok((0, cq));
+            }
             self.timeout_add(0, timeout)?;
             let count = match self.io_uring.submit_and_wait(1) {
                 Ok(count) => count,
@@ -143,11 +149,9 @@ impl IoUringOperator {
                     }
                 }
             };
-            let mut cq = unsafe { self.io_uring.completion_shared() };
             cq.sync();
 
             // clean backlog
-            let mut sq = unsafe { self.io_uring.submission_shared() };
             loop {
                 if sq.is_full() {
                     match self.io_uring.submit() {
