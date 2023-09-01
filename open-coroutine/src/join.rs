@@ -1,7 +1,7 @@
 use open_coroutine_core::event_loop::core::EventLoop;
 use std::cmp::Ordering;
-use std::ffi::c_char;
 use std::io::{Error, ErrorKind};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 #[allow(improper_ctypes)]
@@ -13,7 +13,7 @@ extern "C" {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct JoinHandle(*const EventLoop, *const c_char);
+pub struct JoinHandle(*const EventLoop, Arc<(Mutex<Option<usize>>, Condvar)>);
 
 impl JoinHandle {
     #[allow(clippy::cast_possible_truncation)]
