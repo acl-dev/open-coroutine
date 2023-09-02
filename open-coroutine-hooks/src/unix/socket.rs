@@ -11,6 +11,15 @@ static CONNECT: Lazy<extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int> 
 pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int {
     open_coroutine_core::unbreakable!(
         {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return open_coroutine_core::event_loop::EventLoops::connect(
+                    Some(Lazy::force(&CONNECT)),
+                    socket,
+                    address,
+                    len,
+                );
+            }
             let blocking = crate::unix::is_blocking(socket);
             if blocking {
                 crate::unix::set_non_blocking(socket);
@@ -46,6 +55,7 @@ pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_
                         );
                     }
                     if r != 0 {
+                        r = -1;
                         break;
                     }
                     if err == 0 {
@@ -63,6 +73,9 @@ pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_
             }
             if blocking {
                 crate::unix::set_blocking(socket);
+            }
+            if r == -1 && Error::last_os_error().raw_os_error() == Some(libc::ETIMEDOUT) {
+                crate::unix::set_errno(libc::EINPROGRESS);
             }
             r
         },

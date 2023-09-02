@@ -100,12 +100,9 @@ static SUPPORT_WRITEV: Lazy<bool> = support!(Writev);
 static SUPPORT_SENDMSG: Lazy<bool> = support!(SendMsg);
 
 impl IoUringOperator {
-    pub fn new(cpu: u32) -> std::io::Result<Self> {
+    pub fn new(_cpu: u32) -> std::io::Result<Self> {
         Ok(IoUringOperator {
-            io_uring: IoUring::builder()
-                .setup_sqpoll(1000)
-                .setup_sqpoll_cpu(cpu)
-                .build(1024)?,
+            io_uring: IoUring::builder().build(1024)?,
             backlog: Mutex::new(VecDeque::new()),
         })
     }
@@ -115,6 +112,7 @@ impl IoUringOperator {
         if unsafe { self.io_uring.submission_shared().push(entry).is_err() } {
             self.backlog.lock().unwrap().push_back(entry);
         }
+        _ = self.io_uring.submit();
     }
 
     pub fn async_cancel(&self, user_data: usize) -> std::io::Result<()> {
@@ -132,6 +130,11 @@ impl IoUringOperator {
 
     pub fn select(&self, timeout: Option<Duration>) -> std::io::Result<(usize, CompletionQueue)> {
         if crate::version::support_io_uring() {
+            let mut sq = unsafe { self.io_uring.submission_shared() };
+            let mut cq = unsafe { self.io_uring.completion_shared() };
+            if sq.is_empty() {
+                return Ok((0, cq));
+            }
             self.timeout_add(0, timeout)?;
             let count = match self.io_uring.submit_and_wait(1) {
                 Ok(count) => count,
@@ -143,11 +146,9 @@ impl IoUringOperator {
                     }
                 }
             };
-            let mut cq = unsafe { self.io_uring.completion_shared() };
             cq.sync();
 
             // clean backlog
-            let mut sq = unsafe { self.io_uring.submission_shared() };
             loop {
                 if sq.is_full() {
                     match self.io_uring.submit() {

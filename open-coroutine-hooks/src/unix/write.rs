@@ -8,7 +8,19 @@ static SEND: Lazy<extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>
 #[no_mangle]
 pub extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
-        impl_expected_write_hook!((Lazy::force(&SEND))(socket, buf, len, flags)),
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return open_coroutine_core::event_loop::EventLoops::send(
+                    Some(Lazy::force(&SEND)),
+                    socket,
+                    buf,
+                    len,
+                    flags,
+                );
+            }
+            impl_expected_write_hook!((Lazy::force(&SEND))(socket, buf, len, flags))
+        },
         "send"
     )
 }

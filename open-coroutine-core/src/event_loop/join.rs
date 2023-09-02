@@ -86,7 +86,7 @@ mod tests {
         let handler = std::thread::Builder::new()
             .name("test_join".to_string())
             .spawn(move || {
-                let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
+                let event_loop = EventLoop::new(0, 0, 0, 1, 0).expect("init event loop failed!");
                 let handle1 = event_loop.submit(|_, _| {
                     println!("[coroutine1] launched");
                     3
@@ -133,7 +133,7 @@ mod tests {
         let handler = std::thread::Builder::new()
             .name("test_timed_join".to_string())
             .spawn(move || {
-                let event_loop = EventLoop::new(0, 0, 1, 0).expect("init event loop failed!");
+                let event_loop = EventLoop::new(0, 0, 0, 1, 0).expect("init event loop failed!");
                 let handle = event_loop.submit(|_, _| {
                     println!("[coroutine3] launched");
                     5

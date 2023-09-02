@@ -7,7 +7,19 @@ static RECV: Lazy<extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t> =
 #[no_mangle]
 pub extern "C" fn recv(socket: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
-        impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags)),
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return open_coroutine_core::event_loop::EventLoops::recv(
+                    Some(Lazy::force(&RECV)),
+                    socket,
+                    buf,
+                    len,
+                    flags,
+                );
+            }
+            impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags))
+        },
         "recv"
     )
 }
