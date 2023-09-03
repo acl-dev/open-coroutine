@@ -160,8 +160,8 @@ nanosleep hooked
 
 ### todo
 
+- [ ] refactor syscall state, distinguish between state and innerState
 - [ ] Support and compatibility for AF_XDP socket
-- [ ] Supports and is compatible with io_uring in terms of local file IO
 - [ ] hook other syscall maybe interrupt by signal
   <details>
   <summary>syscalls</summary>
@@ -208,6 +208,7 @@ nanosleep hooked
 
 ### 0.4.x
 
+- [x] Supports and is compatible with io_uring in terms of local file IO
 - [x] elegant shutdown
 - [x] use log instead of println
 - [x] enhance `#[open_coroutine::main]` macro
