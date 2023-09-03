@@ -29,14 +29,10 @@ macro_rules! impl_read_hook {
             let error_kind = std::io::Error::last_os_error().kind();
             if error_kind == std::io::ErrorKind::WouldBlock {
                 //wait read event
-                if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                _ = open_coroutine_core::event_loop::EventLoops::wait_read_event(
                     socket,
                     Some(std::time::Duration::from_millis(10)),
-                )
-                .is_err()
-                {
-                    break;
-                }
+                );
             } else if error_kind != std::io::ErrorKind::Interrupted {
                 break;
             }

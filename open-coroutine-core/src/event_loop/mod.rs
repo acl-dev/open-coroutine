@@ -10,6 +10,14 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "linux")] {
+        use crate::coroutine::CoroutineState;
+        use crate::scheduler::SchedulableCoroutine;
+        use libc::{c_void, size_t, ssize_t, sockaddr, socklen_t};
+    }
+}
+
 pub mod join;
 
 mod selector;
@@ -34,6 +42,7 @@ static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
     (0..config.get_event_loop_size())
         .map(|i| {
             EventLoop::new(
+                i as u32,
                 config.get_stack_size(),
                 config.get_min_size(),
                 config.get_max_size(),
@@ -217,5 +226,125 @@ impl EventLoops {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
             _ = EventLoops::next(false).del_write_event(fd);
         });
+    }
+}
+
+#[allow(unused_variables, clippy::not_unsafe_ptr_arg_deref)]
+#[cfg(target_os = "linux")]
+impl EventLoops {
+    /// socket
+    #[must_use]
+    pub fn connect(
+        fn_pointer: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
+        socket: c_int,
+        address: *const sockaddr,
+        len: socklen_t,
+    ) -> c_int {
+        if open_coroutine_iouring::version::support_io_uring() {
+            let event_loop = EventLoops::next(false);
+            let r = event_loop.connect(socket, address, len);
+            if r.is_err() {
+                return -1;
+            }
+            if let Some(suspender) = Suspender::<(), ()>::current() {
+                suspender.suspend();
+                //回来的时候，系统调用已经执行完了
+                assert_eq!(
+                    CoroutineState::SystemCall("connect"),
+                    SchedulableCoroutine::current()
+                        .unwrap()
+                        .set_state(CoroutineState::Running)
+                );
+            }
+            let (lock, cvar) = &*r.unwrap();
+            let syscall_result = cvar
+                .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
+                .unwrap()
+                .unwrap();
+            return syscall_result as c_int;
+        }
+        if let Some(f) = fn_pointer {
+            (f)(socket, address, len)
+        } else {
+            unsafe { libc::connect(socket, address, len) }
+        }
+    }
+
+    /// read
+    #[must_use]
+    pub fn recv(
+        fn_pointer: Option<&extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t>,
+        socket: c_int,
+        buf: *mut c_void,
+        len: size_t,
+        flags: c_int,
+    ) -> ssize_t {
+        if open_coroutine_iouring::version::support_io_uring() {
+            let event_loop = EventLoops::next(false);
+            let r = event_loop.recv(socket, buf, len, flags);
+            if r.is_err() {
+                return -1;
+            }
+            if let Some(suspender) = Suspender::<(), ()>::current() {
+                suspender.suspend();
+                //回来的时候，系统调用已经执行完了
+                assert_eq!(
+                    CoroutineState::SystemCall("recv"),
+                    SchedulableCoroutine::current()
+                        .unwrap()
+                        .set_state(CoroutineState::Running)
+                );
+            }
+            let (lock, cvar) = &*r.unwrap();
+            let syscall_result = cvar
+                .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
+                .unwrap()
+                .unwrap();
+            return syscall_result;
+        }
+        if let Some(f) = fn_pointer {
+            (f)(socket, buf, len, flags)
+        } else {
+            unsafe { libc::send(socket, buf, len, flags) }
+        }
+    }
+
+    /// write
+    #[must_use]
+    pub fn send(
+        fn_pointer: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
+        socket: c_int,
+        buf: *const c_void,
+        len: size_t,
+        flags: c_int,
+    ) -> ssize_t {
+        if open_coroutine_iouring::version::support_io_uring() {
+            let event_loop = EventLoops::next(false);
+            let r = event_loop.send(socket, buf, len, flags);
+            if r.is_err() {
+                return -1;
+            }
+            if let Some(suspender) = Suspender::<(), ()>::current() {
+                suspender.suspend();
+                //回来的时候，系统调用已经执行完了
+                assert_eq!(
+                    CoroutineState::SystemCall("send"),
+                    SchedulableCoroutine::current()
+                        .unwrap()
+                        .set_state(CoroutineState::Running)
+                );
+            }
+            let (lock, cvar) = &*r.unwrap();
+            let syscall_result = cvar
+                .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
+                .unwrap()
+                .unwrap();
+            return syscall_result;
+        }
+        if let Some(f) = fn_pointer {
+            (f)(socket, buf, len, flags)
+        } else {
+            unsafe { libc::send(socket, buf, len, flags) }
+        }
     }
 }

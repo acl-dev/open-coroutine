@@ -54,27 +54,61 @@ macro_rules! co {
 
 #[cfg(all(test, not(windows)))]
 mod tests {
+    use std::sync::{Arc, Condvar, Mutex};
+    use std::time::Duration;
 
     #[test]
-    fn simplest() {
-        let handler1 = co!(
-            |_, input| {
-                println!("[coroutine1] launched with {}", input);
-                input
-            },
-            1,
-            1024 * 1024,
-        );
-        let handler2 = co!(
-            |_, input| {
-                println!("[coroutine2] launched with {}", input);
-                input
-            },
-            "hello",
-        );
-        unsafe {
-            assert_eq!(1, handler1.join().unwrap().unwrap());
-            assert_eq!("hello", &*handler2.join::<*mut str>().unwrap().unwrap());
+    fn simplest() -> std::io::Result<()> {
+        let pair = Arc::new((Mutex::new(true), Condvar::new()));
+        let pair2 = Arc::clone(&pair);
+        let handler = std::thread::Builder::new()
+            .name("test_join".to_string())
+            .spawn(move || {
+                let handler1 = co!(
+                    |_, input| {
+                        println!("[coroutine1] launched with {}", input);
+                        input
+                    },
+                    1,
+                    1024 * 1024,
+                );
+                let handler2 = co!(
+                    |_, input| {
+                        println!("[coroutine2] launched with {}", input);
+                        input
+                    },
+                    "hello",
+                );
+                unsafe {
+                    assert_eq!(1, handler1.join().unwrap().unwrap());
+                    assert_eq!("hello", &*handler2.join::<*mut str>().unwrap().unwrap());
+                }
+
+                let (lock, cvar) = &*pair2;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                // notify the condvar that the value has changed.
+                cvar.notify_one();
+            })
+            .expect("failed to spawn thread");
+
+        // wait for the thread to start up
+        let (lock, cvar) = &*pair;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(3000),
+                |&mut pending| pending,
+            )
+            .unwrap();
+        if result.1.timed_out() {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "join failed",
+            ))
+        } else {
+            handler.join().unwrap();
+            Ok(())
         }
     }
 }

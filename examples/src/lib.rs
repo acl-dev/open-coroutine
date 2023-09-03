@@ -36,6 +36,10 @@ pub fn crate_server(
             crate_co(6);
             //从流里面读内容，读到buffer中
             let bytes_read = stream.read(&mut buffer).expect("server read failed !");
+            if bytes_read == 0 {
+                println!("server close a connection");
+                continue;
+            }
             print!("Server Received: {}", String::from_utf8_lossy(&buffer[..]));
             if bytes_read == 1 && buffer[0] == b'e' {
                 //如果读到的为空，说明已经结束了
@@ -130,6 +134,10 @@ pub fn crate_co_server(
                     let bytes_read = stream
                         .read(&mut buffer)
                         .expect("coroutine server read failed !");
+                    if bytes_read == 0 {
+                        println!("coroutine server close a connection");
+                        return None;
+                    }
                     print!(
                         "Coroutine Server Received: {}",
                         String::from_utf8_lossy(&buffer[..])
