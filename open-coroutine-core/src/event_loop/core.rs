@@ -16,7 +16,7 @@ cfg_if::cfg_if! {
         use dashmap::DashMap;
         use once_cell::sync::Lazy;
         use std::sync::{Arc, Condvar, Mutex};
-        use libc::{iovec, msghdr, off_t, size_t, ssize_t, sockaddr, socklen_t};
+        use libc::{size_t, ssize_t, sockaddr, socklen_t};
     }
 }
 
@@ -253,47 +253,6 @@ impl EventLoop {
             .map(|()| arc)
     }
 
-    pub fn read(&self, fd: c_int, buf: *mut c_void, count: size_t) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator.read(token, fd, buf, count).map(|()| token)
-    }
-
-    pub fn pread(
-        &self,
-        fd: c_int,
-        buf: *mut c_void,
-        count: size_t,
-        offset: off_t,
-    ) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator
-            .pread(token, fd, buf, count, offset)
-            .map(|()| token)
-    }
-
-    pub fn readv(&self, fd: c_int, iov: *const iovec, iovcnt: c_int) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator.readv(token, fd, iov, iovcnt).map(|()| token)
-    }
-
-    pub fn preadv(
-        &self,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-        offset: off_t,
-    ) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator
-            .preadv(token, fd, iov, iovcnt, offset)
-            .map(|()| token)
-    }
-
-    pub fn recvmsg(&self, fd: c_int, msg: *mut msghdr, flags: c_int) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator.recvmsg(token, fd, msg, flags).map(|()| token)
-    }
-
     /// write
 
     pub fn send(
@@ -312,47 +271,6 @@ impl EventLoop {
         self.operator
             .send(token, socket, buf, len, flags)
             .map(|()| arc)
-    }
-
-    pub fn write(&self, fd: c_int, buf: *const c_void, count: size_t) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator.write(token, fd, buf, count).map(|()| token)
-    }
-
-    pub fn pwrite(
-        &self,
-        fd: c_int,
-        buf: *const c_void,
-        count: size_t,
-        offset: off_t,
-    ) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator
-            .pwrite(token, fd, buf, count, offset)
-            .map(|()| token)
-    }
-
-    pub fn writev(&self, fd: c_int, iov: *const iovec, iovcnt: c_int) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator.writev(token, fd, iov, iovcnt).map(|()| token)
-    }
-
-    pub fn pwritev(
-        &self,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-        offset: off_t,
-    ) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator
-            .pwritev(token, fd, iov, iovcnt, offset)
-            .map(|()| token)
-    }
-
-    pub fn sendmsg(&self, fd: c_int, msg: *const msghdr, flags: c_int) -> std::io::Result<usize> {
-        let token = EventLoop::token(true);
-        self.operator.sendmsg(token, fd, msg, flags).map(|()| token)
     }
 }
 
