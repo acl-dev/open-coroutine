@@ -1,7 +1,7 @@
 use io_uring::opcode::{
     Accept, AsyncCancel, Close, Connect, EpollCtl, Fsync, MkDirAt, OpenAt, PollAdd, PollRemove,
-    Read, Readv, Recv, RecvMsg, RenameAt, Send, SendMsg, Shutdown, Socket, Timeout, TimeoutRemove,
-    TimeoutUpdate, Write, Writev,
+    Read, Readv, Recv, RecvMsg, RenameAt, Send, SendMsg, SendZc, Shutdown, Socket, Timeout,
+    TimeoutRemove, TimeoutUpdate, Write, Writev,
 };
 use io_uring::squeue::Entry;
 use io_uring::types::{epoll_event, Fd, Timespec};
@@ -93,6 +93,8 @@ static SUPPORT_RECVMSG: Lazy<bool> = support!(RecvMsg);
 
 static SUPPORT_SEND: Lazy<bool> = support!(Send);
 
+static SUPPORT_SEND_ZC: Lazy<bool> = support!(SendZc);
+
 static SUPPORT_WRITE: Lazy<bool> = support!(Write);
 
 static SUPPORT_WRITEV: Lazy<bool> = support!(Writev);
@@ -107,12 +109,12 @@ impl IoUringOperator {
         })
     }
 
-    fn push_sq(&self, entry: Entry) {
+    fn push_sq(&self, entry: Entry) -> std::io::Result<()> {
         let entry = Box::leak(Box::new(entry));
         if unsafe { self.io_uring.submission_shared().push(entry).is_err() } {
             self.backlog.lock().unwrap().push_back(entry);
         }
-        _ = self.io_uring.submit();
+        self.io_uring.submit().map(|_| ())
     }
 
     pub fn async_cancel(&self, user_data: usize) -> std::io::Result<()> {
@@ -120,8 +122,7 @@ impl IoUringOperator {
             let entry = AsyncCancel::new(user_data as u64)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -198,8 +199,7 @@ impl IoUringOperator {
             )
             .build()
             .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -209,8 +209,7 @@ impl IoUringOperator {
             let entry = PollAdd::new(Fd(fd), flags as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -220,8 +219,7 @@ impl IoUringOperator {
             let entry = PollRemove::new(user_data as u64)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -235,8 +233,7 @@ impl IoUringOperator {
                     .sec(duration.as_secs())
                     .nsec(duration.subsec_nanos());
                 let entry = Timeout::new(&timeout).build().user_data(user_data as u64);
-                self.push_sq(entry);
-                return Ok(());
+                return self.push_sq(entry);
             }
             return Err(Error::new(ErrorKind::Unsupported, "unsupported"));
         }
@@ -256,8 +253,7 @@ impl IoUringOperator {
                 let entry = TimeoutUpdate::new(user_data as u64, &timeout)
                     .build()
                     .user_data(user_data as u64);
-                self.push_sq(entry);
-                return Ok(());
+                return self.push_sq(entry);
             }
             return Err(Error::new(ErrorKind::Unsupported, "unsupported"));
         }
@@ -267,8 +263,7 @@ impl IoUringOperator {
     pub fn timeout_remove(&self, user_data: usize) -> std::io::Result<()> {
         if *SUPPORT_TIMEOUT_REMOVE {
             let entry = TimeoutRemove::new(user_data as u64).build();
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -289,8 +284,7 @@ impl IoUringOperator {
                 .mode(mode)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -307,8 +301,7 @@ impl IoUringOperator {
                 .mode(mode)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -325,8 +318,7 @@ impl IoUringOperator {
             let entry = RenameAt::new(Fd(old_dir_fd), old_path, Fd(new_dir_fd), new_path)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -345,8 +337,7 @@ impl IoUringOperator {
                 .flags(flags)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -354,8 +345,7 @@ impl IoUringOperator {
     pub fn fsync(&self, user_data: usize, fd: c_int) -> std::io::Result<()> {
         if *SUPPORT_FSYNC {
             let entry = Fsync::new(Fd(fd)).build().user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -373,8 +363,7 @@ impl IoUringOperator {
             let entry = Socket::new(domain, ty, protocol)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -390,8 +379,7 @@ impl IoUringOperator {
             let entry = Accept::new(Fd(socket), address, address_len)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -409,8 +397,7 @@ impl IoUringOperator {
                 .flags(flg)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -426,8 +413,7 @@ impl IoUringOperator {
             let entry = Connect::new(Fd(socket), address, len)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -437,8 +423,7 @@ impl IoUringOperator {
             let entry = Shutdown::new(Fd(socket), how)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -446,8 +431,7 @@ impl IoUringOperator {
     pub fn close(&self, user_data: usize, fd: c_int) -> std::io::Result<()> {
         if *SUPPORT_CLOSE {
             let entry = Close::new(Fd(fd)).build().user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -467,8 +451,7 @@ impl IoUringOperator {
                 .flags(flags)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -484,8 +467,7 @@ impl IoUringOperator {
             let entry = Read::new(Fd(fd), buf.cast::<u8>(), count as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -503,8 +485,7 @@ impl IoUringOperator {
                 .offset(offset as u64)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -520,8 +501,7 @@ impl IoUringOperator {
             let entry = Readv::new(Fd(fd), iov, iovcnt as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -539,8 +519,7 @@ impl IoUringOperator {
                 .offset(offset as u64)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -557,8 +536,7 @@ impl IoUringOperator {
                 .flags(flags as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -578,8 +556,30 @@ impl IoUringOperator {
                 .flags(flags)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
+        }
+        Err(Error::new(ErrorKind::Unsupported, "unsupported"))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn sendto(
+        &self,
+        user_data: usize,
+        socket: c_int,
+        buf: *const c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *const sockaddr,
+        addrlen: socklen_t,
+    ) -> std::io::Result<()> {
+        if *SUPPORT_SEND_ZC {
+            let entry = SendZc::new(Fd(socket), buf.cast::<u8>(), len as u32)
+                .flags(flags)
+                .dest_addr(addr)
+                .dest_addr_len(addrlen)
+                .build()
+                .user_data(user_data as u64);
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -595,8 +595,7 @@ impl IoUringOperator {
             let entry = Write::new(Fd(fd), buf.cast::<u8>(), count as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -614,8 +613,7 @@ impl IoUringOperator {
                 .offset(offset as u64)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -631,8 +629,7 @@ impl IoUringOperator {
             let entry = Writev::new(Fd(fd), iov, iovcnt as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -650,8 +647,7 @@ impl IoUringOperator {
                 .offset(offset as u64)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }
@@ -668,8 +664,7 @@ impl IoUringOperator {
                 .flags(flags as u32)
                 .build()
                 .user_data(user_data as u64);
-            self.push_sq(entry);
-            return Ok(());
+            return self.push_sq(entry);
         }
         Err(Error::new(ErrorKind::Unsupported, "unsupported"))
     }

@@ -224,14 +224,16 @@ impl EventLoop {
         len: socklen_t,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
         let token = EventLoop::token(true);
-        let arc = Arc::new((Mutex::new(None), Condvar::new()));
-        assert!(
-            SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
-            "The previous token was not retrieved in a timely manner"
-        );
         self.operator
             .connect(token, socket, address, len)
-            .map(|()| arc)
+            .map(|()| {
+                let arc = Arc::new((Mutex::new(None), Condvar::new()));
+                assert!(
+                    SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
+                    "The previous token was not retrieved in a timely manner"
+                );
+                arc
+            })
     }
 
     /// read
@@ -243,14 +245,16 @@ impl EventLoop {
         flags: c_int,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
         let token = EventLoop::token(true);
-        let arc = Arc::new((Mutex::new(None), Condvar::new()));
-        assert!(
-            SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
-            "The previous token was not retrieved in a timely manner"
-        );
         self.operator
             .recv(token, socket, buf, len, flags)
-            .map(|()| arc)
+            .map(|()| {
+                let arc = Arc::new((Mutex::new(None), Condvar::new()));
+                assert!(
+                    SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
+                    "The previous token was not retrieved in a timely manner"
+                );
+                arc
+            })
     }
 
     /// write
@@ -263,14 +267,16 @@ impl EventLoop {
         flags: c_int,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
         let token = EventLoop::token(true);
-        let arc = Arc::new((Mutex::new(None), Condvar::new()));
-        assert!(
-            SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
-            "The previous token was not retrieved in a timely manner"
-        );
         self.operator
             .send(token, socket, buf, len, flags)
-            .map(|()| arc)
+            .map(|()| {
+                let arc = Arc::new((Mutex::new(None), Condvar::new()));
+                assert!(
+                    SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
+                    "The previous token was not retrieved in a timely manner"
+                );
+                arc
+            })
     }
 }
 
