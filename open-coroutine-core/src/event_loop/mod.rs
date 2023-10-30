@@ -181,7 +181,7 @@ impl EventLoops {
                 //timeout
                 return event_loop.wait_just(Some(Duration::ZERO));
             }
-            event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
+            event_loop.wait_just(Some(Duration::from_nanos(left_time)))?;
         }
     }
 
