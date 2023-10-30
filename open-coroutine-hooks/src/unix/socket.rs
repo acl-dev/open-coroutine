@@ -58,14 +58,21 @@ pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_
                         r = -1;
                         break;
                     }
-                    if err == 0 {
+                    if err != 0 {
+                        crate::unix::set_errno(err);
+                        r = -1;
+                        break;
+                    };
+                    unsafe {
+                        let mut address = std::mem::zeroed();
+                        let mut address_len = std::mem::zeroed();
+                        r = libc::getpeername(socket, &mut address, &mut address_len);
+                    }
+                    if r == 0 {
                         crate::unix::reset_errno();
                         r = 0;
                         break;
-                    };
-                    crate::unix::set_errno(err);
-                    r = -1;
-                    break;
+                    }
                 } else if errno != Some(libc::EINTR) {
                     r = -1;
                     break;
