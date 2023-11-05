@@ -114,7 +114,7 @@ impl Monitor {
                 .expect("failed to spawn monitor thread")
         });
         Monitor {
-            tasks: TimerList::new(),
+            tasks: TimerList::default(),
             started: AtomicBool::new(true),
         }
     }
@@ -129,9 +129,8 @@ impl Monitor {
 
     fn signal(&mut self) {
         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-        for entry in self.tasks.iter() {
-            let exec_time = entry.get_time();
-            if open_coroutine_timer::now() < exec_time {
+        for (exec_time, entry) in self.tasks.iter() {
+            if open_coroutine_timer::now() < *exec_time {
                 break;
             }
             for node in entry.iter() {

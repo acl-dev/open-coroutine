@@ -22,7 +22,7 @@ pub type SchedulableCoroutine = Coroutine<'static, (), (), usize>;
 
 static QUEUE: Lazy<WorkStealQueue<SchedulableCoroutine>> = Lazy::new(WorkStealQueue::default);
 
-static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::new);
+static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
 
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
@@ -97,13 +97,12 @@ impl Scheduler {
     fn check_ready(&self) {
         unsafe {
             for _ in 0..SUSPEND_TABLE.len() {
-                if let Some(entry) = SUSPEND_TABLE.front() {
-                    let exec_time = entry.get_time();
-                    if open_coroutine_timer::now() < exec_time {
+                if let Some((exec_time, _)) = SUSPEND_TABLE.front() {
+                    if open_coroutine_timer::now() < *exec_time {
                         break;
                     }
                     //移动至"就绪"队列
-                    if let Some(mut entry) = SUSPEND_TABLE.pop_front() {
+                    if let Some((_, mut entry)) = SUSPEND_TABLE.pop_front() {
                         for _ in 0..entry.len() {
                             if let Some(coroutine) = entry.pop_front() {
                                 let old = coroutine.set_state(CoroutineState::Ready);
