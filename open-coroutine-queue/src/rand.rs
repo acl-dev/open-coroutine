@@ -1,7 +1,6 @@
 use std::cell::Cell;
 
-use std::sync::Mutex;
-
+use parking_lot::Mutex;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::atomic::AtomicU32;
@@ -48,10 +47,7 @@ impl RngSeedGenerator {
 
     /// Returns the next seed in the sequence.
     pub fn next_seed(&self) -> RngSeed {
-        let rng = self
-            .state
-            .lock()
-            .expect("RNG seed generator is internally corrupt");
+        let rng = self.state.lock();
 
         let s = rng.fastrand();
         let r = rng.fastrand();

@@ -8,8 +8,10 @@ repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-
 keywords = ["open-coroutine", "queue", "work-steal"]
 categories = ["data-structures", "concurrency"]
 license = "LGPL-3.0 OR Apache-2.0"
+readme = "../README.md"
 
 [dependencies]
-num_cpus = "1.14.0"
+num_cpus = "1.16.0"
 st3 = "0.4.1"
-crossbeam-deque = "0.8.2"
+crossbeam-deque = "0.8.3"
+parking_lot = "0.12.1"

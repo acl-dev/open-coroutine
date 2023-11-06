@@ -4,7 +4,7 @@ use crate::scheduler::listener::Listener;
 use corosensei::stack::DefaultStack;
 use corosensei::ScopedCoroutine;
 use once_cell::sync::Lazy;
-use open_coroutine_queue::{LocalQueue, WorkStealQueue};
+use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -19,8 +19,6 @@ type RootCoroutine<'a> = ScopedCoroutine<'a, (), (), (), DefaultStack>;
 
 /// 用户协程
 pub type SchedulableCoroutine = Coroutine<'static, (), (), usize>;
-
-static QUEUE: Lazy<WorkStealQueue<SchedulableCoroutine>> = Lazy::new(WorkStealQueue::default);
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
 
@@ -56,10 +54,11 @@ impl Scheduler {
         Self::with_name(Box::from(Uuid::new_v4().to_string()))
     }
 
+    #[must_use]
     pub fn with_name(name: Box<str>) -> Self {
         Scheduler {
             name: Box::leak(name),
-            ready: QUEUE.local_queue(),
+            ready: LocalQueue::default(),
             listeners: RefCell::default(),
         }
     }
