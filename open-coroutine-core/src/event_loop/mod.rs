@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::coroutine::suspender::Suspender;
+use crate::coroutine::suspender::SuspenderImpl;
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
 use crate::pool::task::Task;
@@ -27,7 +27,7 @@ mod blocker;
 pub mod core;
 
 /// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;
+pub type UserFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
 
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
@@ -162,7 +162,7 @@ impl EventLoops {
     }
 
     /// todo This is actually an API for creating tasks, adding an API for creating coroutines
-    pub fn submit(f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static) -> JoinHandle {
+    pub fn submit(f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static) -> JoinHandle {
         EventLoops::start();
         EventLoops::next(true).submit(f)
     }
@@ -176,7 +176,7 @@ impl EventLoops {
         event_loop: &'static EventLoop,
     ) -> std::io::Result<()> {
         let time = timeout.unwrap_or(Duration::MAX);
-        if let Some(suspender) = Suspender::<(), ()>::current() {
+        if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
             suspender.delay(time);
             //回来的时候等待的时间已经到了
             return event_loop.wait_just(Some(Duration::ZERO));
@@ -246,7 +246,7 @@ impl EventLoops {
             if r.is_err() {
                 return -1;
             }
-            if let Some(suspender) = Suspender::<(), ()>::current() {
+            if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
@@ -285,7 +285,7 @@ impl EventLoops {
             if r.is_err() {
                 return -1;
             }
-            if let Some(suspender) = Suspender::<(), ()>::current() {
+            if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
@@ -324,7 +324,7 @@ impl EventLoops {
             if r.is_err() {
                 return -1;
             }
-            if let Some(suspender) = Suspender::<(), ()>::current() {
+            if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(

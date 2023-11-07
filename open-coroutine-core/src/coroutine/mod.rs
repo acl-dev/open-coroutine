@@ -1,5 +1,5 @@
 use crate::common::page_size;
-use crate::coroutine::suspender::Suspender;
+use crate::coroutine::suspender::SuspenderImpl;
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
@@ -24,10 +24,8 @@ pub enum CoroutineState {
     Suspend(u64),
     ///执行系统调用，参数为系统调用名
     SystemCall(&'static str),
-    ///栈扩/缩容时
-    CopyStack,
     ///执行用户函数完成
-    Finished,
+    Complete,
 }
 
 impl Display for CoroutineState {
@@ -94,15 +92,15 @@ thread_local! {
 impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
     where
-        F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
+        F: FnOnce(&SuspenderImpl<Param, Yield>, Param) -> Return,
         F: 'c,
     {
         let stack = DefaultStack::new(size.max(page_size()))?;
         let sp = ScopedCoroutine::with_stack(stack, |y, p| {
-            let suspender = Suspender::new(y);
-            Suspender::<Param, Yield>::init_current(&suspender);
+            let suspender = SuspenderImpl::new(y);
+            SuspenderImpl::<Param, Yield>::init_current(&suspender);
             let r = f(&suspender, p);
-            Suspender::<Param, Yield>::clean_current();
+            SuspenderImpl::<Param, Yield>::clean_current();
             r
         });
         Ok(Coroutine {
@@ -185,7 +183,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.get_state() == CoroutineState::Finished
+        self.get_state() == CoroutineState::Complete
     }
 
     pub fn get_result(&self) -> Option<Return> {
@@ -220,8 +218,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn resume_with(&mut self, arg: Param) -> CoroutineState {
         let mut current = self.get_state();
         match current {
-            CoroutineState::Finished => {
-                return CoroutineState::Finished;
+            CoroutineState::Complete => {
+                return CoroutineState::Complete;
             }
             CoroutineState::SystemCall(_) => {}
             CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(0) => {
@@ -234,7 +232,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         let state = match self.sp.resume(arg) {
             CoroutineResult::Return(r) => {
                 self.result = MaybeUninit::new(ManuallyDrop::new(r));
-                let state = CoroutineState::Finished;
+                let state = CoroutineState::Complete;
                 assert_eq!(CoroutineState::Running, self.set_state(state));
                 state
             }
@@ -243,13 +241,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 let mut current = self.get_state();
                 match current {
                     CoroutineState::Running => {
-                        let syscall_name = Suspender::<Yield, Param>::syscall_name();
-                        if syscall_name.is_empty() {
-                            current =
-                                CoroutineState::Suspend(Suspender::<Yield, Param>::timestamp());
-                        } else {
-                            current = CoroutineState::SystemCall(syscall_name);
-                        }
+                        current = CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
                         assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
@@ -309,11 +301,11 @@ mod tests {
 
     #[test]
     fn test_return() {
-        let mut coroutine = co!(|_s: &Suspender<'_, i32, ()>, param| {
+        let mut coroutine = co!(|_s: &SuspenderImpl<'_, i32, ()>, param| {
             assert_eq!(0, param);
             1
         });
-        assert_eq!(CoroutineState::Finished, coroutine.resume_with(0));
+        assert_eq!(CoroutineState::Complete, coroutine.resume_with(0));
         assert_eq!(Some(1), coroutine.get_result());
     }
 
@@ -347,7 +339,7 @@ mod tests {
         assert_eq!(Some(2), coroutine.get_yield());
         assert_eq!(CoroutineState::SystemCall("read"), coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_yield());
-        assert_eq!(CoroutineState::Finished, coroutine.resume_with(5));
+        assert_eq!(CoroutineState::Complete, coroutine.resume_with(5));
         assert_eq!(Some(6), coroutine.get_result());
     }
 
@@ -363,19 +355,19 @@ mod tests {
         assert_eq!(Some(2), coroutine.get_yield());
         assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_yield());
-        assert_eq!(CoroutineState::Finished, coroutine.resume_with(5));
+        assert_eq!(CoroutineState::Complete, coroutine.resume_with(5));
         assert_eq!(Some(6), coroutine.get_result());
     }
 
     #[test]
     fn test_current() {
         assert!(Coroutine::<i32, i32, i32>::current().is_none());
-        let mut coroutine = co!(|_: &Suspender<'_, i32, i32>, input| {
+        let mut coroutine = co!(|_: &SuspenderImpl<'_, i32, i32>, input| {
             assert_eq!(0, input);
             assert!(Coroutine::<i32, i32, i32>::current().is_some());
             1
         });
-        assert_eq!(CoroutineState::Finished, coroutine.resume_with(0));
+        assert_eq!(CoroutineState::Complete, coroutine.resume_with(0));
         assert_eq!(Some(1), coroutine.get_result());
     }
 
@@ -390,13 +382,13 @@ mod tests {
         });
         assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());
-        assert_eq!(CoroutineState::Finished, coroutine.resume_with(3));
+        assert_eq!(CoroutineState::Complete, coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_result());
     }
 
     #[test]
     fn test_context() {
-        let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
+        let mut coroutine = co!(|_: &SuspenderImpl<'_, (), ()>, ()| {
             let current = Coroutine::<(), (), ()>::current().unwrap();
             assert_eq!(2, *current.get("1").unwrap());
             *current.get_mut("1").unwrap() = 3;
@@ -404,7 +396,7 @@ mod tests {
         });
         assert!(coroutine.put("1", 1).is_none());
         assert_eq!(Some(1), coroutine.put("1", 2));
-        assert_eq!(CoroutineState::Finished, coroutine.resume());
+        assert_eq!(CoroutineState::Complete, coroutine.resume());
         assert_eq!(Some(()), coroutine.get_result());
         assert_eq!(Some(3), coroutine.remove("1"));
     }

@@ -1,5 +1,5 @@
 use crate::join::JoinHandle;
-use open_coroutine_core::coroutine::suspender::Suspender;
+use open_coroutine_core::coroutine::suspender::SuspenderImpl;
 use open_coroutine_core::event_loop::UserFunc;
 use std::ffi::c_void;
 
@@ -11,14 +11,14 @@ extern "C" {
 #[allow(dead_code)]
 pub fn co<F, P: 'static, R: 'static>(f: F, param: P, stack_size: usize) -> JoinHandle
 where
-    F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
+    F: FnOnce(*const SuspenderImpl<(), ()>, P) -> R + Copy,
 {
     extern "C" fn co_main<F, P: 'static, R: 'static>(
-        suspender: *const Suspender<(), ()>,
+        suspender: *const SuspenderImpl<(), ()>,
         input: usize,
     ) -> usize
     where
-        F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
+        F: FnOnce(*const SuspenderImpl<(), ()>, P) -> R + Copy,
     {
         unsafe {
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
