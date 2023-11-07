@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use uuid::Uuid;
+use crate::constants::DEFAULT_STACK_SIZE;
 
 pub mod listener;
 
@@ -81,7 +82,7 @@ impl Scheduler {
         let coroutine = SchedulableCoroutine::new(
             Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
             f,
-            stack_size.unwrap_or(crate::coroutine::default_stack_size()),
+            stack_size.unwrap_or(DEFAULT_STACK_SIZE),
         )?;
         assert_eq!(
             CoroutineState::Created,

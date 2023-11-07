@@ -1,3 +1,4 @@
+use crate::common::page_size;
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
@@ -7,36 +8,8 @@ use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod suspender;
-
-#[allow(clippy::pedantic)]
-pub fn page_size() -> usize {
-    static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
-    let mut ret = PAGE_SIZE.load(Ordering::Relaxed);
-    if ret == 0 {
-        unsafe {
-            cfg_if::cfg_if! {
-                if #[cfg(windows)] {
-                    let mut info = std::mem::zeroed();
-                    windows_sys::Win32::System::SystemInformation::GetSystemInfo(&mut info);
-                    ret = info.dwPageSize as usize
-                } else {
-                    ret = libc::sysconf(libc::_SC_PAGESIZE) as usize;
-                }
-            }
-        }
-        PAGE_SIZE.store(ret, Ordering::Relaxed);
-    }
-    ret
-}
-
-#[must_use]
-pub fn default_stack_size() -> usize {
-    //min stack size for backtrace
-    64 * 1024
-}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -96,7 +69,7 @@ macro_rules! co {
         $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
             $f,
-            $crate::coroutine::default_stack_size(),
+            $crate::constants::DEFAULT_STACK_SIZE,
         )
         .expect("create coroutine failed !")
     };
@@ -108,7 +81,7 @@ macro_rules! co {
         $crate::coroutine::Coroutine::new(
             Box::from($name),
             $f,
-            $crate::coroutine::default_stack_size(),
+            $crate::constants::DEFAULT_STACK_SIZE,
         )
         .expect("create coroutine failed !")
     };

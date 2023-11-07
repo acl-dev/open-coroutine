@@ -1,6 +1,7 @@
 use crossbeam_utils::atomic::AtomicCell;
 use once_cell::sync::Lazy;
 use std::fmt::{Debug, Formatter};
+use crate::constants::DEFAULT_STACK_SIZE;
 
 static CONFIG: Lazy<Config> = Lazy::new(Config::default);
 
@@ -83,7 +84,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             event_loop_size: AtomicCell::new(num_cpus::get()),
-            stack_size: AtomicCell::new(crate::coroutine::default_stack_size()),
+            stack_size: AtomicCell::new(DEFAULT_STACK_SIZE),
             min_size: AtomicCell::new(0),
             max_size: AtomicCell::new(65536),
             keep_alive_time: AtomicCell::new(0),
