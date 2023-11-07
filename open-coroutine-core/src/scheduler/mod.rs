@@ -1,3 +1,4 @@
+use crate::constants::DEFAULT_STACK_SIZE;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineState};
 use crate::scheduler::listener::Listener;
@@ -10,7 +11,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use uuid::Uuid;
-use crate::constants::DEFAULT_STACK_SIZE;
 
 pub mod listener;
 

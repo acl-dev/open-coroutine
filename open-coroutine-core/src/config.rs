@@ -1,7 +1,7 @@
+use crate::constants::DEFAULT_STACK_SIZE;
 use crossbeam_utils::atomic::AtomicCell;
 use once_cell::sync::Lazy;
 use std::fmt::{Debug, Formatter};
-use crate::constants::DEFAULT_STACK_SIZE;
 
 static CONFIG: Lazy<Config> = Lazy::new(Config::default);
 
