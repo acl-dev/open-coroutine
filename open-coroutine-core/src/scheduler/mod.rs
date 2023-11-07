@@ -1,3 +1,4 @@
+use crate::constants::DEFAULT_STACK_SIZE;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineState};
 use crate::scheduler::listener::Listener;
@@ -81,7 +82,7 @@ impl Scheduler {
         let coroutine = SchedulableCoroutine::new(
             Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
             f,
-            stack_size.unwrap_or(crate::coroutine::default_stack_size()),
+            stack_size.unwrap_or(DEFAULT_STACK_SIZE),
         )?;
         assert_eq!(
             CoroutineState::Created,

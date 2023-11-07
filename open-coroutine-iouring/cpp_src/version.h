@@ -9,12 +9,6 @@ extern "C" {
 
 int linux_version_code();
 
-int linux_version_major();
-
-int linux_version_patchlevel();
-
-int linux_version_sublevel();
-
 #ifdef __cplusplus
 }
 #endif
