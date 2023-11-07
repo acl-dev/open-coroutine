@@ -1,17 +1,17 @@
-use crate::coroutine::suspender::Suspender;
+use crate::coroutine::suspender::SuspenderImpl;
 use std::fmt::{Debug, Formatter};
 
 #[repr(C)]
 #[allow(clippy::type_complexity)]
 pub struct Task<'t> {
     name: &'t str,
-    func: Box<dyn FnOnce(&Suspender<(), ()>, ()) -> usize>,
+    func: Box<dyn FnOnce(&SuspenderImpl<(), ()>, ()) -> usize>,
 }
 
 impl<'t> Task<'t> {
     pub fn new(
         name: Box<str>,
-        func: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
+        func: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static,
     ) -> Self {
         Task {
             name: Box::leak(name),
@@ -25,7 +25,7 @@ impl<'t> Task<'t> {
     }
 
     #[must_use]
-    pub fn run(self, suspender: &Suspender<'_, (), ()>) -> usize {
+    pub fn run(self, suspender: &SuspenderImpl<'_, (), ()>) -> usize {
         (self.func)(suspender, ())
     }
 }

@@ -63,7 +63,7 @@ pub mod pool;
 macro_rules! unbreakable {
     ( $f: expr , $syscall: expr ) => {{
         $crate::info!("{} hooked", $syscall);
-        if $crate::coroutine::suspender::Suspender::<(), ()>::current().is_some() {
+        if $crate::coroutine::suspender::SuspenderImpl::<(), ()>::current().is_some() {
             let co = $crate::scheduler::SchedulableCoroutine::current()
                 .unwrap_or_else(|| panic!("current coroutine not found !"));
             let co_name = co.get_name();

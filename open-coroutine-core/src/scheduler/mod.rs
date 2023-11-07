@@ -1,9 +1,7 @@
 use crate::constants::DEFAULT_STACK_SIZE;
-use crate::coroutine::suspender::Suspender;
+use crate::coroutine::suspender::SuspenderImpl;
 use crate::coroutine::{Coroutine, CoroutineState};
 use crate::scheduler::listener::Listener;
-use corosensei::stack::DefaultStack;
-use corosensei::ScopedCoroutine;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
@@ -14,19 +12,12 @@ use uuid::Uuid;
 
 pub mod listener;
 
-/// 源协程
-#[allow(dead_code)]
-type RootCoroutine<'a> = ScopedCoroutine<'a, (), (), (), DefaultStack>;
-
 /// 用户协程
 pub type SchedulableCoroutine = Coroutine<'static, (), (), usize>;
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
 
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
-
-#[allow(dead_code)]
-static mut COPY_STACK_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
@@ -76,7 +67,7 @@ impl Scheduler {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&Suspender<'_, (), ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<&'static str> {
         let coroutine = SchedulableCoroutine::new(
@@ -163,10 +154,7 @@ impl Scheduler {
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
                             unsafe { _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine) };
                         }
-                        CoroutineState::CopyStack => {
-                            todo!()
-                        }
-                        CoroutineState::Finished => {
+                        CoroutineState::Complete => {
                             self.on_finish(&coroutine);
                             let name = Box::leak(Box::from(coroutine.get_name()));
                             _ = unsafe { RESULT_TABLE.insert(name, coroutine) };
