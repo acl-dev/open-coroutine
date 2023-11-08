@@ -123,7 +123,7 @@ mod korosensei {
     use corosensei::Yielder;
     use std::panic::UnwindSafe;
 
-    #[repr(transparent)]
+    #[repr(C)]
     pub struct SuspenderImpl<'s, Param, Yield>(pub(crate) &'s Yielder<Param, Yield>)
     where
         Param: UnwindSafe,
