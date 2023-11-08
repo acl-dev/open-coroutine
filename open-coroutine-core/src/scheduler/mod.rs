@@ -230,6 +230,7 @@ impl Default for Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coroutine::suspender::{SimpleDelaySuspender, SimpleSuspender};
 
     #[test]
     fn test_simple() {
