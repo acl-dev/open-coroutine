@@ -1,6 +1,5 @@
 use libc::{c_int, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
-use open_coroutine_core::common::Current;
 use std::ffi::c_void;
 
 static RECV: Lazy<extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t> = init_hook!("recv");
