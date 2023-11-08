@@ -1,5 +1,5 @@
-use crate::common::{page_size, Current};
-use crate::coroutine::suspender::{DelaySuspender, SuspenderImpl};
+use crate::common::page_size;
+use crate::coroutine::suspender::SuspenderImpl;
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
@@ -8,7 +8,6 @@ use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
-use std::panic::UnwindSafe;
 
 pub mod suspender;
 
@@ -36,7 +35,7 @@ impl Display for CoroutineState {
 }
 
 #[repr(C)]
-pub struct CoroutineImpl<'c, Param, Yield, Return> {
+pub struct Coroutine<'c, Param, Yield, Return> {
     name: &'c str,
     sp: ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>,
     state: Cell<CoroutineState>,
@@ -47,7 +46,7 @@ pub struct CoroutineImpl<'c, Param, Yield, Return> {
     scheduler: Option<*const Scheduler>,
 }
 
-impl<'c, Param, Yield, Return> Drop for CoroutineImpl<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return> {
     fn drop(&mut self) {
         //for test_yield case
         if self.sp.started() && !self.sp.done() {
@@ -56,20 +55,16 @@ impl<'c, Param, Yield, Return> Drop for CoroutineImpl<'c, Param, Yield, Return> 
     }
 }
 
-unsafe impl<'c, Param, Yield, Return> Send for CoroutineImpl<'c, Param, Yield, Return> {}
+unsafe impl<'c, Param, Yield, Return> Send for Coroutine<'c, Param, Yield, Return> {}
 
 #[macro_export]
 macro_rules! co {
     ($f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(
-            Box::from(uuid::Uuid::new_v4().to_string()),
-            $f,
-            $size,
-        )
-        .expect("create coroutine failed !")
+        $crate::coroutine::Coroutine::new(Box::from(uuid::Uuid::new_v4().to_string()), $f, $size)
+            .expect("create coroutine failed !")
     };
     ($f:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(
+        $crate::coroutine::Coroutine::new(
             Box::from(uuid::Uuid::new_v4().to_string()),
             $f,
             $crate::constants::DEFAULT_STACK_SIZE,
@@ -77,11 +72,11 @@ macro_rules! co {
         .expect("create coroutine failed !")
     };
     ($name:literal, $f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(Box::from($name), $f, $size)
+        $crate::coroutine::Coroutine::new(Box::from($name), $f, $size)
             .expect("create coroutine failed !")
     };
     ($name:literal, $f:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(
+        $crate::coroutine::Coroutine::new(
             Box::from($name),
             $f,
             $crate::constants::DEFAULT_STACK_SIZE,
@@ -94,7 +89,7 @@ thread_local! {
     static COROUTINE: RefCell<*const c_void> = RefCell::new(std::ptr::null());
 }
 
-impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
     where
         F: FnOnce(&SuspenderImpl<Param, Yield>, Param) -> Return,
@@ -102,13 +97,13 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, 
     {
         let stack = DefaultStack::new(size.max(page_size()))?;
         let sp = ScopedCoroutine::with_stack(stack, |y, p| {
-            let suspender = SuspenderImpl(y);
+            let suspender = SuspenderImpl::new(y);
             SuspenderImpl::<Param, Yield>::init_current(&suspender);
             let r = f(&suspender, p);
             SuspenderImpl::<Param, Yield>::clean_current();
             r
         });
-        Ok(CoroutineImpl {
+        Ok(Coroutine {
             name: Box::leak(name),
             sp,
             state: Cell::new(CoroutineState::Created),
@@ -120,14 +115,14 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, 
     }
 
     #[allow(clippy::ptr_as_ptr)]
-    fn init_current(coroutine: &CoroutineImpl<'c, Param, Yield, Return>) {
+    fn init_current(coroutine: &Coroutine<'c, Param, Yield, Return>) {
         COROUTINE.with(|c| {
             _ = c.replace(coroutine as *const _ as *const c_void);
         });
     }
 
     #[must_use]
-    pub fn current() -> Option<&'c CoroutineImpl<'c, Param, Yield, Return>> {
+    pub fn current() -> Option<&'c Coroutine<'c, Param, Yield, Return>> {
         COROUTINE.with(|boxed| {
             let ptr = *boxed
                 .try_borrow_mut()
@@ -135,7 +130,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, 
             if ptr.is_null() {
                 None
             } else {
-                Some(unsafe { &*(ptr).cast::<CoroutineImpl<'c, Param, Yield, Return>>() })
+                Some(unsafe { &*(ptr).cast::<Coroutine<'c, Param, Yield, Return>>() })
             }
         })
     }
@@ -233,7 +228,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, 
             }
             _ => panic!("{} unexpected state {current}", self.get_name()),
         };
-        CoroutineImpl::<Param, Yield, Return>::init_current(self);
+        Coroutine::<Param, Yield, Return>::init_current(self);
         let state = match self.sp.resume(arg) {
             CoroutineResult::Return(r) => {
                 self.result = MaybeUninit::new(ManuallyDrop::new(r));
@@ -246,8 +241,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, 
                 let mut current = self.get_state();
                 match current {
                     CoroutineState::Running => {
-                        current =
-                            CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
+                        current = CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
                         assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
@@ -258,18 +252,18 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> CoroutineImpl<'c, Param, 
                 }
             }
         };
-        CoroutineImpl::<Param, Yield, Return>::clean_current();
+        Coroutine::<Param, Yield, Return>::clean_current();
         state
     }
 }
 
-impl<'c, Yield: UnwindSafe, Return> CoroutineImpl<'c, (), Yield, Return> {
+impl<'c, Yield, Return> Coroutine<'c, (), Yield, Return> {
     pub fn resume(&mut self) -> CoroutineState {
         self.resume_with(())
     }
 }
 
-impl<'c, Param, Yield, Return> Debug for CoroutineImpl<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name)
@@ -280,21 +274,21 @@ impl<'c, Param, Yield, Return> Debug for CoroutineImpl<'c, Param, Yield, Return>
     }
 }
 
-impl<'c, Param, Yield, Return> Eq for CoroutineImpl<'c, Param, Yield, Return> {}
+impl<'c, Param, Yield, Return> Eq for Coroutine<'c, Param, Yield, Return> {}
 
-impl<'c, Param, Yield, Return> PartialEq<Self> for CoroutineImpl<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> PartialEq<Self> for Coroutine<'c, Param, Yield, Return> {
     fn eq(&self, other: &Self) -> bool {
         self.name.eq(other.name)
     }
 }
 
-impl<'c, Param, Yield, Return> PartialOrd<Self> for CoroutineImpl<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> PartialOrd<Self> for Coroutine<'c, Param, Yield, Return> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'c, Param, Yield, Return> Ord for CoroutineImpl<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Ord for Coroutine<'c, Param, Yield, Return> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.name.cmp(other.name)
     }
@@ -303,7 +297,6 @@ impl<'c, Param, Yield, Return> Ord for CoroutineImpl<'c, Param, Yield, Return> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::coroutine::suspender::Suspender;
     use crate::unbreakable;
 
     #[test]
@@ -337,7 +330,7 @@ mod tests {
                 },
                 "read"
             );
-            if let Some(co) = CoroutineImpl::<i32, i32, i32>::current() {
+            if let Some(co) = Coroutine::<i32, i32, i32>::current() {
                 assert_eq!(CoroutineState::Running, co.get_state());
             }
             6
@@ -368,10 +361,10 @@ mod tests {
 
     #[test]
     fn test_current() {
-        assert!(CoroutineImpl::<i32, i32, i32>::current().is_none());
+        assert!(Coroutine::<i32, i32, i32>::current().is_none());
         let mut coroutine = co!(|_: &SuspenderImpl<'_, i32, i32>, input| {
             assert_eq!(0, input);
-            assert!(CoroutineImpl::<i32, i32, i32>::current().is_some());
+            assert!(Coroutine::<i32, i32, i32>::current().is_some());
             1
         });
         assert_eq!(CoroutineState::Complete, coroutine.resume_with(0));
@@ -396,7 +389,7 @@ mod tests {
     #[test]
     fn test_context() {
         let mut coroutine = co!(|_: &SuspenderImpl<'_, (), ()>, ()| {
-            let current = CoroutineImpl::<(), (), ()>::current().unwrap();
+            let current = Coroutine::<(), (), ()>::current().unwrap();
             assert_eq!(2, *current.get("1").unwrap());
             *current.get_mut("1").unwrap() = 3;
             ()

@@ -1,4 +1,4 @@
-use crate::coroutine::suspender::{SimpleSuspender, SuspenderImpl};
+use crate::coroutine::suspender::SuspenderImpl;
 use crate::pool::blocker::Blocker;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
