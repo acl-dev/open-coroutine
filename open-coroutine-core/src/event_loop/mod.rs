@@ -1,5 +1,6 @@
+use crate::common::Current;
 use crate::config::Config;
-use crate::coroutine::suspender::SuspenderImpl;
+use crate::coroutine::suspender::{SimpleDelaySuspender, SuspenderImpl};
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
 use crate::pool::task::Task;
@@ -13,6 +14,7 @@ use std::time::Duration;
 cfg_if::cfg_if! {
     if #[cfg(target_os = "linux")] {
         use crate::coroutine::CoroutineState;
+        use crate::coroutine::suspender::SimpleSuspender;
         use crate::scheduler::SchedulableCoroutine;
         use libc::{c_void, size_t, ssize_t, sockaddr, socklen_t};
     }
