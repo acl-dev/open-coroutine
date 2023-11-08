@@ -1,5 +1,6 @@
 use corosensei::Yielder;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::time::Duration;
@@ -8,8 +9,8 @@ use std::time::Duration;
 pub struct SuspenderImpl<'s, Param, Yield>(&'s Yielder<Param, Yield>);
 
 thread_local! {
-    static SUSPENDER: RefCell<*const c_void> = RefCell::new(std::ptr::null());
-    static TIMESTAMP: RefCell<u64> = RefCell::new(0);
+    static SUSPENDER: RefCell<VecDeque<*const c_void>> = RefCell::new(VecDeque::new());
+    static TIMESTAMP: RefCell<VecDeque<u64>> = RefCell::new(VecDeque::new());
 }
 
 impl<'s, Param, Yield> SuspenderImpl<'s, Param, Yield> {
@@ -18,42 +19,34 @@ impl<'s, Param, Yield> SuspenderImpl<'s, Param, Yield> {
     }
 
     #[allow(clippy::ptr_as_ptr)]
-    pub(crate) fn init_current(suspender: &SuspenderImpl<Param, Yield>) {
-        SUSPENDER.with(|c| {
-            _ = c.replace(suspender as *const _ as *const c_void);
+    pub(crate) fn init_current(current: &SuspenderImpl<Param, Yield>) {
+        SUSPENDER.with(|s| {
+            s.borrow_mut()
+                .push_front(current as *const _ as *const c_void);
         });
     }
 
     #[must_use]
     pub fn current() -> Option<&'s SuspenderImpl<'s, Param, Yield>> {
-        SUSPENDER.with(|boxed| {
-            let ptr = *boxed
-                .try_borrow_mut()
-                .expect("suspender current already borrowed");
-            if ptr.is_null() {
-                None
-            } else {
-                Some(unsafe { &*(ptr).cast::<SuspenderImpl<'s, Param, Yield>>() })
-            }
+        SUSPENDER.with(|s| {
+            s.borrow()
+                .front()
+                .map(|ptr| unsafe { &*(*ptr).cast::<SuspenderImpl<'s, Param, Yield>>() })
         })
     }
 
     pub(crate) fn clean_current() {
-        SUSPENDER.with(|boxed| {
-            *boxed
-                .try_borrow_mut()
-                .expect("suspender current already borrowed") = std::ptr::null();
-        });
+        SUSPENDER.with(|s| _ = s.borrow_mut().pop_front());
     }
 
-    fn init_timestamp(time: u64) {
-        TIMESTAMP.with(|c| {
-            _ = c.replace(time);
+    fn init_timestamp(timestamp: u64) {
+        TIMESTAMP.with(|s| {
+            s.borrow_mut().push_front(timestamp);
         });
     }
 
     pub(crate) fn timestamp() -> u64 {
-        TIMESTAMP.with(|boxed| boxed.replace(0))
+        TIMESTAMP.with(|s| s.borrow_mut().pop_front()).unwrap_or(0)
     }
 
     pub fn suspend_with(&self, val: Yield) -> Param {

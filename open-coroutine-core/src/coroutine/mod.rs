@@ -241,7 +241,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 let mut current = self.get_state();
                 match current {
                     CoroutineState::Running => {
-                        current = CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
+                        current =
+                            CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
                         assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
