@@ -1,3 +1,5 @@
+use crate::common::Current;
+use crate::coroutine::suspender::SimpleSuspender;
 use crate::coroutine::CoroutineState;
 use crate::event_loop::EventLoops;
 use crate::monitor::node::TaskNode;

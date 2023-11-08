@@ -1,5 +1,5 @@
-use crate::common::page_size;
-use crate::coroutine::suspender::SuspenderImpl;
+use crate::common::{page_size, Current};
+use crate::coroutine::suspender::{DelaySuspender, SuspenderImpl};
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
@@ -8,6 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
+use std::panic::UnwindSafe;
 
 pub mod suspender;
 
@@ -89,7 +90,7 @@ thread_local! {
     static COROUTINE: RefCell<*const c_void> = RefCell::new(std::ptr::null());
 }
 
-impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yield, Return> {
     pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
     where
         F: FnOnce(&SuspenderImpl<Param, Yield>, Param) -> Return,
@@ -97,7 +98,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     {
         let stack = DefaultStack::new(size.max(page_size()))?;
         let sp = ScopedCoroutine::with_stack(stack, |y, p| {
-            let suspender = SuspenderImpl::new(y);
+            let suspender = SuspenderImpl(y);
             SuspenderImpl::<Param, Yield>::init_current(&suspender);
             let r = f(&suspender, p);
             SuspenderImpl::<Param, Yield>::clean_current();
@@ -241,7 +242,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 let mut current = self.get_state();
                 match current {
                     CoroutineState::Running => {
-                        current = CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
+                        current =
+                            CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
                         assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
@@ -257,7 +259,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     }
 }
 
-impl<'c, Yield, Return> Coroutine<'c, (), Yield, Return> {
+impl<'c, Yield: UnwindSafe, Return: UnwindSafe> Coroutine<'c, (), Yield, Return> {
     pub fn resume(&mut self) -> CoroutineState {
         self.resume_with(())
     }
@@ -297,6 +299,7 @@ impl<'c, Param, Yield, Return> Ord for Coroutine<'c, Param, Yield, Return> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coroutine::suspender::Suspender;
     use crate::unbreakable;
 
     #[test]
