@@ -147,7 +147,7 @@ impl Scheduler {
                                 self.ready.push_back(coroutine);
                             }
                         }
-                        CoroutineState::SystemCall(syscall_name) => {
+                        CoroutineState::SystemCall(syscall_name, _) => {
                             self.on_syscall(&coroutine, syscall_name);
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));

@@ -1,14 +1,18 @@
 use crate::common::{page_size, Current};
+use crate::constants::SyscallState;
+use crate::coroutine::local::{CoroutineLocal, HasCoroutineLocal};
 use crate::coroutine::suspender::{DelaySuspender, SuspenderImpl};
 use crate::scheduler::Scheduler;
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
-use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::panic::UnwindSafe;
+
+/// Coroutine local abstraction.
+pub mod local;
 
 pub mod suspender;
 
@@ -24,7 +28,7 @@ pub enum CoroutineState {
     ///被挂起到指定时间后继续执行，参数为时间戳
     Suspend(u64),
     ///执行系统调用，参数为系统调用名
-    SystemCall(&'static str),
+    SystemCall(&'static str, SyscallState),
     ///执行用户函数完成
     Complete,
 }
@@ -40,7 +44,7 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     name: &'c str,
     sp: ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>,
     state: Cell<CoroutineState>,
-    context: DashMap<&'c str, *mut c_void>,
+    context: CoroutineLocal,
     yields: MaybeUninit<ManuallyDrop<Yield>>,
     //调用用户函数的返回值
     result: MaybeUninit<ManuallyDrop<Return>>,
@@ -108,7 +112,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
             name: Box::leak(name),
             sp,
             state: Cell::new(CoroutineState::Created),
-            context: DashMap::new(),
+            context: CoroutineLocal::default(),
             yields: MaybeUninit::uninit(),
             result: MaybeUninit::uninit(),
             scheduler: None,
@@ -148,31 +152,6 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
         self.name
     }
 
-    pub fn put<V>(&self, key: &'c str, val: V) -> Option<V> {
-        let v = Box::leak(Box::new(val));
-        self.context
-            .insert(key, (v as *mut V).cast::<c_void>())
-            .map(|ptr| unsafe { *Box::from_raw(ptr.cast::<V>()) })
-    }
-
-    pub fn get<V>(&self, key: &'c str) -> Option<&V> {
-        self.context
-            .get(key)
-            .map(|ptr| unsafe { &*ptr.cast::<V>() })
-    }
-
-    pub fn get_mut<V>(&self, key: &'c str) -> Option<&mut V> {
-        self.context
-            .get(key)
-            .map(|ptr| unsafe { &mut *ptr.cast::<V>() })
-    }
-
-    pub fn remove<V>(&self, key: &'c str) -> Option<V> {
-        self.context
-            .remove(key)
-            .map(|ptr| unsafe { *Box::from_raw(ptr.1.cast::<V>()) })
-    }
-
     pub fn get_state(&self) -> CoroutineState {
         self.state.get()
     }
@@ -200,7 +179,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
 
     pub fn get_yield(&self) -> Option<Yield> {
         match self.get_state() {
-            CoroutineState::SystemCall(_) | CoroutineState::Suspend(_) => unsafe {
+            CoroutineState::SystemCall(_, _) | CoroutineState::Suspend(_) => unsafe {
                 let mut m = self.yields.assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             },
@@ -222,7 +201,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
             CoroutineState::Complete => {
                 return CoroutineState::Complete;
             }
-            CoroutineState::SystemCall(_) => {}
+            CoroutineState::SystemCall(_, _) => {}
             CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(0) => {
                 current = CoroutineState::Running;
                 _ = self.set_state(current);
@@ -247,8 +226,8 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
                         assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
-                    CoroutineState::SystemCall(syscall_name) => {
-                        CoroutineState::SystemCall(syscall_name)
+                    CoroutineState::SystemCall(syscall_name, state) => {
+                        CoroutineState::SystemCall(syscall_name, state)
                     }
                     _ => panic!("{} unexpected state {current}", self.get_name()),
                 }
@@ -256,6 +235,12 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
         };
         Coroutine::<Param, Yield, Return>::clean_current();
         state
+    }
+}
+
+impl<'c, Param, Yield, Return> HasCoroutineLocal for Coroutine<'c, Param, Yield, Return> {
+    fn local(&self) -> &CoroutineLocal {
+        &self.context
     }
 }
 
@@ -338,9 +323,15 @@ mod tests {
             }
             6
         });
-        assert_eq!(CoroutineState::SystemCall("read"), coroutine.resume_with(1));
+        assert_eq!(
+            CoroutineState::SystemCall("read", SyscallState::Executing),
+            coroutine.resume_with(1)
+        );
         assert_eq!(Some(2), coroutine.get_yield());
-        assert_eq!(CoroutineState::SystemCall("read"), coroutine.resume_with(3));
+        assert_eq!(
+            CoroutineState::SystemCall("read", SyscallState::Executing),
+            coroutine.resume_with(3)
+        );
         assert_eq!(Some(4), coroutine.get_yield());
         assert_eq!(CoroutineState::Complete, coroutine.resume_with(5));
         assert_eq!(Some(6), coroutine.get_result());
