@@ -18,7 +18,11 @@ pub mod suspender;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum CoroutineState {
+pub enum CoroutineState<Y, R>
+where
+    Y: Copy + Eq + PartialEq,
+    R: Copy + Eq + PartialEq,
+{
     ///协程被创建
     Created,
     ///等待运行
@@ -26,24 +30,33 @@ pub enum CoroutineState {
     ///运行中
     Running,
     ///被挂起到指定时间后继续执行，参数为时间戳
-    Suspend(u64),
+    Suspend(Y, u64),
     ///执行系统调用，参数为系统调用名
-    SystemCall(&'static str, SyscallState),
+    SystemCall(Y, &'static str, SyscallState),
     ///执行用户函数完成
-    Complete,
+    Complete(R),
+    Error(&'static str),
 }
 
-impl Display for CoroutineState {
+impl<Y, R> Display for CoroutineState<Y, R>
+where
+    Y: Copy + Eq + PartialEq + Debug,
+    R: Copy + Eq + PartialEq + Debug,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(self, f)
     }
 }
 
 #[repr(C)]
-pub struct Coroutine<'c, Param, Yield, Return> {
+pub struct Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
     name: &'c str,
     sp: ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>,
-    state: Cell<CoroutineState>,
+    state: Cell<CoroutineState<Yield, Return>>,
     context: CoroutineLocal,
     yields: MaybeUninit<ManuallyDrop<Yield>>,
     //调用用户函数的返回值
@@ -51,7 +64,11 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     scheduler: Option<*const Scheduler>,
 }
 
-impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
     fn drop(&mut self) {
         //for test_yield case
         if self.sp.started() && !self.sp.done() {
@@ -60,7 +77,12 @@ impl<'c, Param, Yield, Return> Drop for Coroutine<'c, Param, Yield, Return> {
     }
 }
 
-unsafe impl<'c, Param, Yield, Return> Send for Coroutine<'c, Param, Yield, Return> {}
+unsafe impl<'c, Param, Yield, Return> Send for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
+}
 
 #[macro_export]
 macro_rules! co {
@@ -94,7 +116,12 @@ thread_local! {
     static COROUTINE: RefCell<*const c_void> = RefCell::new(std::ptr::null());
 }
 
-impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return>
+where
+    Param: UnwindSafe,
+    Yield: UnwindSafe + Copy + Eq + PartialEq + Debug,
+    Return: UnwindSafe + Copy + Eq + PartialEq + Debug,
+{
     pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
     where
         F: FnOnce(&SuspenderImpl<Param, Yield>, Param) -> Return,
@@ -152,18 +179,21 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
         self.name
     }
 
-    pub fn get_state(&self) -> CoroutineState {
+    pub fn get_state(&self) -> CoroutineState<Yield, Return> {
         self.state.get()
     }
 
-    pub fn set_state(&self, state: CoroutineState) -> CoroutineState {
+    pub fn set_state(&self, state: CoroutineState<Yield, Return>) -> CoroutineState<Yield, Return> {
         let old = self.state.replace(state);
         crate::info!("co {} change state {}->{}", self.get_name(), old, state);
         old
     }
 
     pub fn is_finished(&self) -> bool {
-        self.get_state() == CoroutineState::Complete
+        matches!(
+            self.get_state(),
+            CoroutineState::Complete(_) | CoroutineState::Error(_)
+        )
     }
 
     pub fn get_result(&self) -> Option<Return> {
@@ -179,7 +209,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
 
     pub fn get_yield(&self) -> Option<Yield> {
         match self.get_state() {
-            CoroutineState::SystemCall(_, _) | CoroutineState::Suspend(_) => unsafe {
+            CoroutineState::SystemCall(_, _, _) | CoroutineState::Suspend(_, _) => unsafe {
                 let mut m = self.yields.assume_init_read();
                 Some(ManuallyDrop::take(&mut m))
             },
@@ -195,14 +225,14 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
         self.scheduler.replace(scheduler)
     }
 
-    pub fn resume_with(&mut self, arg: Param) -> CoroutineState {
+    pub fn resume_with(&mut self, arg: Param) -> CoroutineState<Yield, Return> {
         let mut current = self.get_state();
         match current {
-            CoroutineState::Complete => {
-                return CoroutineState::Complete;
+            CoroutineState::Complete(x) => {
+                return CoroutineState::Complete(x);
             }
-            CoroutineState::SystemCall(_, _) => {}
-            CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(0) => {
+            CoroutineState::SystemCall(_, _, _) => {}
+            CoroutineState::Created | CoroutineState::Ready | CoroutineState::Suspend(_, 0) => {
                 current = CoroutineState::Running;
                 _ = self.set_state(current);
             }
@@ -212,7 +242,7 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
         let state = match self.sp.resume(arg) {
             CoroutineResult::Return(r) => {
                 self.result = MaybeUninit::new(ManuallyDrop::new(r));
-                let state = CoroutineState::Complete;
+                let state = CoroutineState::Complete(r);
                 assert_eq!(CoroutineState::Running, self.set_state(state));
                 state
             }
@@ -222,12 +252,12 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
                 match current {
                     CoroutineState::Running => {
                         current =
-                            CoroutineState::Suspend(SuspenderImpl::<Yield, Param>::timestamp());
+                            CoroutineState::Suspend(y, SuspenderImpl::<Yield, Param>::timestamp());
                         assert_eq!(CoroutineState::Running, self.set_state(current));
                         current
                     }
-                    CoroutineState::SystemCall(syscall_name, state) => {
-                        CoroutineState::SystemCall(syscall_name, state)
+                    CoroutineState::SystemCall(v, syscall_name, state) => {
+                        CoroutineState::SystemCall(v, syscall_name, state)
                     }
                     _ => panic!("{} unexpected state {current}", self.get_name()),
                 }
@@ -238,19 +268,31 @@ impl<'c, Param: UnwindSafe, Yield: UnwindSafe, Return> Coroutine<'c, Param, Yiel
     }
 }
 
-impl<'c, Param, Yield, Return> HasCoroutineLocal for Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> HasCoroutineLocal for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
     fn local(&self) -> &CoroutineLocal {
         &self.context
     }
 }
 
-impl<'c, Yield: UnwindSafe, Return: UnwindSafe> Coroutine<'c, (), Yield, Return> {
-    pub fn resume(&mut self) -> CoroutineState {
+impl<'c, Yield, Return> Coroutine<'c, (), Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe + Debug,
+    Return: Copy + Eq + PartialEq + UnwindSafe + Debug,
+{
+    pub fn resume(&mut self) -> CoroutineState<Yield, Return> {
         self.resume_with(())
     }
 }
 
-impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe + Debug,
+    Return: Copy + Eq + PartialEq + UnwindSafe + Debug,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name)
@@ -261,21 +303,38 @@ impl<'c, Param, Yield, Return> Debug for Coroutine<'c, Param, Yield, Return> {
     }
 }
 
-impl<'c, Param, Yield, Return> Eq for Coroutine<'c, Param, Yield, Return> {}
+impl<'c, Param, Yield, Return> Eq for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
+}
 
-impl<'c, Param, Yield, Return> PartialEq<Self> for Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> PartialEq<Self> for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
     fn eq(&self, other: &Self) -> bool {
         self.name.eq(other.name)
     }
 }
 
-impl<'c, Param, Yield, Return> PartialOrd<Self> for Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> PartialOrd<Self> for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'c, Param, Yield, Return> Ord for Coroutine<'c, Param, Yield, Return> {
+impl<'c, Param, Yield, Return> Ord for Coroutine<'c, Param, Yield, Return>
+where
+    Yield: Copy + Eq + PartialEq + UnwindSafe,
+    Return: Copy + Eq + PartialEq + UnwindSafe,
+{
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.name.cmp(other.name)
     }
@@ -293,7 +352,7 @@ mod tests {
             assert_eq!(0, param);
             1
         });
-        assert_eq!(CoroutineState::Complete, coroutine.resume_with(0));
+        assert_eq!(CoroutineState::Complete(1), coroutine.resume_with(0));
         assert_eq!(Some(1), coroutine.get_result());
     }
 
@@ -303,7 +362,7 @@ mod tests {
             assert_eq!(1, param);
             _ = suspender.suspend_with(2);
         });
-        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(CoroutineState::Suspend(2, 0), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());
     }
 
@@ -323,17 +382,17 @@ mod tests {
             }
             6
         });
-        assert_eq!(
-            CoroutineState::SystemCall("read", SyscallState::Executing),
-            coroutine.resume_with(1)
+        matches!(
+            coroutine.resume_with(1),
+            CoroutineState::SystemCall(_, "read", SyscallState::Executing),
         );
         assert_eq!(Some(2), coroutine.get_yield());
-        assert_eq!(
-            CoroutineState::SystemCall("read", SyscallState::Executing),
-            coroutine.resume_with(3)
+        matches!(
+            coroutine.resume_with(3),
+            CoroutineState::SystemCall(_, "read", SyscallState::Executing),
         );
         assert_eq!(Some(4), coroutine.get_yield());
-        assert_eq!(CoroutineState::Complete, coroutine.resume_with(5));
+        assert_eq!(CoroutineState::Complete(6), coroutine.resume_with(5));
         assert_eq!(Some(6), coroutine.get_result());
     }
 
@@ -345,11 +404,11 @@ mod tests {
             assert_eq!(5, suspender.suspend_with(4));
             6
         });
-        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(CoroutineState::Suspend(2, 0), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());
-        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(3));
+        assert_eq!(CoroutineState::Suspend(4, 0), coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_yield());
-        assert_eq!(CoroutineState::Complete, coroutine.resume_with(5));
+        assert_eq!(CoroutineState::Complete(6), coroutine.resume_with(5));
         assert_eq!(Some(6), coroutine.get_result());
     }
 
@@ -361,7 +420,7 @@ mod tests {
             assert!(Coroutine::<i32, i32, i32>::current().is_some());
             1
         });
-        assert_eq!(CoroutineState::Complete, coroutine.resume_with(0));
+        assert_eq!(CoroutineState::Complete(1), coroutine.resume_with(0));
         assert_eq!(Some(1), coroutine.get_result());
     }
 
@@ -374,9 +433,9 @@ mod tests {
             println!("{:?}", backtrace::Backtrace::new());
             4
         });
-        assert_eq!(CoroutineState::Suspend(0), coroutine.resume_with(1));
+        assert_eq!(CoroutineState::Suspend(2, 0), coroutine.resume_with(1));
         assert_eq!(Some(2), coroutine.get_yield());
-        assert_eq!(CoroutineState::Complete, coroutine.resume_with(3));
+        assert_eq!(CoroutineState::Complete(4), coroutine.resume_with(3));
         assert_eq!(Some(4), coroutine.get_result());
     }
 
@@ -390,7 +449,7 @@ mod tests {
         });
         assert!(coroutine.put("1", 1).is_none());
         assert_eq!(Some(1), coroutine.put("1", 2));
-        assert_eq!(CoroutineState::Complete, coroutine.resume());
+        assert_eq!(CoroutineState::Complete(()), coroutine.resume());
         assert_eq!(Some(()), coroutine.get_result());
         assert_eq!(Some(3), coroutine.remove("1"));
     }

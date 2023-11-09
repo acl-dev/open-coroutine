@@ -149,6 +149,7 @@ where
 }
 
 /// Enums used to describe pool state
+#[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PoolState {
     ///The pool is created.
