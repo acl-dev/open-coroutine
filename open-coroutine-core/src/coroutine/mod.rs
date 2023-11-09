@@ -1,5 +1,5 @@
 use crate::common::{page_size, Current};
-use crate::constants::SyscallState;
+use crate::constants::CoroutineState;
 use crate::coroutine::local::{CoroutineLocal, HasCoroutineLocal};
 use crate::coroutine::suspender::{DelaySuspender, SuspenderImpl};
 use crate::scheduler::Scheduler;
@@ -7,7 +7,7 @@ use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Formatter};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::panic::UnwindSafe;
 
@@ -15,38 +15,6 @@ use std::panic::UnwindSafe;
 pub mod local;
 
 pub mod suspender;
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum CoroutineState<Y, R>
-where
-    Y: Copy + Eq + PartialEq,
-    R: Copy + Eq + PartialEq,
-{
-    ///协程被创建
-    Created,
-    ///等待运行
-    Ready,
-    ///运行中
-    Running,
-    ///被挂起到指定时间后继续执行，参数为时间戳
-    Suspend(Y, u64),
-    ///执行系统调用，参数为系统调用名
-    SystemCall(Y, &'static str, SyscallState),
-    ///执行用户函数完成
-    Complete(R),
-    Error(&'static str),
-}
-
-impl<Y, R> Display for CoroutineState<Y, R>
-where
-    Y: Copy + Eq + PartialEq + Debug,
-    R: Copy + Eq + PartialEq + Debug,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
 
 #[repr(C)]
 pub struct Coroutine<'c, Param, Yield, Return>
@@ -343,6 +311,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{Syscall, SyscallState};
     use crate::coroutine::suspender::Suspender;
     use crate::unbreakable;
 
@@ -375,7 +344,7 @@ mod tests {
                     assert_eq!(3, suspender.suspend_with(2));
                     assert_eq!(5, suspender.suspend_with(4));
                 },
-                "read"
+                read
             );
             if let Some(co) = Coroutine::<i32, i32, i32>::current() {
                 assert_eq!(CoroutineState::Running, co.get_state());
@@ -384,12 +353,12 @@ mod tests {
         });
         matches!(
             coroutine.resume_with(1),
-            CoroutineState::SystemCall(_, "read", SyscallState::Executing),
+            CoroutineState::SystemCall(_, Syscall::read, SyscallState::Executing),
         );
         assert_eq!(Some(2), coroutine.get_yield());
         matches!(
             coroutine.resume_with(3),
-            CoroutineState::SystemCall(_, "read", SyscallState::Executing),
+            CoroutineState::SystemCall(_, Syscall::read, SyscallState::Executing),
         );
         assert_eq!(Some(4), coroutine.get_yield());
         assert_eq!(CoroutineState::Complete(6), coroutine.resume_with(5));

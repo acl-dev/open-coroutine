@@ -1,3 +1,4 @@
+use crate::constants::{Syscall, SyscallState};
 use crate::scheduler::SchedulableCoroutine;
 use std::fmt::Debug;
 
@@ -5,6 +6,6 @@ use std::fmt::Debug;
 pub trait Listener: Debug {
     fn on_create(&self, co: &SchedulableCoroutine) {}
     fn on_suspend(&self, co: &SchedulableCoroutine) {}
-    fn on_syscall(&self, co: &SchedulableCoroutine, syscall_name: &str) {}
+    fn on_syscall(&self, co: &SchedulableCoroutine, syscall: Syscall, state: SyscallState) {}
     fn on_finish(&self, co: &SchedulableCoroutine) {}
 }

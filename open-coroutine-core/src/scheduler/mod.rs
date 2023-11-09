@@ -1,6 +1,6 @@
-use crate::constants::DEFAULT_STACK_SIZE;
+use crate::constants::{CoroutineState, Syscall, SyscallState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::SuspenderImpl;
-use crate::coroutine::{Coroutine, CoroutineState};
+use crate::coroutine::Coroutine;
 use crate::scheduler::listener::Listener;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
@@ -147,8 +147,8 @@ impl Scheduler {
                                 self.ready.push_back(coroutine);
                             }
                         }
-                        CoroutineState::SystemCall((), syscall_name, _) => {
-                            self.on_syscall(&coroutine, syscall_name);
+                        CoroutineState::SystemCall((), syscall, state) => {
+                            self.on_syscall(&coroutine, syscall, state);
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
@@ -195,9 +195,9 @@ impl Scheduler {
         }
     }
 
-    fn on_syscall(&self, coroutine: &SchedulableCoroutine, syscall_name: &str) {
+    fn on_syscall(&self, coroutine: &SchedulableCoroutine, syscall: Syscall, state: SyscallState) {
         for listener in &*self.listeners.borrow() {
-            listener.on_syscall(coroutine, syscall_name);
+            listener.on_syscall(coroutine, syscall, state);
         }
     }
 

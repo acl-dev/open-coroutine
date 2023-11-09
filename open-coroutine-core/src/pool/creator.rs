@@ -1,3 +1,4 @@
+use crate::constants::{Syscall, SyscallState};
 use crate::pool::CoroutinePool;
 use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;
@@ -18,7 +19,7 @@ impl Listener for CoroutineCreator<'static> {
         _ = self.pool.grow();
     }
 
-    fn on_syscall(&self, _co: &SchedulableCoroutine, _syscall_name: &str) {
+    fn on_syscall(&self, _co: &SchedulableCoroutine, _: Syscall, _: SyscallState) {
         _ = self.pool.grow();
     }
 }

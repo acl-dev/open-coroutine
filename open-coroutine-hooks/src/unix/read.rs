@@ -21,7 +21,7 @@ pub extern "C" fn recv(socket: c_int, buf: *mut c_void, len: size_t, flags: c_in
             }
             impl_expected_read_hook!((Lazy::force(&RECV))(socket, buf, len, flags))
         },
-        "recv"
+        recv
     )
 }
 
@@ -42,7 +42,7 @@ pub extern "C" fn recvfrom(
         impl_expected_read_hook!((Lazy::force(&RECVFROM))(
             socket, buf, len, flags, addr, addrlen
         )),
-        "recvfrom"
+        recvfrom
     )
 }
 
@@ -53,7 +53,7 @@ static PREAD: Lazy<extern "C" fn(c_int, *mut c_void, size_t, off_t) -> ssize_t> 
 pub extern "C" fn pread(fd: c_int, buf: *mut c_void, count: size_t, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
         impl_expected_read_hook!((Lazy::force(&PREAD))(fd, buf, count, offset)),
-        "pread"
+        pread
     )
 }
 
@@ -63,7 +63,7 @@ static READV: Lazy<extern "C" fn(c_int, *const iovec, c_int) -> ssize_t> = init_
 pub extern "C" fn readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
         impl_expected_batch_read_hook!((Lazy::force(&READV))(fd, iov, iovcnt,)),
-        "readv"
+        readv
     )
 }
 
@@ -74,7 +74,7 @@ static PREADV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>
 pub extern "C" fn preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
         impl_expected_batch_read_hook!((Lazy::force(&PREADV))(fd, iov, iovcnt, offset)),
-        "preadv"
+        preadv
     )
 }
 
@@ -185,6 +185,6 @@ pub extern "C" fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t 
             }
             r
         },
-        "recvmsg"
+        recvmsg
     )
 }

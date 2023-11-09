@@ -28,7 +28,7 @@ pub extern "C" fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int 
             }
             r
         },
-        "poll"
+        poll
     )
 }
 
@@ -103,6 +103,6 @@ pub extern "C" fn select(
             }
             r
         },
-        "select"
+        select
     )
 }
