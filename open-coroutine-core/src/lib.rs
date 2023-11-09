@@ -68,6 +68,7 @@ macro_rules! unbreakable {
                 .unwrap_or_else(|| panic!("current coroutine not found !"));
             let co_name = co.get_name();
             let state = co.set_state($crate::coroutine::CoroutineState::SystemCall(
+                (),
                 $syscall,
                 $crate::constants::SyscallState::Executing,
             ));
@@ -77,7 +78,7 @@ macro_rules! unbreakable {
                 if co_name == current.get_name() {
                     let old = current.set_state(state);
                     match old {
-                        $crate::coroutine::CoroutineState::SystemCall(_, _) => {}
+                        $crate::coroutine::CoroutineState::SystemCall((), _, _) => {}
                         _ => panic!("{} unexpected state {old}", current.get_name()),
                     };
                 }

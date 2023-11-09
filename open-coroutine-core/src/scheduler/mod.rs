@@ -98,7 +98,7 @@ impl Scheduler {
                             if let Some(coroutine) = entry.pop_front() {
                                 let old = coroutine.set_state(CoroutineState::Ready);
                                 match old {
-                                    CoroutineState::Suspend(_) => {}
+                                    CoroutineState::Suspend((), _) => {}
                                     _ => panic!("{} unexpected state {old}", coroutine.get_name()),
                                 };
                                 //把到时间的协程加入就绪队列
@@ -137,7 +137,7 @@ impl Scheduler {
                         }
                     }
                     match coroutine.resume() {
-                        CoroutineState::Suspend(timestamp) => {
+                        CoroutineState::Suspend((), timestamp) => {
                             self.on_suspend(&coroutine);
                             if timestamp > 0 {
                                 //挂起协程到时间轮
@@ -147,14 +147,14 @@ impl Scheduler {
                                 self.ready.push_back(coroutine);
                             }
                         }
-                        CoroutineState::SystemCall(syscall_name, _) => {
+                        CoroutineState::SystemCall((), syscall_name, _) => {
                             self.on_syscall(&coroutine, syscall_name);
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
                             unsafe { _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine) };
                         }
-                        CoroutineState::Complete => {
+                        CoroutineState::Complete(_) => {
                             self.on_finish(&coroutine);
                             let name = Box::leak(Box::from(coroutine.get_name()));
                             _ = unsafe { RESULT_TABLE.insert(name, coroutine) };

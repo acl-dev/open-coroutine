@@ -253,7 +253,7 @@ impl EventLoops {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
-                    CoroutineState::SystemCall("connect", SyscallState::Executing),
+                    CoroutineState::SystemCall((), "connect", SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
                         .set_state(CoroutineState::Running)
@@ -292,7 +292,7 @@ impl EventLoops {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
-                    CoroutineState::SystemCall("recv", SyscallState::Executing),
+                    CoroutineState::SystemCall((), "recv", SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
                         .set_state(CoroutineState::Running)
@@ -331,7 +331,7 @@ impl EventLoops {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
-                    CoroutineState::SystemCall("send", SyscallState::Executing),
+                    CoroutineState::SystemCall((), "send", SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
                         .set_state(CoroutineState::Running)
