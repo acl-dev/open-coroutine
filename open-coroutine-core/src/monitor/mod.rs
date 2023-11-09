@@ -138,7 +138,7 @@ impl Monitor {
             for node in entry.iter() {
                 if let Some(coroutine) = node.get_coroutine() {
                     unsafe {
-                        if CoroutineState::Running == (*coroutine).get_state() {
+                        if CoroutineState::Running == (*coroutine).state() {
                             //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
                             //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
                             assert_eq!(

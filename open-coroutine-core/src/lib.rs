@@ -68,7 +68,7 @@ macro_rules! unbreakable {
             let co = $crate::scheduler::SchedulableCoroutine::current()
                 .unwrap_or_else(|| panic!("current coroutine not found !"));
             let co_name = co.get_name();
-            let state = co.set_state($crate::constants::CoroutineState::SystemCall(
+            let state = co.change_state($crate::constants::CoroutineState::SystemCall(
                 (),
                 syscall,
                 $crate::constants::SyscallState::Executing,
@@ -77,7 +77,7 @@ macro_rules! unbreakable {
             let r = $f;
             if let Some(current) = $crate::scheduler::SchedulableCoroutine::current() {
                 if co_name == current.get_name() {
-                    let old = current.set_state(state);
+                    let old = current.change_state(state);
                     match old {
                         $crate::constants::CoroutineState::SystemCall((), _, _) => {}
                         _ => panic!("{} unexpected state {old}", current.get_name()),

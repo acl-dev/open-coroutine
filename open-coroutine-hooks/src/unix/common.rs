@@ -1,6 +1,6 @@
 use libc::{c_int, c_uint, fd_set, nfds_t, pollfd, timeval};
 use once_cell::sync::Lazy;
-use open_coroutine_core::common::Current;
+use open_coroutine_core::common::{Current, Named};
 
 static POLL: Lazy<extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int> = init_hook!("poll");
 
