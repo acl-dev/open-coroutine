@@ -61,24 +61,25 @@ pub mod pool;
 
 #[macro_export]
 macro_rules! unbreakable {
-    ( $f: expr , $syscall: expr ) => {{
-        $crate::info!("{} hooked", $syscall);
+    ( $f: expr , $syscall: ident ) => {{
+        let syscall = $crate::constants::Syscall::$syscall;
+        $crate::info!("{} hooked", syscall);
         if $crate::coroutine::suspender::SuspenderImpl::<(), ()>::current().is_some() {
             let co = $crate::scheduler::SchedulableCoroutine::current()
                 .unwrap_or_else(|| panic!("current coroutine not found !"));
             let co_name = co.get_name();
-            let state = co.set_state($crate::coroutine::CoroutineState::SystemCall(
+            let state = co.set_state($crate::constants::CoroutineState::SystemCall(
                 (),
-                $syscall,
+                syscall,
                 $crate::constants::SyscallState::Executing,
             ));
-            assert_eq!($crate::coroutine::CoroutineState::Running, state);
+            assert_eq!($crate::constants::CoroutineState::Running, state);
             let r = $f;
             if let Some(current) = $crate::scheduler::SchedulableCoroutine::current() {
                 if co_name == current.get_name() {
                     let old = current.set_state(state);
                     match old {
-                        $crate::coroutine::CoroutineState::SystemCall((), _, _) => {}
+                        $crate::constants::CoroutineState::SystemCall((), _, _) => {}
                         _ => panic!("{} unexpected state {old}", current.get_name()),
                     };
                 }

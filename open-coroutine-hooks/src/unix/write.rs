@@ -22,7 +22,7 @@ pub extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags: c_
             }
             impl_expected_write_hook!((Lazy::force(&SEND))(socket, buf, len, flags))
         },
-        "send"
+        send
     )
 }
 
@@ -43,7 +43,7 @@ pub extern "C" fn sendto(
         impl_expected_write_hook!((Lazy::force(&SENDTO))(
             socket, buf, len, flags, addr, addrlen
         )),
-        "sendto"
+        sendto
     )
 }
 
@@ -54,7 +54,7 @@ static PWRITE: Lazy<extern "C" fn(c_int, *const c_void, size_t, off_t) -> ssize_
 pub extern "C" fn pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
         impl_expected_write_hook!((Lazy::force(&PWRITE))(fd, buf, count, offset)),
-        "pwrite"
+        pwrite
     )
 }
 
@@ -65,7 +65,7 @@ static WRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int) -> ssize_t> = init
 pub extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
         impl_expected_batch_write_hook!((Lazy::force(&WRITEV))(fd, iov, iovcnt,)),
-        "writev"
+        writev
     )
 }
 
@@ -77,7 +77,7 @@ static PWRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t
 pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
         impl_expected_batch_write_hook!((Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset)),
-        "pwritev"
+        pwritev
     )
 }
 
@@ -188,6 +188,6 @@ pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_
             }
             r
         },
-        "sendmsg"
+        sendmsg
     )
 }

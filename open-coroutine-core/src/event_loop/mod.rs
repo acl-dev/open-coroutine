@@ -13,9 +13,8 @@ use std::time::Duration;
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "linux")] {
-        use crate::constants::SyscallState;
+        use crate::constants::{CoroutineState, Syscall, SyscallState};
         use crate::coroutine::suspender::SimpleSuspender;
-        use crate::coroutine::CoroutineState;
         use crate::scheduler::SchedulableCoroutine;
         use libc::{c_void, size_t, sockaddr, socklen_t, ssize_t};
     }
@@ -253,7 +252,7 @@ impl EventLoops {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
-                    CoroutineState::SystemCall((), "connect", SyscallState::Executing),
+                    CoroutineState::SystemCall((), Syscall::connect, SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
                         .set_state(CoroutineState::Running)
@@ -292,7 +291,7 @@ impl EventLoops {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
-                    CoroutineState::SystemCall((), "recv", SyscallState::Executing),
+                    CoroutineState::SystemCall((), Syscall::recv, SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
                         .set_state(CoroutineState::Running)
@@ -331,7 +330,7 @@ impl EventLoops {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
                 assert_eq!(
-                    CoroutineState::SystemCall((), "send", SyscallState::Executing),
+                    CoroutineState::SystemCall((), Syscall::send, SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
                         .set_state(CoroutineState::Running)
