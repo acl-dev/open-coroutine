@@ -1,6 +1,6 @@
 use crate::constants::{CoroutineState, Syscall, SyscallState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::SuspenderImpl;
-use crate::coroutine::Coroutine;
+use crate::coroutine::CoroutineImpl;
 use crate::scheduler::listener::Listener;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
@@ -13,7 +13,7 @@ use uuid::Uuid;
 pub mod listener;
 
 /// 用户协程
-pub type SchedulableCoroutine = Coroutine<'static, (), (), usize>;
+pub type SchedulableCoroutine = CoroutineImpl<'static, (), (), usize>;
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
 
