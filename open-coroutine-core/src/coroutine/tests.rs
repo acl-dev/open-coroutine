@@ -1,4 +1,4 @@
-use crate::common::Current;
+use crate::common::{Current, Named};
 use crate::constants::{CoroutineState, Syscall, SyscallState};
 use crate::coroutine::local::HasCoroutineLocal;
 use crate::coroutine::suspender::{Suspender, SuspenderImpl};
@@ -37,7 +37,7 @@ fn test_syscall() {
             read
         );
         if let Some(co) = CoroutineImpl::<i32, i32, i32>::current() {
-            assert_eq!(CoroutineState::Running, co.get_state());
+            assert_eq!(CoroutineState::Running, co.state());
         }
         6
     });

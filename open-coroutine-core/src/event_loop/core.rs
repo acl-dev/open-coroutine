@@ -1,3 +1,4 @@
+use crate::common::{Current, Named};
 use crate::coroutine::suspender::SuspenderImpl;
 use crate::event_loop::blocker::SelectBlocker;
 use crate::event_loop::join::JoinHandle;

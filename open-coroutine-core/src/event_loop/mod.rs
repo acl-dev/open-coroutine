@@ -255,7 +255,7 @@ impl EventLoops {
                     CoroutineState::SystemCall((), Syscall::connect, SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
-                        .set_state(CoroutineState::Running)
+                        .change_state(CoroutineState::Running)
                 );
             }
             let (lock, cvar) = &*r.unwrap();
@@ -294,7 +294,7 @@ impl EventLoops {
                     CoroutineState::SystemCall((), Syscall::recv, SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
-                        .set_state(CoroutineState::Running)
+                        .change_state(CoroutineState::Running)
                 );
             }
             let (lock, cvar) = &*r.unwrap();
@@ -333,7 +333,7 @@ impl EventLoops {
                     CoroutineState::SystemCall((), Syscall::send, SyscallState::Executing),
                     SchedulableCoroutine::current()
                         .unwrap()
-                        .set_state(CoroutineState::Running)
+                        .change_state(CoroutineState::Running)
                 );
             }
             let (lock, cvar) = &*r.unwrap();

@@ -1,3 +1,4 @@
+use crate::common::Named;
 use crate::constants::{CoroutineState, Syscall, SyscallState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::SuspenderImpl;
 use crate::coroutine::CoroutineImpl;
@@ -55,16 +56,6 @@ impl Scheduler {
         }
     }
 
-    #[must_use]
-    pub fn current<'s>() -> Option<&'s Scheduler> {
-        if let Some(current) = SchedulableCoroutine::current() {
-            if let Some(scheduler) = current.get_scheduler() {
-                return Some(unsafe { &*scheduler });
-            }
-        }
-        None
-    }
-
     pub fn submit(
         &self,
         f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static,
@@ -77,7 +68,7 @@ impl Scheduler {
         )?;
         assert_eq!(
             CoroutineState::Created,
-            coroutine.set_state(CoroutineState::Ready)
+            coroutine.change_state(CoroutineState::Ready)
         );
         let co_name = Box::leak(Box::from(coroutine.get_name()));
         self.on_create(&coroutine);
@@ -96,7 +87,7 @@ impl Scheduler {
                     if let Some((_, mut entry)) = SUSPEND_TABLE.pop_front() {
                         for _ in 0..entry.len() {
                             if let Some(coroutine) = entry.pop_front() {
-                                let old = coroutine.set_state(CoroutineState::Ready);
+                                let old = coroutine.change_state(CoroutineState::Ready);
                                 match old {
                                     CoroutineState::Suspend((), _) => {}
                                     _ => panic!("{} unexpected state {old}", coroutine.get_name()),
@@ -128,7 +119,6 @@ impl Scheduler {
             self.check_ready();
             match self.ready.pop_front() {
                 Some(mut coroutine) => {
-                    _ = coroutine.set_scheduler(self);
                     cfg_if::cfg_if! {
                         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
                             let start = open_coroutine_timer::get_timeout_time(Duration::from_millis(10))
