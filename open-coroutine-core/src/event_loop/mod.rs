@@ -13,9 +13,7 @@ use std::time::Duration;
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "linux")] {
-        use crate::constants::{CoroutineState, Syscall, SyscallState};
         use crate::coroutine::suspender::SimpleSuspender;
-        use crate::scheduler::SchedulableCoroutine;
         use libc::{c_void, size_t, sockaddr, socklen_t, ssize_t};
     }
 }
@@ -253,12 +251,6 @@ impl EventLoops {
             if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
-                assert_eq!(
-                    CoroutineState::SystemCall((), Syscall::connect, SyscallState::Executing),
-                    SchedulableCoroutine::current()
-                        .unwrap()
-                        .change_state(CoroutineState::Running)
-                );
             }
             let (lock, cvar) = &*r.unwrap();
             let syscall_result = cvar
@@ -292,12 +284,6 @@ impl EventLoops {
             if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
-                assert_eq!(
-                    CoroutineState::SystemCall((), Syscall::recv, SyscallState::Executing),
-                    SchedulableCoroutine::current()
-                        .unwrap()
-                        .change_state(CoroutineState::Running)
-                );
             }
             let (lock, cvar) = &*r.unwrap();
             let syscall_result = cvar
@@ -331,12 +317,6 @@ impl EventLoops {
             if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
-                assert_eq!(
-                    CoroutineState::SystemCall((), Syscall::send, SyscallState::Executing),
-                    SchedulableCoroutine::current()
-                        .unwrap()
-                        .change_state(CoroutineState::Running)
-                );
             }
             let (lock, cvar) = &*r.unwrap();
             let syscall_result = cvar

@@ -17,7 +17,7 @@ pub mod local;
 /// Create a new coroutine.
 #[macro_export]
 macro_rules! co {
-    ($f:expr, $size:expr $(,)?) => {
+    ($f:expr, $size:literal $(,)?) => {
         $crate::coroutine::CoroutineImpl::new(uuid::Uuid::new_v4().to_string(), $f, $size)
             .expect("create coroutine failed !")
     };
@@ -29,10 +29,10 @@ macro_rules! co {
         )
         .expect("create coroutine failed !")
     };
-    ($name:literal, $f:expr, $size:expr $(,)?) => {
+    ($name:expr, $f:expr, $size:expr $(,)?) => {
         $crate::coroutine::CoroutineImpl::new($name, $f, $size).expect("create coroutine failed !")
     };
-    ($name:literal, $f:expr $(,)?) => {
+    ($name:expr, $f:expr $(,)?) => {
         $crate::coroutine::CoroutineImpl::new($name, $f, $crate::constants::DEFAULT_STACK_SIZE)
             .expect("create coroutine failed !")
     };
@@ -43,6 +43,9 @@ pub use korosensei::CoroutineImpl;
 #[allow(missing_docs)]
 #[cfg(feature = "korosensei")]
 mod korosensei;
+
+#[cfg(all(feature = "boost", not(feature = "korosensei")))]
+mod boost {}
 
 #[cfg(test)]
 mod tests;
@@ -173,7 +176,11 @@ pub trait StateCoroutine<'c>: Coroutine<'c> {
                     return Ok(());
                 }
             }
-            CoroutineState::SystemCall(_, _, SyscallState::Finished | SyscallState::Timeout) => {
+            CoroutineState::SystemCall(
+                _,
+                _,
+                SyscallState::Executing | SyscallState::Finished | SyscallState::Timeout,
+            ) => {
                 let state = CoroutineState::Running;
                 _ = self.change_state(state);
                 crate::info!("{} {:?}->{:?}", self.get_name(), current, state);

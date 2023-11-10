@@ -1,6 +1,7 @@
 use libc::{c_int, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use open_coroutine_core::common::{Current, Named};
+use open_coroutine_core::coroutine::StateCoroutine;
 use std::ffi::c_void;
 
 static SEND: Lazy<extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t> =

@@ -6,6 +6,7 @@ use crate::scheduler::Scheduler;
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
+use std::panic::RefUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
@@ -41,6 +42,8 @@ pub struct CoroutinePool {
     //是否已初始化协程创建器
     inited: AtomicBool,
 }
+
+impl RefUnwindSafe for CoroutinePool {}
 
 impl Drop for CoroutinePool {
     fn drop(&mut self) {
