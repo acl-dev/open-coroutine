@@ -41,7 +41,12 @@ where
 {
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
-            #[allow(clippy::cast_possible_truncation, clippy::too_many_lines, clippy::cast_sign_loss)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::too_many_lines,
+                clippy::cast_sign_loss,
+                clippy::cast_possible_wrap
+            )]
             extern "C" fn trap_handler(
                 _signum: libc::c_int,
                 _siginfo: *mut libc::siginfo_t,
