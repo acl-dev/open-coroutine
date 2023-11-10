@@ -1,4 +1,4 @@
-use crate::coroutine::suspender::{SimpleSuspender, SuspenderImpl};
+use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::blocker::Blocker;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
@@ -74,7 +74,7 @@ impl CoroutinePool {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
     ) -> &'static str {
         let name: Box<str> = Box::from(Uuid::new_v4().to_string());
         let clone = Box::leak(name.clone());

@@ -18,32 +18,23 @@ pub mod local;
 #[macro_export]
 macro_rules! co {
     ($f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(
-            Box::from(uuid::Uuid::new_v4().to_string()),
-            $f,
-            $size,
-        )
-        .expect("create coroutine failed !")
+        $crate::coroutine::CoroutineImpl::new(uuid::Uuid::new_v4().to_string(), $f, $size)
+            .expect("create coroutine failed !")
     };
     ($f:expr $(,)?) => {
         $crate::coroutine::CoroutineImpl::new(
-            Box::from(uuid::Uuid::new_v4().to_string()),
+            uuid::Uuid::new_v4().to_string(),
             $f,
             $crate::constants::DEFAULT_STACK_SIZE,
         )
         .expect("create coroutine failed !")
     };
     ($name:literal, $f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(Box::from($name), $f, $size)
-            .expect("create coroutine failed !")
+        $crate::coroutine::CoroutineImpl::new($name, $f, $size).expect("create coroutine failed !")
     };
     ($name:literal, $f:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(
-            Box::from($name),
-            $f,
-            $crate::constants::DEFAULT_STACK_SIZE,
-        )
-        .expect("create coroutine failed !")
+        $crate::coroutine::CoroutineImpl::new($name, $f, $crate::constants::DEFAULT_STACK_SIZE)
+            .expect("create coroutine failed !")
     };
 }
 
@@ -384,7 +375,6 @@ where
 impl<Param, Yield, Return> PartialOrd<Self> for CoroutineImpl<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
-
     Yield: Copy + Eq + PartialEq + UnwindSafe,
     Return: Copy + Eq + PartialEq + UnwindSafe,
 {

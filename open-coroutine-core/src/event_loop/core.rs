@@ -1,5 +1,5 @@
 use crate::common::{Current, Named};
-use crate::coroutine::suspender::SuspenderImpl;
+use crate::coroutine::suspender::Suspender;
 use crate::event_loop::blocker::SelectBlocker;
 use crate::event_loop::join::JoinHandle;
 use crate::event_loop::selector::Selector;
@@ -67,7 +67,7 @@ impl EventLoop {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
     ) -> JoinHandle {
         let task_name = unsafe { self.pool.assume_init_ref().submit(f) };
         JoinHandle::new(self, task_name)

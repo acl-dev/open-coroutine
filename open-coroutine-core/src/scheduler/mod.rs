@@ -1,6 +1,6 @@
 use crate::common::Named;
 use crate::constants::{CoroutineState, Syscall, SyscallState, DEFAULT_STACK_SIZE};
-use crate::coroutine::suspender::SuspenderImpl;
+use crate::coroutine::suspender::Suspender;
 use crate::coroutine::CoroutineImpl;
 use crate::scheduler::listener::Listener;
 use once_cell::sync::Lazy;
@@ -58,11 +58,11 @@ impl Scheduler {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<&'static str> {
         let coroutine = SchedulableCoroutine::new(
-            Box::from(format!("{}|{}", self.name, Uuid::new_v4())),
+            format!("{}|{}", self.name, Uuid::new_v4()),
             f,
             stack_size.unwrap_or(DEFAULT_STACK_SIZE),
         )?;
