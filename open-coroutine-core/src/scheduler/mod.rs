@@ -1,13 +1,14 @@
 use crate::common::Named;
 use crate::constants::{CoroutineState, Syscall, SyscallState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::CoroutineImpl;
+use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
 use crate::scheduler::listener::Listener;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
+use std::panic::UnwindSafe;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -58,7 +59,7 @@ impl Scheduler {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<&'static str> {
         let coroutine = SchedulableCoroutine::new(
@@ -126,7 +127,7 @@ impl Scheduler {
                             crate::monitor::Monitor::add_task(start, Some(&coroutine));
                         }
                     }
-                    match coroutine.resume() {
+                    match coroutine.resume().unwrap() {
                         CoroutineState::Suspend((), timestamp) => {
                             self.on_suspend(&coroutine);
                             if timestamp > 0 {
