@@ -1,13 +1,13 @@
 use crate::common::{Current, Named};
 use crate::constants::{CoroutineState, Syscall, SyscallState};
 use crate::coroutine::local::HasCoroutineLocal;
-use crate::coroutine::suspender::{Suspender, SuspenderImpl};
+use crate::coroutine::suspender::Suspender;
 use crate::coroutine::CoroutineImpl;
 use crate::unbreakable;
 
 #[test]
 fn test_return() {
-    let mut coroutine = co!(|_s: &SuspenderImpl<'_, i32, ()>, param| {
+    let mut coroutine = co!(|_s: &dyn Suspender<Resume = i32, Yield = ()>, param| {
         assert_eq!(0, param);
         1
     });
@@ -74,7 +74,7 @@ fn test_yield() {
 #[test]
 fn test_current() {
     assert!(CoroutineImpl::<i32, i32, i32>::current().is_none());
-    let mut coroutine = co!(|_: &SuspenderImpl<'_, i32, i32>, input| {
+    let mut coroutine = co!(|_: &dyn Suspender<Resume = i32, Yield = i32>, input| {
         assert_eq!(0, input);
         assert!(CoroutineImpl::<i32, i32, i32>::current().is_some());
         1
@@ -100,7 +100,7 @@ fn test_backtrace() {
 
 #[test]
 fn test_context() {
-    let mut coroutine = co!(|_: &SuspenderImpl<'_, (), ()>, ()| {
+    let mut coroutine = co!(|_: &dyn Suspender<Resume = (), Yield = ()>, ()| {
         let current = CoroutineImpl::<(), (), ()>::current().unwrap();
         assert_eq!(2, *current.get("1").unwrap());
         *current.get_mut("1").unwrap() = 3;

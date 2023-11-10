@@ -1,7 +1,7 @@
 use crate::common::{page_size, Current, Named};
 use crate::constants::CoroutineState;
 use crate::coroutine::local::{CoroutineLocal, HasCoroutineLocal};
-use crate::coroutine::suspender::{DelaySuspender, SuspenderImpl};
+use crate::coroutine::suspender::{DelaySuspender, Suspender, SuspenderImpl};
 use corosensei::stack::DefaultStack;
 use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::Cell;
@@ -15,7 +15,7 @@ where
     Yield: Copy + Eq + PartialEq + UnwindSafe,
     Return: Copy + Eq + PartialEq + UnwindSafe,
 {
-    name: &'c str,
+    name: String,
     sp: ScopedCoroutine<'c, Param, Yield, Return, DefaultStack>,
     state: Cell<CoroutineState<Yield, Return>>,
     context: CoroutineLocal,
@@ -50,9 +50,9 @@ where
     Yield: UnwindSafe + Copy + Eq + PartialEq + Debug,
     Return: UnwindSafe + Copy + Eq + PartialEq + Debug,
 {
-    pub fn new<F>(name: Box<str>, f: F, size: usize) -> std::io::Result<Self>
+    pub fn new<F>(name: String, f: F, size: usize) -> std::io::Result<Self>
     where
-        F: FnOnce(&SuspenderImpl<Param, Yield>, Param) -> Return,
+        F: FnOnce(&dyn Suspender<Resume = Param, Yield = Yield>, Param) -> Return,
         F: 'c,
     {
         let stack = DefaultStack::new(size.max(page_size()))?;
@@ -64,7 +64,7 @@ where
             r
         });
         Ok(CoroutineImpl {
-            name: Box::leak(name),
+            name,
             sp,
             state: Cell::new(CoroutineState::Created),
             context: CoroutineLocal::default(),
@@ -183,6 +183,6 @@ where
     Return: Copy + Eq + PartialEq + UnwindSafe,
 {
     fn get_name(&self) -> &str {
-        self.name
+        &self.name
     }
 }

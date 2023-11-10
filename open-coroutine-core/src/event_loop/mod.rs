@@ -1,6 +1,6 @@
 use crate::common::Current;
 use crate::config::Config;
-use crate::coroutine::suspender::{SimpleDelaySuspender, SuspenderImpl};
+use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl};
 use crate::event_loop::core::EventLoop;
 use crate::event_loop::join::JoinHandle;
 use crate::pool::task::Task;
@@ -164,7 +164,9 @@ impl EventLoops {
     }
 
     /// todo This is actually an API for creating tasks, adding an API for creating coroutines
-    pub fn submit(f: impl FnOnce(&SuspenderImpl<'_, (), ()>, ()) -> usize + 'static) -> JoinHandle {
+    pub fn submit(
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
+    ) -> JoinHandle {
         EventLoops::start();
         EventLoops::next(true).submit(f)
     }
