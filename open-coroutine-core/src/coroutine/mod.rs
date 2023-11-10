@@ -160,6 +160,7 @@ pub trait StateCoroutine<'c>: Coroutine<'c> {
     fn running(&self) -> std::io::Result<()> {
         let current = self.state();
         match current {
+            CoroutineState::Running => return Ok(()),
             #[cfg(test)]
             CoroutineState::Created => {
                 _ = self.change_state(CoroutineState::Running);

@@ -1,6 +1,7 @@
 use libc::{c_int, sockaddr, socklen_t};
 use once_cell::sync::Lazy;
-use open_coroutine_core::common::{Current, Named};
+use open_coroutine_core::common::Current;
+use open_coroutine_core::constants::Syscall;
 use open_coroutine_core::coroutine::StateCoroutine;
 use open_coroutine_core::event_loop::EventLoops;
 use std::ffi::c_void;

@@ -1,6 +1,7 @@
 use libc::{c_int, sockaddr, socklen_t};
 use once_cell::sync::Lazy;
-use open_coroutine_core::common::{Current, Named};
+use open_coroutine_core::common::Current;
+use open_coroutine_core::constants::Syscall;
 use open_coroutine_core::coroutine::StateCoroutine;
 
 static ACCEPT4: Lazy<extern "C" fn(c_int, *mut sockaddr, *mut socklen_t, c_int) -> c_int> =
