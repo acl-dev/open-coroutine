@@ -169,7 +169,7 @@ pub trait StateCoroutine<'c>: Coroutine<'c> {
                 _ = self.change_state(CoroutineState::Running);
                 return Ok(());
             }
-            #[cfg(test)]
+            // #[cfg(test)] preemptive.rs use this
             CoroutineState::Suspend(_, timestamp) => {
                 if timestamp <= open_coroutine_timer::now() {
                     _ = self.change_state(CoroutineState::Running);
