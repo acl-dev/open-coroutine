@@ -1,4 +1,4 @@
-use crate::event_loop::core::EventLoop;
+use crate::net::event_loop::core::EventLoop;
 use std::ffi::{c_char, CStr, CString};
 use std::time::Duration;
 

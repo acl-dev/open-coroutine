@@ -46,8 +46,8 @@
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
 
-use open_coroutine_core::config::Config;
-use open_coroutine_core::event_loop::EventLoops;
+use open_coroutine_core::net::config::Config;
+use open_coroutine_core::net::event_loop::EventLoops;
 
 #[no_mangle]
 pub extern "C" fn init_config(config: Config) {

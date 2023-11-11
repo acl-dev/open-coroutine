@@ -1,6 +1,6 @@
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
-use open_coroutine_core::event_loop::join::JoinHandle;
-use open_coroutine_core::event_loop::{EventLoops, UserFunc};
+use open_coroutine_core::net::event_loop::join::JoinHandle;
+use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
 use std::ffi::c_void;
 use std::time::Duration;
 

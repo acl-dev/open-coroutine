@@ -14,7 +14,7 @@ pub extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags: c_
         {
             #[cfg(target_os = "linux")]
             if open_coroutine_iouring::version::support_io_uring() {
-                return open_coroutine_core::event_loop::EventLoops::send(
+                return open_coroutine_core::net::event_loop::EventLoops::send(
                     Some(Lazy::force(&SEND)),
                     socket,
                     buf,
@@ -173,7 +173,7 @@ pub extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_
                 let error_kind = std::io::Error::last_os_error().kind();
                 if error_kind == std::io::ErrorKind::WouldBlock {
                     //wait write event
-                    if open_coroutine_core::event_loop::EventLoops::wait_write_event(
+                    if open_coroutine_core::net::event_loop::EventLoops::wait_write_event(
                         fd,
                         Some(std::time::Duration::from_millis(10)),
                     )

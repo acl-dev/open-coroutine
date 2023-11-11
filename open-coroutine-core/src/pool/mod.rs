@@ -1,5 +1,5 @@
+use crate::common::Blocker;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
-use crate::pool::blocker::Blocker;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
 use crate::scheduler::Scheduler;
@@ -12,8 +12,6 @@ use std::time::Duration;
 use uuid::Uuid;
 
 pub mod task;
-
-pub mod blocker;
 
 mod creator;
 
@@ -192,12 +190,18 @@ impl CoroutinePool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Named;
 
     #[test]
     fn test_simple() {
         #[derive(Debug)]
         struct SleepBlocker {}
 
+        impl Named for SleepBlocker {
+            fn get_name(&self) -> &str {
+                "SleepBlocker"
+            }
+        }
         impl Blocker for SleepBlocker {
             fn block(&self, time: Duration) {
                 std::thread::sleep(time)

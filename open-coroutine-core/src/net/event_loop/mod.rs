@@ -1,8 +1,8 @@
 use crate::common::Current;
-use crate::config::Config;
 use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl};
-use crate::event_loop::core::EventLoop;
-use crate::event_loop::join::JoinHandle;
+use crate::net::config::Config;
+use crate::net::event_loop::core::EventLoop;
+use crate::net::event_loop::join::JoinHandle;
 use crate::pool::task::Task;
 use libc::c_int;
 use once_cell::sync::{Lazy, OnceCell};
@@ -19,8 +19,6 @@ cfg_if::cfg_if! {
 }
 
 pub mod join;
-
-mod selector;
 
 mod blocker;
 
