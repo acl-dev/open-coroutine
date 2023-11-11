@@ -1,8 +1,8 @@
 use crate::common::{Current, Named};
 use crate::coroutine::suspender::Suspender;
-use crate::event_loop::blocker::SelectBlocker;
-use crate::event_loop::join::JoinHandle;
-use crate::event_loop::selector::Selector;
+use crate::net::event_loop::blocker::SelectBlocker;
+use crate::net::event_loop::join::JoinHandle;
+use crate::net::selector::Selector;
 use crate::pool::task::Task;
 use crate::pool::CoroutinePool;
 use crate::scheduler::SchedulableCoroutine;

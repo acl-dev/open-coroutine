@@ -1,4 +1,4 @@
-use open_coroutine_core::event_loop::EventLoops;
+use open_coroutine_core::net::event_loop::EventLoops;
 use retour::static_detour;
 use std::error::Error;
 use std::os::raw::c_void;

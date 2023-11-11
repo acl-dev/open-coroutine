@@ -1,4 +1,4 @@
-use open_coroutine_core::event_loop::core::EventLoop;
+use open_coroutine_core::net::event_loop::core::EventLoop;
 use std::cmp::Ordering;
 use std::ffi::c_char;
 use std::io::{Error, ErrorKind};

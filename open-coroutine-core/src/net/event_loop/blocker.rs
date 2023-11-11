@@ -1,5 +1,5 @@
-use crate::event_loop::core::EventLoop;
-use crate::pool::blocker::Blocker;
+use crate::common::{Blocker, Named};
+use crate::net::event_loop::core::EventLoop;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -12,6 +12,12 @@ impl SelectBlocker {
         SelectBlocker {
             event_loop: unsafe { Box::leak(Box::from_raw(event_loop)) },
         }
+    }
+}
+
+impl Named for SelectBlocker {
+    fn get_name(&self) -> &str {
+        "SelectBlocker"
     }
 }
 

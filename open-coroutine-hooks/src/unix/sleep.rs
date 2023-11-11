@@ -1,4 +1,4 @@
-use open_coroutine_core::event_loop::EventLoops;
+use open_coroutine_core::net::event_loop::EventLoops;
 use std::time::Duration;
 
 #[no_mangle]

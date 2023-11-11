@@ -13,7 +13,7 @@ pub extern "C" fn recv(socket: c_int, buf: *mut c_void, len: size_t, flags: c_in
         {
             #[cfg(target_os = "linux")]
             if open_coroutine_iouring::version::support_io_uring() {
-                return open_coroutine_core::event_loop::EventLoops::recv(
+                return open_coroutine_core::net::event_loop::EventLoops::recv(
                     Some(Lazy::force(&RECV)),
                     socket,
                     buf,
@@ -170,7 +170,7 @@ pub extern "C" fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t 
                 let error_kind = std::io::Error::last_os_error().kind();
                 if error_kind == std::io::ErrorKind::WouldBlock {
                     //wait read event
-                    if open_coroutine_core::event_loop::EventLoops::wait_read_event(
+                    if open_coroutine_core::net::event_loop::EventLoops::wait_read_event(
                         fd,
                         Some(std::time::Duration::from_millis(10)),
                     )

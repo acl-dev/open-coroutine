@@ -81,13 +81,4 @@ macro_rules! unbreakable {
 #[cfg(all(unix, feature = "preemptive-schedule"))]
 mod monitor;
 
-#[allow(
-    dead_code,
-    clippy::cast_possible_wrap,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    trivial_numeric_casts
-)]
-pub mod event_loop;
-
-pub mod config;
+pub mod net;

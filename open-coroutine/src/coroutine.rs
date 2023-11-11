@@ -1,6 +1,6 @@
 use crate::join::JoinHandle;
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
-use open_coroutine_core::event_loop::UserFunc;
+use open_coroutine_core::net::event_loop::UserFunc;
 use std::ffi::c_void;
 
 #[allow(improper_ctypes)]
