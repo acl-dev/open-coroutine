@@ -2,7 +2,7 @@ use crate::common::Blocker;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
-use crate::scheduler::Scheduler;
+use crate::scheduler::SchedulerImpl;
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
@@ -22,7 +22,7 @@ pub struct CoroutinePool {
     //任务队列
     task_queue: Injector<Task<'static>>,
     //工作协程组
-    workers: Scheduler,
+    workers: SchedulerImpl,
     //协程栈大小
     stack_size: usize,
     //当前协程数
@@ -60,7 +60,7 @@ impl CoroutinePool {
         blocker: impl Blocker + 'static,
     ) -> Self {
         CoroutinePool {
-            workers: Scheduler::new(),
+            workers: SchedulerImpl::new(),
             stack_size,
             running: AtomicUsize::new(0),
             idle: AtomicUsize::new(0),
@@ -113,7 +113,7 @@ impl CoroutinePool {
             return Ok(());
         }
         let create_time = open_coroutine_timer::now();
-        _ = self.workers.submit(
+        _ = self.workers.submit_co(
             move |suspender, ()| {
                 loop {
                     match self.task_queue.steal() {
@@ -126,7 +126,7 @@ impl CoroutinePool {
                                 //回收worker协程
                                 _ = self.running.fetch_sub(1, Ordering::Release);
                                 _ = self.idle.fetch_sub(1, Ordering::Release);
-                                return 0;
+                                return None;
                             }
                             _ = self.idle.fetch_add(1, Ordering::Release);
                             match self.idle.load(Ordering::Acquire).cmp(&running) {
