@@ -4,7 +4,7 @@ use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::JoinHandle;
 use crate::net::selector::Selector;
 use crate::pool::task::Task;
-use crate::pool::CoroutinePool;
+use crate::pool::CoroutinePoolImpl;
 use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
 use std::ffi::{CStr, CString};
@@ -30,7 +30,7 @@ pub struct EventLoop {
     //是否正在执行select
     waiting: AtomicBool,
     //协程池
-    pool: MaybeUninit<CoroutinePool>,
+    pool: MaybeUninit<CoroutinePoolImpl<'static>>,
 }
 
 #[allow(clippy::type_complexity)]
@@ -54,7 +54,7 @@ impl EventLoop {
             waiting: AtomicBool::new(false),
             pool: MaybeUninit::uninit(),
         };
-        let pool = CoroutinePool::new(
+        let pool = CoroutinePoolImpl::new(
             stack_size,
             min_size,
             max_size,
@@ -211,7 +211,7 @@ impl EventLoop {
 
     #[must_use]
     pub fn get_result(task_name: &'static str) -> Option<usize> {
-        CoroutinePool::get_result(task_name)
+        CoroutinePoolImpl::get_result(task_name)
     }
 }
 

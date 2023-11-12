@@ -1,4 +1,4 @@
-use crate::common::Blocker;
+use crate::common::{Blocker, Current};
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
@@ -7,22 +7,24 @@ use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::panic::RefUnwindSafe;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
 
 pub mod task;
+
+mod current;
 
 mod creator;
 
 static RESULT_TABLE: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
 
 #[derive(Debug)]
-pub struct CoroutinePool {
+pub struct CoroutinePoolImpl<'p> {
     //任务队列
-    task_queue: Injector<Task<'static>>,
+    task_queue: Injector<Task<'p>>,
     //工作协程组
-    workers: SchedulerImpl,
+    workers: SchedulerImpl<'p>,
     //协程栈大小
     stack_size: usize,
     //当前协程数
@@ -37,13 +39,11 @@ pub struct CoroutinePool {
     keep_alive_time: u64,
     //阻滞器
     blocker: &'static dyn Blocker,
-    //是否已初始化协程创建器
-    inited: AtomicBool,
 }
 
-impl RefUnwindSafe for CoroutinePool {}
+impl RefUnwindSafe for CoroutinePoolImpl<'_> {}
 
-impl Drop for CoroutinePool {
+impl Drop for CoroutinePoolImpl<'_> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             assert!(self.is_empty(), "there are still tasks to be carried out !");
@@ -51,7 +51,7 @@ impl Drop for CoroutinePool {
     }
 }
 
-impl CoroutinePool {
+impl CoroutinePoolImpl<'_> {
     pub fn new(
         stack_size: usize,
         min_size: usize,
@@ -59,7 +59,7 @@ impl CoroutinePool {
         keep_alive_time: u64,
         blocker: impl Blocker + 'static,
     ) -> Self {
-        CoroutinePool {
+        let mut pool = CoroutinePoolImpl {
             workers: SchedulerImpl::new(),
             stack_size,
             running: AtomicUsize::new(0),
@@ -69,8 +69,13 @@ impl CoroutinePool {
             task_queue: Injector::default(),
             keep_alive_time,
             blocker: Box::leak(Box::new(blocker)),
-            inited: AtomicBool::new(false),
-        }
+        };
+        pool.init();
+        pool
+    }
+
+    fn init(&mut self) {
+        self.workers.add_listener(CoroutineCreator::default());
     }
 
     pub fn submit(
@@ -105,7 +110,7 @@ impl CoroutinePool {
         self.task_queue.is_empty()
     }
 
-    fn grow(&'static self) -> std::io::Result<()> {
+    fn grow(&'static self, _: bool) -> std::io::Result<()> {
         if self.task_queue.is_empty() {
             return Ok(());
         }
@@ -165,16 +170,12 @@ impl CoroutinePool {
     }
 
     pub fn try_timed_schedule(&'static self, time: Duration) -> u64 {
-        if self
-            .inited
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
-        {
-            self.workers.add_listener(CoroutineCreator::new(self));
-        }
-        _ = self.grow();
-        self.workers
-            .try_timeout_schedule(open_coroutine_timer::get_timeout_time(time))
+        Self::init_current(self);
+        let left_time = self
+            .workers
+            .try_timeout_schedule(open_coroutine_timer::get_timeout_time(time));
+        Self::clean_current();
+        left_time
     }
 
     //只有框架级crate才需要使用此方法
@@ -208,7 +209,13 @@ mod tests {
             }
         }
 
-        let pool = Box::leak(Box::new(CoroutinePool::new(0, 0, 2, 0, SleepBlocker {})));
+        let pool = Box::leak(Box::new(CoroutinePoolImpl::new(
+            0,
+            0,
+            2,
+            0,
+            SleepBlocker {},
+        )));
         _ = pool.submit(|_, _| {
             println!("1");
             1
