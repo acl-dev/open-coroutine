@@ -1,25 +1,38 @@
+use crate::common::Current;
 use crate::constants::{Syscall, SyscallState};
 use crate::pool::CoroutinePoolImpl;
 use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;
+use std::sync::atomic::Ordering;
 
-#[derive(Debug)]
-pub(crate) struct CoroutineCreator<'p> {
-    pool: &'p CoroutinePoolImpl<'p>,
-}
+#[derive(Debug, Default)]
+pub(crate) struct CoroutineCreator {}
 
-impl<'p> CoroutineCreator<'p> {
-    pub(crate) fn new(pool: &'p CoroutinePoolImpl<'p>) -> Self {
-        CoroutineCreator { pool }
-    }
-}
-
-impl Listener for CoroutineCreator<'static> {
-    fn on_suspend(&self, _co: &SchedulableCoroutine) {
-        _ = self.pool.grow();
+impl Listener for CoroutineCreator {
+    fn on_schedule(&self, _: u64) {
+        if let Some(pool) = CoroutinePoolImpl::current() {
+            //todo
+            _ = pool.grow(false);
+        }
     }
 
-    fn on_syscall(&self, _co: &SchedulableCoroutine, _: Syscall, _: SyscallState) {
-        _ = self.pool.grow();
+    fn on_suspend(&self, _: u64, _: &SchedulableCoroutine) {
+        if let Some(pool) = CoroutinePoolImpl::current() {
+            _ = pool.grow(true);
+        }
+    }
+
+    fn on_syscall(&self, _: u64, _: &SchedulableCoroutine, _: Syscall, _: SyscallState) {
+        if let Some(pool) = CoroutinePoolImpl::current() {
+            _ = pool.grow(true);
+        }
+    }
+
+    fn on_error(&self, _: u64, _: &SchedulableCoroutine, _: &str) {
+        if let Some(pool) = CoroutinePoolImpl::current() {
+            //worker协程异常退出，需要先回收再创建
+            _ = pool.running.fetch_sub(1, Ordering::Release);
+            _ = pool.grow(true);
+        }
     }
 }

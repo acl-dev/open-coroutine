@@ -1,4 +1,4 @@
-use crate::common::Blocker;
+use crate::common::{Blocker, Current};
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
@@ -7,11 +7,13 @@ use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::panic::RefUnwindSafe;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
 
 pub mod task;
+
+mod current;
 
 mod creator;
 
@@ -37,8 +39,6 @@ pub struct CoroutinePoolImpl<'p> {
     keep_alive_time: u64,
     //阻滞器
     blocker: &'static dyn Blocker,
-    //是否已初始化协程创建器
-    inited: AtomicBool,
 }
 
 impl RefUnwindSafe for CoroutinePoolImpl<'_> {}
@@ -59,7 +59,7 @@ impl CoroutinePoolImpl<'_> {
         keep_alive_time: u64,
         blocker: impl Blocker + 'static,
     ) -> Self {
-        CoroutinePoolImpl {
+        let mut pool = CoroutinePoolImpl {
             workers: SchedulerImpl::new(),
             stack_size,
             running: AtomicUsize::new(0),
@@ -69,8 +69,13 @@ impl CoroutinePoolImpl<'_> {
             task_queue: Injector::default(),
             keep_alive_time,
             blocker: Box::leak(Box::new(blocker)),
-            inited: AtomicBool::new(false),
-        }
+        };
+        pool.init();
+        pool
+    }
+
+    fn init(&mut self) {
+        self.workers.add_listener(CoroutineCreator::default());
     }
 
     pub fn submit(
@@ -105,7 +110,7 @@ impl CoroutinePoolImpl<'_> {
         self.task_queue.is_empty()
     }
 
-    fn grow(&'static self) -> std::io::Result<()> {
+    fn grow(&'static self, _: bool) -> std::io::Result<()> {
         if self.task_queue.is_empty() {
             return Ok(());
         }
@@ -165,16 +170,12 @@ impl CoroutinePoolImpl<'_> {
     }
 
     pub fn try_timed_schedule(&'static self, time: Duration) -> u64 {
-        if self
-            .inited
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
-        {
-            self.workers.add_listener(CoroutineCreator::new(self));
-        }
-        _ = self.grow();
-        self.workers
-            .try_timeout_schedule(open_coroutine_timer::get_timeout_time(time))
+        Self::init_current(self);
+        let left_time = self
+            .workers
+            .try_timeout_schedule(open_coroutine_timer::get_timeout_time(time));
+        Self::clean_current();
+        left_time
     }
 
     //只有框架级crate才需要使用此方法

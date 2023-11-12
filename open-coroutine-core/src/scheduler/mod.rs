@@ -1,12 +1,11 @@
 use crate::common::Named;
-use crate::constants::{CoroutineState, Syscall, SyscallState, DEFAULT_STACK_SIZE};
+use crate::constants::{CoroutineState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
 use crate::scheduler::listener::Listener;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::panic::UnwindSafe;
 use std::time::Duration;
@@ -31,7 +30,7 @@ static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(H
 pub struct SchedulerImpl<'s> {
     name: &'s str,
     ready: LocalQueue<'s, SchedulableCoroutine>,
-    listeners: RefCell<VecDeque<Box<dyn Listener>>>,
+    listeners: VecDeque<Box<dyn Listener>>,
 }
 
 impl Drop for SchedulerImpl<'_> {
@@ -56,7 +55,7 @@ impl SchedulerImpl<'_> {
         SchedulerImpl {
             name: Box::leak(name),
             ready: LocalQueue::default(),
-            listeners: RefCell::default(),
+            listeners: VecDeque::default(),
         }
     }
 
@@ -117,6 +116,7 @@ impl SchedulerImpl<'_> {
     }
 
     pub fn try_timeout_schedule(&self, timeout_time: u64) -> u64 {
+        self.on_schedule(timeout_time);
         loop {
             let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
             if left_time == 0 {
@@ -132,9 +132,10 @@ impl SchedulerImpl<'_> {
                             crate::monitor::Monitor::add_task(start, Some(&coroutine));
                         }
                     }
+                    self.on_resume(timeout_time, &coroutine);
                     match coroutine.resume().unwrap() {
                         CoroutineState::Suspend((), timestamp) => {
-                            self.on_suspend(&coroutine);
+                            self.on_suspend(timeout_time, &coroutine);
                             if timestamp > 0 {
                                 //挂起协程到时间轮
                                 unsafe { SUSPEND_TABLE.insert(timestamp, coroutine) };
@@ -144,14 +145,14 @@ impl SchedulerImpl<'_> {
                             }
                         }
                         CoroutineState::SystemCall((), syscall, state) => {
-                            self.on_syscall(&coroutine, syscall, state);
+                            self.on_syscall(timeout_time, &coroutine, syscall, state);
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
                             unsafe { _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine) };
                         }
-                        CoroutineState::Complete(_) => {
-                            self.on_finish(&coroutine);
+                        CoroutineState::Complete(result) => {
+                            self.on_complete(timeout_time, &coroutine, result);
                             let name = Box::leak(Box::from(coroutine.get_name()));
                             _ = unsafe { RESULT_TABLE.insert(name, coroutine) };
                         }
@@ -170,37 +171,8 @@ impl SchedulerImpl<'_> {
         }
     }
 
-    pub fn add_listener(&self, listener: impl Listener + 'static) {
-        loop {
-            if let Ok(mut listeners) = self.listeners.try_borrow_mut() {
-                listeners.push_back(Box::new(listener));
-                return;
-            }
-        }
-    }
-
-    fn on_create(&self, coroutine: &SchedulableCoroutine) {
-        for listener in &*self.listeners.borrow() {
-            listener.on_create(coroutine);
-        }
-    }
-
-    fn on_suspend(&self, coroutine: &SchedulableCoroutine) {
-        for listener in &*self.listeners.borrow() {
-            listener.on_suspend(coroutine);
-        }
-    }
-
-    fn on_syscall(&self, coroutine: &SchedulableCoroutine, syscall: Syscall, state: SyscallState) {
-        for listener in &*self.listeners.borrow() {
-            listener.on_syscall(coroutine, syscall, state);
-        }
-    }
-
-    fn on_finish(&self, coroutine: &SchedulableCoroutine) {
-        for listener in &*self.listeners.borrow() {
-            listener.on_finish(coroutine);
-        }
+    pub fn add_listener(&mut self, listener: impl Listener + 'static) {
+        self.listeners.push_back(Box::new(listener));
     }
 
     //只有框架级crate才需要使用此方法
