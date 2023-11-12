@@ -28,13 +28,13 @@ static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(H
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct SchedulerImpl {
-    name: &'static str,
-    ready: LocalQueue<'static, SchedulableCoroutine>,
+pub struct SchedulerImpl<'s> {
+    name: &'s str,
+    ready: LocalQueue<'s, SchedulableCoroutine>,
     listeners: RefCell<VecDeque<Box<dyn Listener>>>,
 }
 
-impl Drop for SchedulerImpl {
+impl Drop for SchedulerImpl<'_> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             assert!(
@@ -45,7 +45,7 @@ impl Drop for SchedulerImpl {
     }
 }
 
-impl SchedulerImpl {
+impl SchedulerImpl<'_> {
     #[must_use]
     pub fn new() -> Self {
         Self::with_name(Box::from(Uuid::new_v4().to_string()))
@@ -217,7 +217,7 @@ impl SchedulerImpl {
     }
 }
 
-impl Default for SchedulerImpl {
+impl Default for SchedulerImpl<'_> {
     fn default() -> Self {
         Self::new()
     }

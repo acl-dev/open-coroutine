@@ -1,15 +1,15 @@
 use crate::constants::{Syscall, SyscallState};
-use crate::pool::CoroutinePool;
+use crate::pool::CoroutinePoolImpl;
 use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;
 
 #[derive(Debug)]
 pub(crate) struct CoroutineCreator<'p> {
-    pool: &'p CoroutinePool,
+    pool: &'p CoroutinePoolImpl<'p>,
 }
 
 impl<'p> CoroutineCreator<'p> {
-    pub(crate) fn new(pool: &'p CoroutinePool) -> Self {
+    pub(crate) fn new(pool: &'p CoroutinePoolImpl<'p>) -> Self {
         CoroutineCreator { pool }
     }
 }

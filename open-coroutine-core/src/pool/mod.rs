@@ -18,11 +18,11 @@ mod creator;
 static RESULT_TABLE: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
 
 #[derive(Debug)]
-pub struct CoroutinePool {
+pub struct CoroutinePoolImpl<'p> {
     //任务队列
-    task_queue: Injector<Task<'static>>,
+    task_queue: Injector<Task<'p>>,
     //工作协程组
-    workers: SchedulerImpl,
+    workers: SchedulerImpl<'p>,
     //协程栈大小
     stack_size: usize,
     //当前协程数
@@ -41,9 +41,9 @@ pub struct CoroutinePool {
     inited: AtomicBool,
 }
 
-impl RefUnwindSafe for CoroutinePool {}
+impl RefUnwindSafe for CoroutinePoolImpl<'_> {}
 
-impl Drop for CoroutinePool {
+impl Drop for CoroutinePoolImpl<'_> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             assert!(self.is_empty(), "there are still tasks to be carried out !");
@@ -51,7 +51,7 @@ impl Drop for CoroutinePool {
     }
 }
 
-impl CoroutinePool {
+impl CoroutinePoolImpl<'_> {
     pub fn new(
         stack_size: usize,
         min_size: usize,
@@ -59,7 +59,7 @@ impl CoroutinePool {
         keep_alive_time: u64,
         blocker: impl Blocker + 'static,
     ) -> Self {
-        CoroutinePool {
+        CoroutinePoolImpl {
             workers: SchedulerImpl::new(),
             stack_size,
             running: AtomicUsize::new(0),
@@ -208,7 +208,13 @@ mod tests {
             }
         }
 
-        let pool = Box::leak(Box::new(CoroutinePool::new(0, 0, 2, 0, SleepBlocker {})));
+        let pool = Box::leak(Box::new(CoroutinePoolImpl::new(
+            0,
+            0,
+            2,
+            0,
+            SleepBlocker {},
+        )));
         _ = pool.submit(|_, _| {
             println!("1");
             1
