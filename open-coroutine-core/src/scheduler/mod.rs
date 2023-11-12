@@ -14,8 +14,11 @@ use uuid::Uuid;
 
 pub mod listener;
 
+#[cfg(test)]
+mod tests;
+
 /// 用户协程
-pub type SchedulableCoroutine = CoroutineImpl<'static, (), (), usize>;
+pub type SchedulableCoroutine = CoroutineImpl<'static, (), (), Option<usize>>;
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
 
@@ -25,13 +28,13 @@ static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(H
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct Scheduler {
+pub struct SchedulerImpl {
     name: &'static str,
     ready: LocalQueue<'static, SchedulableCoroutine>,
     listeners: RefCell<VecDeque<Box<dyn Listener>>>,
 }
 
-impl Drop for Scheduler {
+impl Drop for SchedulerImpl {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             assert!(
@@ -42,7 +45,7 @@ impl Drop for Scheduler {
     }
 }
 
-impl Scheduler {
+impl SchedulerImpl {
     #[must_use]
     pub fn new() -> Self {
         Self::with_name(Box::from(Uuid::new_v4().to_string()))
@@ -50,16 +53,18 @@ impl Scheduler {
 
     #[must_use]
     pub fn with_name(name: Box<str>) -> Self {
-        Scheduler {
+        SchedulerImpl {
             name: Box::leak(name),
             ready: LocalQueue::default(),
             listeners: RefCell::default(),
         }
     }
 
-    pub fn submit(
+    pub fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + UnwindSafe + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
+            + UnwindSafe
+            + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<&'static str> {
         let coroutine = SchedulableCoroutine::new(
@@ -212,164 +217,8 @@ impl Scheduler {
     }
 }
 
-impl Default for Scheduler {
+impl Default for SchedulerImpl {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::coroutine::suspender::{SimpleDelaySuspender, SimpleSuspender};
-
-    #[test]
-    fn test_simple() {
-        let scheduler = Scheduler::new();
-        _ = scheduler.submit(
-            |_, _| {
-                println!("1");
-                1
-            },
-            None,
-        );
-        _ = scheduler.submit(
-            |_, _| {
-                println!("2");
-                2
-            },
-            None,
-        );
-        scheduler.try_schedule();
-    }
-
-    #[test]
-    fn test_backtrace() {
-        let scheduler = Scheduler::new();
-        _ = scheduler.submit(|_, _| 1, None);
-        _ = scheduler.submit(
-            |_, _| {
-                println!("{:?}", backtrace::Backtrace::new());
-                2
-            },
-            None,
-        );
-        scheduler.try_schedule();
-    }
-
-    #[test]
-    fn with_suspend() {
-        let scheduler = Scheduler::new();
-        _ = scheduler.submit(
-            |suspender, _| {
-                println!("[coroutine1] suspend");
-                suspender.suspend();
-                println!("[coroutine1] back");
-                1
-            },
-            None,
-        );
-        _ = scheduler.submit(
-            |suspender, _| {
-                println!("[coroutine2] suspend");
-                suspender.suspend();
-                println!("[coroutine2] back");
-                2
-            },
-            None,
-        );
-        scheduler.try_schedule();
-    }
-
-    #[test]
-    fn with_delay() {
-        let scheduler = Scheduler::new();
-        _ = scheduler.submit(
-            |suspender, _| {
-                println!("[coroutine] delay");
-                suspender.delay(Duration::from_millis(100));
-                println!("[coroutine] back");
-                1
-            },
-            None,
-        );
-        scheduler.try_schedule();
-        std::thread::sleep(Duration::from_millis(100));
-        scheduler.try_schedule();
-    }
-
-    #[cfg(all(unix, feature = "preemptive-schedule"))]
-    #[test]
-    fn preemptive_schedule() -> std::io::Result<()> {
-        use std::sync::{Arc, Condvar, Mutex};
-        static mut TEST_FLAG1: bool = true;
-        static mut TEST_FLAG2: bool = true;
-        let pair = Arc::new((Mutex::new(true), Condvar::new()));
-        let pair2 = Arc::clone(&pair);
-        let handler = std::thread::Builder::new()
-            .name("test_preemptive_schedule".to_string())
-            .spawn(move || {
-                let scheduler = Box::leak(Box::new(Scheduler::new()));
-                _ = scheduler.submit(
-                    |_, _| {
-                        unsafe {
-                            while TEST_FLAG1 {
-                                _ = libc::usleep(10_000);
-                            }
-                        }
-                        1
-                    },
-                    None,
-                );
-                _ = scheduler.submit(
-                    |_, _| {
-                        unsafe {
-                            while TEST_FLAG2 {
-                                _ = libc::usleep(10_000);
-                            }
-                        }
-                        unsafe { TEST_FLAG1 = false };
-                        2
-                    },
-                    None,
-                );
-                _ = scheduler.submit(
-                    |_, _| {
-                        unsafe { TEST_FLAG2 = false };
-                        3
-                    },
-                    None,
-                );
-                scheduler.try_schedule();
-
-                let (lock, cvar) = &*pair2;
-                let mut pending = lock.lock().unwrap();
-                *pending = false;
-                // notify the condvar that the value has changed.
-                cvar.notify_one();
-            })
-            .expect("failed to spawn thread");
-
-        // wait for the thread to start up
-        let (lock, cvar) = &*pair;
-        let result = cvar
-            .wait_timeout_while(
-                lock.lock().unwrap(),
-                Duration::from_millis(3000),
-                |&mut pending| pending,
-            )
-            .unwrap();
-        if result.1.timed_out() {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "preemptive schedule failed",
-            ))
-        } else {
-            unsafe {
-                handler.join().unwrap();
-                assert!(!TEST_FLAG1, "preemptive schedule failed");
-            }
-            Ok(())
-        }
     }
 }

@@ -1,7 +1,7 @@
 fn main() -> std::io::Result<()> {
     cfg_if::cfg_if! {
         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-            use open_coroutine_core::scheduler::Scheduler;
+            use open_coroutine_core::scheduler::SchedulerImpl;
             use std::sync::{Arc, Condvar, Mutex};
             use std::time::Duration;
 
@@ -12,8 +12,8 @@ fn main() -> std::io::Result<()> {
             let handler = std::thread::Builder::new()
                 .name("preemptive".to_string())
                 .spawn(move || {
-                    let scheduler = Scheduler::new();
-                    _ = scheduler.submit(
+                    let scheduler = SchedulerImpl::new();
+                    _ = scheduler.submit_co(
                         |_, _| {
                             println!("coroutine1 launched");
                             while unsafe { TEST_FLAG1 } {
@@ -21,11 +21,11 @@ fn main() -> std::io::Result<()> {
                                 _ = unsafe { libc::usleep(10_000) };
                             }
                             println!("loop1 end");
-                            1
+                            None
                         },
                         None,
                     );
-                    _ = scheduler.submit(
+                    _ = scheduler.submit_co(
                         |_, _| {
                             println!("coroutine2 launched");
                             while unsafe { TEST_FLAG2 } {
@@ -34,15 +34,15 @@ fn main() -> std::io::Result<()> {
                             }
                             println!("loop2 end");
                             unsafe { TEST_FLAG1 = false };
-                            2
+                            None
                         },
                         None,
                     );
-                    _ = scheduler.submit(
+                    _ = scheduler.submit_co(
                         |_, _| {
                             println!("coroutine3 launched");
                             unsafe { TEST_FLAG2 = false };
-                            3
+                            None
                         },
                         None,
                     );
