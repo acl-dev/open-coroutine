@@ -13,6 +13,8 @@ use std::time::Duration;
 
 mod node;
 
+pub(crate) mod creator;
+
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
 static MONITOR: OnceCell<JoinHandle<()>> = OnceCell::new();
@@ -137,70 +139,30 @@ impl Monitor {
                 break;
             }
             for node in entry.iter() {
-                if let Some(coroutine) = node.get_coroutine() {
-                    unsafe {
-                        if CoroutineState::Running == (*coroutine).state() {
-                            //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
-                            //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
-                            assert_eq!(
-                                0,
-                                libc::pthread_kill(node.get_pthread(), Monitor::signum())
-                            );
-                        }
+                let coroutine = node.get_coroutine();
+                unsafe {
+                    if CoroutineState::Running == (*coroutine).state() {
+                        //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
+                        //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
+                        assert_eq!(0, libc::pthread_kill(node.get_pthread(), Monitor::signum()));
                     }
                 }
             }
         }
     }
 
-    pub(crate) fn add_task(time: u64, coroutine: Option<*const SchedulableCoroutine>) {
-        unsafe {
-            let pthread = libc::pthread_self();
-            Monitor::global()
-                .tasks
-                .insert(time, TaskNode::new(pthread, coroutine));
-        }
+    pub(crate) fn submit(time: u64, coroutine: &SchedulableCoroutine) {
+        Monitor::global()
+            .tasks
+            .insert(time, TaskNode::new(time, coroutine));
     }
 
-    pub(crate) fn clean_task(time: u64) {
+    pub(crate) fn remove(time: u64, coroutine: &SchedulableCoroutine) {
         let tasks = &mut Monitor::global().tasks;
         if let Some(entry) = tasks.get_entry(&time) {
-            let pthread = unsafe { libc::pthread_self() };
             if !entry.is_empty() {
-                _ = entry.remove(&TaskNode::new(pthread, None));
+                _ = entry.remove(&TaskNode::new(time, coroutine));
             }
         }
-    }
-}
-
-#[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[ignore]
-    #[test]
-    fn test() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg handled");
-        }
-        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
-        let time = open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
-        Monitor::add_task(time, None);
-        std::thread::sleep(Duration::from_millis(20));
-        Monitor::clean_task(time);
-    }
-
-    #[ignore]
-    #[test]
-    fn test_clean() {
-        extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            println!("sigurg should not handle");
-        }
-        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
-        let time = open_coroutine_timer::get_timeout_time(Duration::from_millis(100));
-        Monitor::add_task(time, None);
-        Monitor::clean_task(time);
-        std::thread::sleep(Duration::from_millis(200));
     }
 }

@@ -12,7 +12,7 @@ fn main() -> std::io::Result<()> {
             let handler = std::thread::Builder::new()
                 .name("preemptive".to_string())
                 .spawn(move || {
-                    let scheduler = SchedulerImpl::new();
+                    let scheduler = SchedulerImpl::default();
                     _ = scheduler.submit_co(
                         |_, _| {
                             println!("coroutine1 launched");

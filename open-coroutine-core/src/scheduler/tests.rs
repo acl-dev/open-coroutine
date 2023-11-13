@@ -1,9 +1,10 @@
 use super::*;
 use crate::coroutine::suspender::{SimpleDelaySuspender, SimpleSuspender};
+use std::time::Duration;
 
 #[test]
 fn test_simple() {
-    let scheduler = SchedulerImpl::new();
+    let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(
         |_, _| {
             println!("1");
@@ -23,7 +24,7 @@ fn test_simple() {
 
 #[test]
 fn test_backtrace() {
-    let scheduler = SchedulerImpl::new();
+    let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(|_, _| None, None);
     _ = scheduler.submit_co(
         |_, _| {
@@ -37,7 +38,7 @@ fn test_backtrace() {
 
 #[test]
 fn with_suspend() {
-    let scheduler = SchedulerImpl::new();
+    let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(
         |suspender, _| {
             println!("[coroutine1] suspend");
@@ -61,7 +62,7 @@ fn with_suspend() {
 
 #[test]
 fn with_delay() {
-    let scheduler = SchedulerImpl::new();
+    let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(
         |suspender, _| {
             println!("[coroutine] delay");
@@ -87,7 +88,7 @@ fn preemptive_schedule() -> std::io::Result<()> {
     let handler = std::thread::Builder::new()
         .name("test_preemptive_schedule".to_string())
         .spawn(move || {
-            let scheduler = Box::leak(Box::new(SchedulerImpl::new()));
+            let scheduler = Box::leak(Box::new(SchedulerImpl::default()));
             _ = scheduler.submit_co(
                 |_, _| {
                     unsafe {

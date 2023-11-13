@@ -205,7 +205,7 @@ impl EventLoop {
             return;
         }
         if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
-            self.pool.assume_init_ref().resume_syscall(co_name);
+            self.pool.assume_init_ref().try_resume(co_name);
         }
     }
 
