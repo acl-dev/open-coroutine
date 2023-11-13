@@ -1,4 +1,4 @@
-use crate::common::Named;
+use crate::common::{Current, JoinHandle, Named};
 use crate::constants::{CoroutineState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
@@ -7,23 +7,109 @@ use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Debug;
 use std::panic::UnwindSafe;
-use std::time::Duration;
 use uuid::Uuid;
-
-pub mod listener;
-
-#[cfg(test)]
-mod tests;
 
 /// 用户协程
 pub type SchedulableCoroutine = CoroutineImpl<'static, (), (), Option<usize>>;
 
+/// Listener abstraction and impl.
+pub mod listener;
+
+/// Join impl for scheduler.
+pub mod join;
+
+mod current;
+
+#[cfg(test)]
+mod tests;
+
+/// A trait implemented for schedulers.
+pub trait Scheduler<'s, Join: JoinHandle<Self>>:
+    Debug + Default + Named + Current<'s> + Listener
+{
+    /// Extension points within the open-coroutine framework.
+    fn init(&mut self);
+
+    /// Set the default stack stack size for the coroutines in this scheduler.
+    /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
+    fn set_stack_size(&self, stack_size: usize);
+
+    /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    ///
+    /// # Errors
+    /// if create coroutine fails.
+    fn submit_co(
+        &self,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize> + UnwindSafe + 's,
+        stack_size: Option<usize>,
+    ) -> std::io::Result<Join>;
+
+    /// Resume a coroutine from the system call table to the ready queue,
+    /// it's generally only required for framework level crates.
+    ///
+    /// If we can't find the coroutine, nothing happens.
+    ///
+    /// # Errors
+    /// if change to ready fails.
+    fn try_resume(&self, co_name: &'s str) -> std::io::Result<()>;
+
+    /// Schedule the coroutines.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    ///
+    /// # Errors
+    /// see `try_timeout_schedule`.
+    fn try_schedule(&self) -> std::io::Result<()> {
+        _ = self.try_timeout_schedule(std::time::Duration::MAX.as_secs())?;
+        Ok(())
+    }
+
+    /// Try scheduling the coroutines for up to `dur`.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    ///
+    /// # Errors
+    /// see `try_timeout_schedule`.
+    fn try_timed_schedule(&self, dur: std::time::Duration) -> std::io::Result<u64> {
+        self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(dur))
+    }
+
+    /// Attempt to schedule the coroutines before the `timeout_time` timestamp.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    ///
+    /// Returns the left time in ns.
+    ///
+    /// # Errors
+    /// if change to ready fails.
+    fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64>;
+
+    /// Attempt to obtain coroutine result with the given `co_name`.
+    fn try_get_coroutine_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>>;
+
+    /// Returns `true` if the ready queue, suspend queue, and syscall queue are all empty.
+    fn is_empty(&self) -> bool {
+        self.size() == 0
+    }
+
+    /// Returns the number of coroutines owned by this scheduler.
+    fn size(&self) -> usize;
+
+    /// Add a listener to this scheduler.
+    fn add_listener(&mut self, listener: impl Listener + 's);
+}
+
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
 
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
-
-static mut RESULT_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -46,17 +132,19 @@ impl Drop for SchedulerImpl<'_> {
 
 impl SchedulerImpl<'_> {
     #[must_use]
-    pub fn new() -> Self {
-        Self::with_name(Box::from(Uuid::new_v4().to_string()))
-    }
-
-    #[must_use]
     pub fn with_name(name: Box<str>) -> Self {
-        SchedulerImpl {
+        let mut scheduler = SchedulerImpl {
             name: Box::leak(name),
             ready: LocalQueue::default(),
             listeners: VecDeque::default(),
-        }
+        };
+        scheduler.init();
+        scheduler
+    }
+
+    fn init(&mut self) {
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
+        self.add_listener(crate::monitor::creator::MonitorTaskCreator::default());
     }
 
     pub fn submit_co(
@@ -108,10 +196,10 @@ impl SchedulerImpl<'_> {
     }
 
     pub fn try_schedule(&self) {
-        _ = self.try_timeout_schedule(Duration::MAX.as_secs());
+        _ = self.try_timeout_schedule(std::time::Duration::MAX.as_secs());
     }
 
-    pub fn try_timed_schedule(&self, time: Duration) -> u64 {
+    pub fn try_timed_schedule(&self, time: std::time::Duration) -> u64 {
         self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(time))
     }
 
@@ -125,13 +213,6 @@ impl SchedulerImpl<'_> {
             self.check_ready();
             match self.ready.pop_front() {
                 Some(mut coroutine) => {
-                    cfg_if::cfg_if! {
-                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-                            let start = open_coroutine_timer::get_timeout_time(Duration::from_millis(10))
-                                .min(timeout_time);
-                            crate::monitor::Monitor::add_task(start, Some(&coroutine));
-                        }
-                    }
                     self.on_resume(timeout_time, &coroutine);
                     match coroutine.resume().unwrap() {
                         CoroutineState::Suspend((), timestamp) => {
@@ -153,18 +234,9 @@ impl SchedulerImpl<'_> {
                         }
                         CoroutineState::Complete(result) => {
                             self.on_complete(timeout_time, &coroutine, result);
-                            let name = Box::leak(Box::from(coroutine.get_name()));
-                            _ = unsafe { RESULT_TABLE.insert(name, coroutine) };
                         }
                         _ => unreachable!("should never execute to here"),
                     };
-                    cfg_if::cfg_if! {
-                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-                            //还没执行到10ms就主动yield或者执行完毕了，此时需要清理任务
-                            //否则下一个协程执行不到10ms就会被抢占调度
-                            crate::monitor::Monitor::clean_task(start);
-                        }
-                    }
                 }
                 None => return left_time,
             }
@@ -176,21 +248,17 @@ impl SchedulerImpl<'_> {
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn resume_syscall(&self, co_name: &'static str) {
+    pub fn try_resume(&self, co_name: &'static str) {
         unsafe {
             if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
                 self.ready.push_back(coroutine);
             }
         }
     }
-
-    pub fn get_result(co_name: &'static str) -> Option<SchedulableCoroutine> {
-        unsafe { RESULT_TABLE.remove(&co_name) }
-    }
 }
 
 impl Default for SchedulerImpl<'_> {
     fn default() -> Self {
-        Self::new()
+        Self::with_name(Box::from(Uuid::new_v4().to_string()))
     }
 }

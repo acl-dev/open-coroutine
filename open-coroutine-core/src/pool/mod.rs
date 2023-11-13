@@ -60,7 +60,7 @@ impl CoroutinePoolImpl<'_> {
         blocker: impl Blocker + 'static,
     ) -> Self {
         let mut pool = CoroutinePoolImpl {
-            workers: SchedulerImpl::new(),
+            workers: SchedulerImpl::default(),
             stack_size,
             running: AtomicUsize::new(0),
             idle: AtomicUsize::new(0),
@@ -179,8 +179,8 @@ impl CoroutinePoolImpl<'_> {
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn resume_syscall(&self, co_name: &'static str) {
-        self.workers.resume_syscall(co_name);
+    pub fn try_resume(&self, co_name: &'static str) {
+        self.workers.try_resume(co_name);
     }
 
     pub fn get_result(task_name: &'static str) -> Option<usize> {

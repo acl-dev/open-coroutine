@@ -48,7 +48,7 @@ backtrace = "0.3.67"
 [features]
 default = ["full"]
 
-korosensei = ["corosensei"]
+korosensei = ["corosensei", "nix/pthread"]
 
 # Provide preemptive scheduling implementation.
 # Enable for default.
