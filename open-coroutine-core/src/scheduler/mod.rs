@@ -1,5 +1,5 @@
 use crate::common::{Current, JoinHandle, Named};
-use crate::constants::{CoroutineState, DEFAULT_STACK_SIZE};
+use crate::constants::{CoroutineState, SyscallState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::{Suspender, SuspenderImpl};
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
 use crate::scheduler::listener::Listener;
@@ -112,6 +112,8 @@ static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(Time
 
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
+static mut SYSTEM_CALL_SUSPEND_TABLE: Lazy<TimerList<&str>> = Lazy::new(TimerList::default);
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct SchedulerImpl<'s> {
@@ -196,6 +198,35 @@ impl<'s> SchedulerImpl<'s> {
                     }
                 }
             }
+            // Check if the elements in the syscall suspend queue are ready
+            for _ in 0..SYSTEM_CALL_SUSPEND_TABLE.entry_len() {
+                if let Some((exec_time, _)) = SYSTEM_CALL_SUSPEND_TABLE.front() {
+                    if open_coroutine_timer::now() < *exec_time {
+                        break;
+                    }
+                    if let Some((_, mut entry)) = SYSTEM_CALL_SUSPEND_TABLE.pop_front() {
+                        while let Some(co_name) = entry.pop_front() {
+                            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
+                                match coroutine.state() {
+                                    CoroutineState::SystemCall(val, syscall, state) => {
+                                        if let SyscallState::Suspend(_) = state {
+                                            coroutine.syscall(
+                                                val,
+                                                syscall,
+                                                SyscallState::Timeout,
+                                            )?;
+                                        }
+                                        self.ready.push_back(coroutine);
+                                    }
+                                    _ => {
+                                        unreachable!("check_ready should never execute to here")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -236,7 +267,12 @@ impl<'s> SchedulerImpl<'s> {
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
-                            unsafe { _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine) };
+                            unsafe {
+                                _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine);
+                                if let SyscallState::Suspend(timestamp) = state {
+                                    SYSTEM_CALL_SUSPEND_TABLE.insert(timestamp, co_name);
+                                }
+                            }
                         }
                         CoroutineState::Complete(result) => {
                             self.on_complete(timeout_time, &coroutine, result);
