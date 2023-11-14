@@ -3,7 +3,6 @@ use crate::constants::{CoroutineState, DEFAULT_STACK_SIZE};
 use crate::coroutine::suspender::{Suspender, SuspenderImpl};
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
 use crate::scheduler::listener::Listener;
-use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
 use std::cell::RefCell;
@@ -109,15 +108,14 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     fn add_listener(&mut self, listener: impl Listener + 's);
 }
 
-static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
-
 #[repr(C)]
 #[derive(Debug)]
 pub struct SchedulerImpl<'s> {
     name: String,
     stack_size: AtomicUsize,
-    ready: LocalQueue<'s, SchedulableCoroutine<'static>>,
-    suspend: RefCell<TimerList<SchedulableCoroutine<'static>>>,
+    ready: LocalQueue<'s, SchedulableCoroutine<'s>>,
+    suspend: RefCell<TimerList<SchedulableCoroutine<'s>>>,
+    syscall: RefCell<HashMap<&'s str, SchedulableCoroutine<'s>>>,
     listeners: VecDeque<Box<dyn Listener + 's>>,
 }
 
@@ -141,6 +139,7 @@ impl<'s> SchedulerImpl<'s> {
             stack_size: AtomicUsize::new(stack_size),
             ready: LocalQueue::default(),
             suspend: RefCell::default(),
+            syscall: RefCell::default(),
             listeners: VecDeque::default(),
         };
         scheduler.init();
@@ -158,9 +157,7 @@ impl<'s> SchedulerImpl<'s> {
 
     pub fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize> + UnwindSafe + 's,
         stack_size: Option<usize>,
     ) -> std::io::Result<&'s str> {
         let coroutine = SchedulableCoroutine::new(
@@ -245,7 +242,12 @@ impl<'s> SchedulerImpl<'s> {
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
-                            unsafe { _ = SYSTEM_CALL_TABLE.insert(co_name, coroutine) };
+                            loop {
+                                if let Ok(mut syscall) = self.syscall.try_borrow_mut() {
+                                    _ = syscall.insert(co_name, coroutine);
+                                    break;
+                                }
+                            }
                         }
                         CoroutineState::Complete(result) => {
                             self.on_complete(timeout_time, &coroutine, result);
@@ -263,10 +265,13 @@ impl<'s> SchedulerImpl<'s> {
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn try_resume(&self, co_name: &'static str) -> std::io::Result<()> {
-        unsafe {
-            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
-                self.ready.push_back(coroutine);
+    pub fn try_resume(&self, co_name: &'s str) -> std::io::Result<()> {
+        loop {
+            if let Ok(mut syscall) = self.syscall.try_borrow_mut() {
+                if let Some(coroutine) = syscall.remove(&co_name) {
+                    self.ready.push_back(coroutine);
+                }
+                break;
             }
         }
         Ok(())
