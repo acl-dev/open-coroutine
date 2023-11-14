@@ -3,7 +3,7 @@ use crate::coroutine::suspender::{SimpleDelaySuspender, SimpleSuspender};
 use std::time::Duration;
 
 #[test]
-fn test_simple() {
+fn test_simple() -> std::io::Result<()> {
     let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(
         |_, _| {
@@ -19,11 +19,11 @@ fn test_simple() {
         },
         None,
     );
-    scheduler.try_schedule();
+    scheduler.try_schedule()
 }
 
 #[test]
-fn test_backtrace() {
+fn test_backtrace() -> std::io::Result<()> {
     let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(|_, _| None, None);
     _ = scheduler.submit_co(
@@ -33,11 +33,11 @@ fn test_backtrace() {
         },
         None,
     );
-    scheduler.try_schedule();
+    scheduler.try_schedule()
 }
 
 #[test]
-fn with_suspend() {
+fn with_suspend() -> std::io::Result<()> {
     let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(
         |suspender, _| {
@@ -57,11 +57,11 @@ fn with_suspend() {
         },
         None,
     );
-    scheduler.try_schedule();
+    scheduler.try_schedule()
 }
 
 #[test]
-fn with_delay() {
+fn with_delay() -> std::io::Result<()> {
     let scheduler = SchedulerImpl::default();
     _ = scheduler.submit_co(
         |suspender, _| {
@@ -72,9 +72,9 @@ fn with_delay() {
         },
         None,
     );
-    scheduler.try_schedule();
+    scheduler.try_schedule()?;
     std::thread::sleep(Duration::from_millis(100));
-    scheduler.try_schedule();
+    scheduler.try_schedule()
 }
 
 #[cfg(all(unix, feature = "preemptive-schedule"))]
@@ -119,7 +119,7 @@ fn preemptive_schedule() -> std::io::Result<()> {
                 },
                 None,
             );
-            scheduler.try_schedule();
+            scheduler.try_schedule().unwrap();
 
             let (lock, cvar) = &*pair2;
             let mut pending = lock.lock().unwrap();

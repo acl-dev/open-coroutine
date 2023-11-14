@@ -46,7 +46,7 @@ fn main() -> std::io::Result<()> {
                         },
                         None,
                     );
-                    scheduler.try_schedule();
+                    scheduler.try_schedule().unwrap();
 
                     let (lock, cvar) = &*pair2;
                     let mut pending = lock.lock().unwrap();

@@ -33,9 +33,6 @@ mod tests;
 pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     Debug + Default + Named + Current<'s> + Listener
 {
-    /// Extension points within the open-coroutine framework.
-    fn init(&mut self);
-
     /// Set the default stack stack size for the coroutines in this scheduler.
     /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
     fn set_stack_size(&self, stack_size: usize);
@@ -70,8 +67,8 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     /// # Errors
     /// see `try_timeout_schedule`.
     fn try_schedule(&self) -> std::io::Result<()> {
-        _ = self.try_timeout_schedule(std::time::Duration::MAX.as_secs())?;
-        Ok(())
+        self.try_timeout_schedule(std::time::Duration::MAX.as_secs())
+            .map(|_| ())
     }
 
     /// Try scheduling the coroutines for up to `dur`.
@@ -203,20 +200,21 @@ impl<'s> SchedulerImpl<'s> {
         Ok(())
     }
 
-    pub fn try_schedule(&self) {
-        _ = self.try_timeout_schedule(std::time::Duration::MAX.as_secs());
+    pub fn try_schedule(&self) -> std::io::Result<()> {
+        self.try_timeout_schedule(std::time::Duration::MAX.as_secs())
+            .map(|_| ())
     }
 
-    pub fn try_timed_schedule(&self, time: std::time::Duration) -> u64 {
+    pub fn try_timed_schedule(&self, time: std::time::Duration) -> std::io::Result<u64> {
         self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(time))
     }
 
-    pub fn try_timeout_schedule(&self, timeout_time: u64) -> u64 {
+    pub fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
         self.on_schedule(timeout_time);
         loop {
             let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
             if left_time == 0 {
-                return 0;
+                return Ok(0);
             }
             self.check_ready().unwrap();
             match self.ready.pop_front() {
@@ -246,7 +244,7 @@ impl<'s> SchedulerImpl<'s> {
                         _ => unreachable!("should never execute to here"),
                     };
                 }
-                None => return left_time,
+                None => return Ok(left_time),
             }
         }
     }
@@ -256,12 +254,13 @@ impl<'s> SchedulerImpl<'s> {
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn try_resume(&self, co_name: &'static str) {
+    pub fn try_resume(&self, co_name: &'static str) -> std::io::Result<()> {
         unsafe {
             if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
                 self.ready.push_back(coroutine);
             }
         }
+        Ok(())
     }
 }
 

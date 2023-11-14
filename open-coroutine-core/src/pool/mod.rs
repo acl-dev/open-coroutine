@@ -175,12 +175,12 @@ impl CoroutinePoolImpl<'_> {
             .workers
             .try_timeout_schedule(open_coroutine_timer::get_timeout_time(time));
         Self::clean_current();
-        left_time
+        left_time.unwrap()
     }
 
     //只有框架级crate才需要使用此方法
-    pub fn try_resume(&self, co_name: &'static str) {
-        self.workers.try_resume(co_name);
+    pub fn try_resume(&self, co_name: &'static str) -> std::io::Result<()> {
+        self.workers.try_resume(co_name)
     }
 
     pub fn get_result(task_name: &'static str) -> Option<usize> {
