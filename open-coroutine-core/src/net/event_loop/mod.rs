@@ -4,6 +4,7 @@ use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::JoinHandle;
 use crate::pool::task::Task;
+use crate::scheduler::SchedulableSuspender;
 use libc::c_int;
 use once_cell::sync::{Lazy, OnceCell};
 use std::fmt::Debug;
@@ -176,7 +177,7 @@ impl EventLoops {
         event_loop: &'static EventLoop,
     ) -> std::io::Result<()> {
         let time = timeout.unwrap_or(Duration::MAX);
-        if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
+        if let Some(suspender) = SchedulableSuspender::current() {
             suspender.delay(time);
             //回来的时候等待的时间已经到了
             return event_loop.wait_just(Some(Duration::ZERO));
@@ -246,7 +247,7 @@ impl EventLoops {
             if r.is_err() {
                 return -1;
             }
-            if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
+            if let Some(suspender) = SchedulableSuspender::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
             }
@@ -279,7 +280,7 @@ impl EventLoops {
             if r.is_err() {
                 return -1;
             }
-            if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
+            if let Some(suspender) = SchedulableSuspender::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
             }
@@ -312,7 +313,7 @@ impl EventLoops {
             if r.is_err() {
                 return -1;
             }
-            if let Some(suspender) = SuspenderImpl::<(), ()>::current() {
+            if let Some(suspender) = SchedulableSuspender::current() {
                 suspender.suspend();
                 //回来的时候，系统调用已经执行完了
             }
