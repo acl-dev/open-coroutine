@@ -68,7 +68,7 @@ impl Monitor {
         #[allow(clippy::fn_to_numeric_cast)]
         unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
             // invoke by Monitor::signal()
-            if let Some(s) = crate::coroutine::suspender::SuspenderImpl::<(), ()>::current() {
+            if let Some(s) = crate::scheduler::SchedulableSuspender::current() {
                 //获取当前信号屏蔽集
                 let mut current_mask: libc::sigset_t = std::mem::zeroed();
                 assert_eq!(
