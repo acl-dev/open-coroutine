@@ -6,6 +6,7 @@ use crate::scheduler::listener::Listener;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::panic::UnwindSafe;
@@ -108,8 +109,6 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     fn add_listener(&mut self, listener: impl Listener + 's);
 }
 
-static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
-
 static mut SYSTEM_CALL_TABLE: Lazy<HashMap<&str, SchedulableCoroutine>> = Lazy::new(HashMap::new);
 
 #[repr(C)]
@@ -118,6 +117,7 @@ pub struct SchedulerImpl<'s> {
     name: String,
     stack_size: AtomicUsize,
     ready: LocalQueue<'s, SchedulableCoroutine<'static>>,
+    suspend: RefCell<TimerList<SchedulableCoroutine<'static>>>,
     listeners: VecDeque<Box<dyn Listener + 's>>,
 }
 
@@ -140,6 +140,7 @@ impl<'s> SchedulerImpl<'s> {
             name,
             stack_size: AtomicUsize::new(stack_size),
             ready: LocalQueue::default(),
+            suspend: RefCell::default(),
             listeners: VecDeque::default(),
         };
         scheduler.init();
@@ -178,23 +179,26 @@ impl<'s> SchedulerImpl<'s> {
     }
 
     fn check_ready(&self) -> std::io::Result<()> {
-        unsafe {
-            for _ in 0..SUSPEND_TABLE.len() {
-                if let Some((exec_time, _)) = SUSPEND_TABLE.front() {
-                    if open_coroutine_timer::now() < *exec_time {
-                        break;
-                    }
-                    //移动至"就绪"队列
-                    if let Some((_, mut entry)) = SUSPEND_TABLE.pop_front() {
-                        for _ in 0..entry.len() {
-                            if let Some(coroutine) = entry.pop_front() {
-                                coroutine.ready()?;
-                                //把到时间的协程加入就绪队列
-                                self.ready.push_back(coroutine);
+        loop {
+            if let Ok(mut suspend) = self.suspend.try_borrow_mut() {
+                for _ in 0..suspend.len() {
+                    if let Some((exec_time, _)) = suspend.front() {
+                        if open_coroutine_timer::now() < *exec_time {
+                            break;
+                        }
+                        //移动至"就绪"队列
+                        if let Some((_, mut entry)) = suspend.pop_front() {
+                            for _ in 0..entry.len() {
+                                if let Some(coroutine) = entry.pop_front() {
+                                    coroutine.ready()?;
+                                    //把到时间的协程加入就绪队列
+                                    self.ready.push_back(coroutine);
+                                }
                             }
                         }
                     }
                 }
+                break;
             }
         }
         Ok(())
@@ -225,7 +229,12 @@ impl<'s> SchedulerImpl<'s> {
                             self.on_suspend(timeout_time, &coroutine);
                             if timestamp > 0 {
                                 //挂起协程到时间轮
-                                unsafe { SUSPEND_TABLE.insert(timestamp, coroutine) };
+                                loop {
+                                    if let Ok(mut suspend) = self.suspend.try_borrow_mut() {
+                                        suspend.insert(timestamp, coroutine);
+                                        break;
+                                    }
+                                }
                             } else {
                                 //放入就绪队列尾部
                                 self.ready.push_back(coroutine);
