@@ -2,7 +2,7 @@ use crate::common::{Blocker, Current};
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
-use crate::scheduler::SchedulerImpl;
+use crate::scheduler::{Scheduler, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
