@@ -1,8 +1,10 @@
 use crate::common::{Current, JoinHandle, Named};
-use crate::constants::{CoroutineState, SyscallState, DEFAULT_STACK_SIZE};
+use crate::constants::{CoroutineState, SyscallState};
 use crate::coroutine::suspender::{Suspender, SuspenderImpl};
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
+use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
@@ -26,6 +28,9 @@ pub mod join;
 
 mod current;
 
+/// Has scheduler abstraction.
+pub mod has;
+
 #[cfg(test)]
 mod tests;
 
@@ -46,7 +51,9 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     /// if create coroutine fails.
     fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize> + UnwindSafe + 's,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
+            + UnwindSafe
+            + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<Join>;
 
@@ -57,7 +64,7 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     ///
     /// # Errors
     /// if change to ready fails.
-    fn try_resume(&self, co_name: &'s str) -> std::io::Result<()>;
+    fn try_resume(&self, co_name: &str) -> std::io::Result<()>;
 
     /// Schedule the coroutines.
     ///
@@ -94,7 +101,7 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64>;
 
     /// Attempt to obtain coroutine result with the given `co_name`.
-    fn try_get_coroutine_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>>;
+    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>>;
 
     /// Returns `true` if the ready queue, suspend queue, and syscall queue are all empty.
     fn is_empty(&self) -> bool {
@@ -120,21 +127,10 @@ pub struct SchedulerImpl<'s> {
     name: String,
     stack_size: AtomicUsize,
     ready: LocalQueue<'s, SchedulableCoroutine<'static>>,
+    results: DashMap<&'s str, Result<Option<usize>, &'s str>>,
     listeners: VecDeque<Box<dyn Listener + 's>>,
 }
 
-impl Drop for SchedulerImpl<'_> {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            assert!(
-                self.ready.is_empty(),
-                "there are still coroutines to be carried out !"
-            );
-        }
-    }
-}
-
-#[allow(dead_code)]
 impl<'s> SchedulerImpl<'s> {
     #[must_use]
     pub fn new(name: String, stack_size: usize) -> Self {
@@ -142,6 +138,7 @@ impl<'s> SchedulerImpl<'s> {
             name,
             stack_size: AtomicUsize::new(stack_size),
             ready: LocalQueue::default(),
+            results: DashMap::default(),
             listeners: VecDeque::default(),
         };
         scheduler.init();
@@ -151,32 +148,6 @@ impl<'s> SchedulerImpl<'s> {
     fn init(&mut self) {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         self.add_listener(crate::monitor::creator::MonitorTaskCreator::default());
-    }
-
-    fn set_stack_size(&self, stack_size: usize) {
-        self.stack_size.store(stack_size, Ordering::Release);
-    }
-
-    pub fn submit_co(
-        &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
-        stack_size: Option<usize>,
-    ) -> std::io::Result<&'s str> {
-        let coroutine = SchedulableCoroutine::new(
-            format!("{}|{}", self.name, Uuid::new_v4()),
-            f,
-            stack_size.unwrap_or(self.stack_size.load(Ordering::Acquire)),
-        )?;
-        assert_eq!(
-            CoroutineState::Created,
-            coroutine.change_state(CoroutineState::Ready)
-        );
-        let co_name = Box::leak(Box::from(coroutine.get_name()));
-        self.on_create(&coroutine);
-        self.ready.push_back(coroutine);
-        Ok(co_name)
     }
 
     fn check_ready(&self) -> std::io::Result<()> {
@@ -230,17 +201,81 @@ impl<'s> SchedulerImpl<'s> {
         }
         Ok(())
     }
+}
 
-    pub fn try_schedule(&self) -> std::io::Result<()> {
-        self.try_timeout_schedule(std::time::Duration::MAX.as_secs())
-            .map(|_| ())
+impl Default for SchedulerImpl<'_> {
+    fn default() -> Self {
+        Self::new(
+            format!("open-coroutine-scheduler-{}", Uuid::new_v4()),
+            crate::constants::DEFAULT_STACK_SIZE,
+        )
+    }
+}
+
+impl Drop for SchedulerImpl<'_> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(
+                self.ready.is_empty(),
+                "There are still coroutines to be carried out in the ready queue:{:#?} !",
+                self.ready
+            );
+        }
+    }
+}
+
+impl Eq for SchedulerImpl<'_> {}
+
+impl PartialEq for SchedulerImpl<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_name().eq(other.get_name())
+    }
+}
+
+impl Named for SchedulerImpl<'_> {
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
+    fn set_stack_size(&self, stack_size: usize) {
+        self.stack_size.store(stack_size, Ordering::Release);
     }
 
-    pub fn try_timed_schedule(&self, time: std::time::Duration) -> std::io::Result<u64> {
-        self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(time))
+    fn submit_co(
+        &self,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        stack_size: Option<usize>,
+    ) -> std::io::Result<JoinHandleImpl<'s>> {
+        let coroutine = SchedulableCoroutine::new(
+            format!("{}|{}", self.name, Uuid::new_v4()),
+            f,
+            stack_size.unwrap_or(self.stack_size.load(Ordering::Acquire)),
+        )?;
+        assert_eq!(
+            CoroutineState::Created,
+            coroutine.change_state(CoroutineState::Ready)
+        );
+        let co_name = Box::leak(Box::from(coroutine.get_name()));
+        self.on_create(&coroutine);
+        self.ready.push_back(coroutine);
+        Ok(JoinHandleImpl::new(self, co_name))
     }
 
-    pub fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
+    fn try_resume(&self, co_name: &str) -> std::io::Result<()> {
+        let co_name: &str = Box::leak(Box::from(co_name));
+        unsafe {
+            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(co_name) {
+                self.ready.push_back(coroutine);
+            }
+        }
+        Ok(())
+    }
+
+    fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
         self.on_schedule(timeout_time);
         loop {
             let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
@@ -276,6 +311,19 @@ impl<'s> SchedulerImpl<'s> {
                         }
                         CoroutineState::Complete(result) => {
                             self.on_complete(timeout_time, &coroutine, result);
+                            let co_name = Box::leak(Box::from(coroutine.get_name()));
+                            assert!(
+                                self.results.insert(co_name, Ok(result)).is_none(),
+                                "not consume result"
+                            );
+                        }
+                        CoroutineState::Error(message) => {
+                            self.on_error(timeout_time, &coroutine, message);
+                            let co_name = Box::leak(Box::from(coroutine.get_name()));
+                            assert!(
+                                self.results.insert(co_name, Err(message)).is_none(),
+                                "not consume result"
+                            );
                         }
                         _ => unreachable!("should never execute to here"),
                     };
@@ -285,23 +333,15 @@ impl<'s> SchedulerImpl<'s> {
         }
     }
 
-    pub fn add_listener(&mut self, listener: impl Listener + 's) {
+    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>> {
+        self.results.remove(co_name).map(|r| r.1)
+    }
+
+    fn size(&self) -> usize {
+        self.ready.len() + unsafe { SUSPEND_TABLE.len() + SYSTEM_CALL_TABLE.len() }
+    }
+
+    fn add_listener(&mut self, listener: impl Listener + 's) {
         self.listeners.push_back(Box::new(listener));
-    }
-
-    //只有框架级crate才需要使用此方法
-    pub fn try_resume(&self, co_name: &'static str) -> std::io::Result<()> {
-        unsafe {
-            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(&co_name) {
-                self.ready.push_back(coroutine);
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Default for SchedulerImpl<'_> {
-    fn default() -> Self {
-        Self::new(Uuid::new_v4().to_string(), DEFAULT_STACK_SIZE)
     }
 }

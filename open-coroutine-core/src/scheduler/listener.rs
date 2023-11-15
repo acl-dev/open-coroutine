@@ -88,3 +88,41 @@ impl Listener for SchedulerImpl<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scheduler::Scheduler;
+
+    #[derive(Debug, Default)]
+    struct TestListener {}
+    impl Listener for TestListener {
+        fn on_create(&self, coroutine: &SchedulableCoroutine) {
+            println!("{:?}", coroutine);
+        }
+        fn on_resume(&self, _: u64, coroutine: &SchedulableCoroutine) {
+            println!("{:?}", coroutine);
+        }
+        fn on_complete(&self, _: u64, coroutine: &SchedulableCoroutine, result: Option<usize>) {
+            println!("{:?} {:?}", coroutine, result);
+        }
+        fn on_error(&self, _: u64, coroutine: &SchedulableCoroutine, message: &str) {
+            println!("{:?} {message}", coroutine);
+        }
+    }
+
+    #[test]
+    fn test_listener() -> std::io::Result<()> {
+        let mut scheduler = SchedulerImpl::default();
+        scheduler.add_listener(TestListener::default());
+        _ = scheduler.submit_co(|_, _| panic!("test panic, just ignore it"), None)?;
+        _ = scheduler.submit_co(
+            |_, _| {
+                println!("2");
+                Some(1)
+            },
+            None,
+        )?;
+        scheduler.try_schedule()
+    }
+}

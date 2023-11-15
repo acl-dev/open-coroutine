@@ -36,3 +36,52 @@ impl<'s> Current<'s> for SchedulerImpl<'s> {
         SCHEDULER.with(|s| _ = s.borrow_mut().pop_front());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::Named;
+    use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler};
+
+    #[test]
+    fn test_current() -> std::io::Result<()> {
+        let parent_name = "parent";
+        let scheduler = SchedulerImpl::new(
+            String::from(parent_name),
+            crate::constants::DEFAULT_STACK_SIZE,
+        );
+        _ = scheduler.submit_co(
+            move |_, _| {
+                assert!(SchedulableCoroutine::current().is_some());
+                assert!(SchedulableSuspender::current().is_some());
+                assert_eq!(parent_name, SchedulerImpl::current().unwrap().get_name());
+                assert_eq!(parent_name, SchedulerImpl::current().unwrap().get_name());
+
+                let child_name = "child";
+                let scheduler = SchedulerImpl::new(
+                    String::from(child_name),
+                    crate::constants::DEFAULT_STACK_SIZE,
+                );
+                _ = scheduler
+                    .submit_co(
+                        move |_, _| {
+                            assert!(SchedulableCoroutine::current().is_some());
+                            assert!(SchedulableSuspender::current().is_some());
+                            assert_eq!(child_name, SchedulerImpl::current().unwrap().get_name());
+                            assert_eq!(child_name, SchedulerImpl::current().unwrap().get_name());
+                            None
+                        },
+                        None,
+                    )
+                    .unwrap();
+                scheduler.try_schedule().unwrap();
+
+                assert_eq!(parent_name, SchedulerImpl::current().unwrap().get_name());
+                assert_eq!(parent_name, SchedulerImpl::current().unwrap().get_name());
+                None
+            },
+            None,
+        )?;
+        scheduler.try_schedule()
+    }
+}
