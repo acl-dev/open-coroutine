@@ -11,7 +11,7 @@ use open_coroutine_timer::TimerList;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::panic::UnwindSafe;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 /// A type for Scheduler.
@@ -125,6 +125,7 @@ static mut SYSTEM_CALL_SUSPEND_TABLE: Lazy<TimerList<&str>> = Lazy::new(TimerLis
 #[derive(Debug)]
 pub struct SchedulerImpl<'s> {
     name: String,
+    scheduling: AtomicBool,
     stack_size: AtomicUsize,
     ready: LocalQueue<'s, SchedulableCoroutine<'static>>,
     results: DashMap<&'s str, Result<Option<usize>, &'s str>>,
@@ -136,6 +137,7 @@ impl<'s> SchedulerImpl<'s> {
     pub fn new(name: String, stack_size: usize) -> Self {
         let mut scheduler = SchedulerImpl {
             name,
+            scheduling: AtomicBool::new(false),
             stack_size: AtomicUsize::new(stack_size),
             ready: LocalQueue::default(),
             results: DashMap::default(),
@@ -255,10 +257,7 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
             f,
             stack_size.unwrap_or(self.stack_size.load(Ordering::Acquire)),
         )?;
-        assert_eq!(
-            CoroutineState::Created,
-            coroutine.change_state(CoroutineState::Ready)
-        );
+        coroutine.ready()?;
         let co_name = Box::leak(Box::from(coroutine.get_name()));
         self.on_create(&coroutine);
         self.ready.push_back(coroutine);
@@ -276,27 +275,32 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
     }
 
     fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
+        if self
+            .scheduling
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return Ok(timeout_time.saturating_sub(open_coroutine_timer::now()));
+        }
+        Self::init_current(self);
         self.on_schedule(timeout_time);
         loop {
             let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
             if left_time == 0 {
+                Self::clean_current();
+                self.scheduling.store(false, Ordering::Release);
                 return Ok(0);
             }
-            self.check_ready().unwrap();
-            match self.ready.pop_front() {
-                Some(mut coroutine) => {
-                    self.on_resume(timeout_time, &coroutine);
-                    match coroutine.resume().unwrap() {
-                        CoroutineState::Suspend((), timestamp) => {
-                            self.on_suspend(timeout_time, &coroutine);
-                            if timestamp > 0 {
-                                //挂起协程到时间轮
-                                unsafe { SUSPEND_TABLE.insert(timestamp, coroutine) };
-                            } else {
-                                //放入就绪队列尾部
-                                self.ready.push_back(coroutine);
-                            }
-                        }
+            if let Err(e) = self.check_ready() {
+                Self::clean_current();
+                self.scheduling.store(false, Ordering::Release);
+                return Err(e);
+            }
+            // schedule coroutines
+            if let Some(mut coroutine) = self.ready.pop_front() {
+                self.on_resume(timeout_time, &coroutine);
+                match coroutine.resume() {
+                    Ok(state) => match state {
                         CoroutineState::SystemCall((), syscall, state) => {
                             self.on_syscall(timeout_time, &coroutine, syscall, state);
                             //挂起协程到系统调用表
@@ -307,6 +311,16 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
                                 if let SyscallState::Suspend(timestamp) = state {
                                     SYSTEM_CALL_SUSPEND_TABLE.insert(timestamp, co_name);
                                 }
+                            }
+                        }
+                        CoroutineState::Suspend((), timestamp) => {
+                            self.on_suspend(timeout_time, &coroutine);
+                            if timestamp > open_coroutine_timer::now() {
+                                //挂起协程到时间轮
+                                unsafe { SUSPEND_TABLE.insert(timestamp, coroutine) };
+                            } else {
+                                //放入就绪队列尾部
+                                self.ready.push_back(coroutine);
                             }
                         }
                         CoroutineState::Complete(result) => {
@@ -325,10 +339,25 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
                                 "not consume result"
                             );
                         }
-                        _ => unreachable!("should never execute to here"),
-                    };
-                }
-                None => return Ok(left_time),
+                        _ => {
+                            Self::clean_current();
+                            self.scheduling.store(false, Ordering::Release);
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                "try_timeout_schedule should never execute to here",
+                            ));
+                        }
+                    },
+                    Err(e) => {
+                        Self::clean_current();
+                        self.scheduling.store(false, Ordering::Release);
+                        return Err(e);
+                    }
+                };
+            } else {
+                Self::clean_current();
+                self.scheduling.store(false, Ordering::Release);
+                return Ok(left_time);
             }
         }
     }
