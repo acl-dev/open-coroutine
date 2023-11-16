@@ -8,7 +8,7 @@ use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::cell::Cell;
-use std::panic::RefUnwindSafe;
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
@@ -22,7 +22,7 @@ mod creator;
 #[cfg(test)]
 mod tests;
 
-static RESULT_TABLE: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
+static RESULT_TABLE: Lazy<DashMap<&str, Result<Option<usize>, &str>>> = Lazy::new(DashMap::new);
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -93,11 +93,14 @@ impl CoroutinePoolImpl<'_> {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        param: Option<usize>,
     ) -> &'static str {
-        let name: Box<str> = Box::from(Uuid::new_v4().to_string());
-        let clone = Box::leak(name.clone());
-        self.submit_raw(Task::new(name, f));
+        let name = Uuid::new_v4().to_string();
+        let clone = name.clone().leak();
+        self.submit_raw(Task::new(name, f, param));
         clone
     }
 
@@ -161,10 +164,9 @@ impl CoroutinePoolImpl<'_> {
                         }
                         Steal::Success(task) => {
                             _ = self.idle.fetch_sub(1, Ordering::Release);
-                            let task_name = task.get_name();
-                            let result = task.run(suspender);
+                            let (task_name, result) = task.run(suspender);
                             assert!(
-                                RESULT_TABLE.insert(task_name, result).is_none(),
+                                RESULT_TABLE.insert(task_name.leak(), result).is_none(),
                                 "The previous result was not retrieved in a timely manner"
                             );
                         }
@@ -196,7 +198,7 @@ impl CoroutinePoolImpl<'_> {
         self.workers.try_resume(co_name)
     }
 
-    pub fn get_result(task_name: &'static str) -> Option<usize> {
+    pub fn get_result(task_name: &'static str) -> Option<Result<Option<usize>, &str>> {
         RESULT_TABLE.remove(&task_name).map(|r| r.1)
     }
 }

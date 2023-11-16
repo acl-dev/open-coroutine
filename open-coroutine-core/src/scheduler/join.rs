@@ -21,13 +21,16 @@ impl<'j> JoinHandle<SchedulerImpl<'j>> for JoinHandleImpl<'j> {
     fn get_name(&self) -> std::io::Result<&str> {
         unsafe { CStr::from_ptr(self.1) }
             .to_str()
-            .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid task name"))
+            .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid coroutine name"))
     }
 
     fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<Result<Option<usize>, &str>> {
         let name = self.get_name()?;
         if name.is_empty() {
-            return Err(Error::new(ErrorKind::InvalidInput, "Invalid task name"));
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Invalid coroutine name",
+            ));
         }
         let scheduler = unsafe { &*self.0 };
         loop {

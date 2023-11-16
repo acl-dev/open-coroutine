@@ -20,11 +20,17 @@ impl JoinHandle {
         JoinHandle::new(std::ptr::null(), "")
     }
 
-    pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<usize>> {
+    pub fn timeout_join(
+        &self,
+        dur: Duration,
+    ) -> std::io::Result<Option<Result<Option<usize>, &str>>> {
         self.timeout_at_join(open_coroutine_timer::get_timeout_time(dur))
     }
 
-    pub fn timeout_at_join(&self, timeout_time: u64) -> std::io::Result<Option<usize>> {
+    pub fn timeout_at_join(
+        &self,
+        timeout_time: u64,
+    ) -> std::io::Result<Option<Result<Option<usize>, &str>>> {
         match unsafe { CStr::from_ptr(self.1) }.to_str() {
             Ok(co_name) => {
                 if co_name.is_empty() {
@@ -52,7 +58,7 @@ impl JoinHandle {
         }
     }
 
-    pub fn join(self) -> std::io::Result<Option<usize>> {
+    pub fn join<'e>(self) -> std::io::Result<Option<Result<Option<usize>, &'e str>>> {
         match unsafe { CStr::from_ptr(self.1) }.to_str() {
             Ok(co_name) => {
                 if co_name.is_empty() {
@@ -87,16 +93,22 @@ mod tests {
             .name("test_join".to_string())
             .spawn(move || {
                 let event_loop = EventLoop::new(0, 0, 0, 1, 0).expect("init event loop failed!");
-                let handle1 = event_loop.submit(|_, _| {
-                    println!("[coroutine1] launched");
-                    3
-                });
-                let handle2 = event_loop.submit(|_, _| {
-                    println!("[coroutine2] launched");
-                    4
-                });
-                assert_eq!(handle1.join().unwrap().unwrap(), 3);
-                assert_eq!(handle2.join().unwrap().unwrap(), 4);
+                let handle1 = event_loop.submit(
+                    |_, _| {
+                        println!("[coroutine1] launched");
+                        Some(3)
+                    },
+                    None,
+                );
+                let handle2 = event_loop.submit(
+                    |_, _| {
+                        println!("[coroutine2] launched");
+                        Some(4)
+                    },
+                    None,
+                );
+                assert_eq!(handle1.join().unwrap().unwrap().unwrap(), Some(3));
+                assert_eq!(handle2.join().unwrap().unwrap().unwrap(), Some(4));
 
                 let (lock, cvar) = &*pair2;
                 let mut pending = lock.lock().unwrap();
@@ -134,18 +146,22 @@ mod tests {
             .name("test_timed_join".to_string())
             .spawn(move || {
                 let event_loop = EventLoop::new(0, 0, 0, 1, 0).expect("init event loop failed!");
-                let handle = event_loop.submit(|_, _| {
-                    println!("[coroutine3] launched");
-                    5
-                });
+                let handle = event_loop.submit(
+                    |_, _| {
+                        println!("[coroutine3] launched");
+                        Some(5)
+                    },
+                    None,
+                );
                 let error = handle.timeout_join(Duration::from_nanos(0)).unwrap_err();
                 assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
                 assert_eq!(
                     handle
                         .timeout_join(Duration::from_secs(1))
                         .unwrap()
+                        .unwrap()
                         .unwrap(),
-                    5
+                    Some(5)
                 );
 
                 let (lock, cvar) = &*pair2;
