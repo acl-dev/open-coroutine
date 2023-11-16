@@ -1,5 +1,5 @@
 use crate::common::Current;
-use crate::constants::{Syscall, SyscallState};
+use crate::constants::{PoolState, Syscall, SyscallState};
 use crate::pool::CoroutinePoolImpl;
 use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;
@@ -11,8 +11,11 @@ pub(crate) struct CoroutineCreator {}
 impl Listener for CoroutineCreator {
     fn on_schedule(&self, _: u64) {
         if let Some(pool) = CoroutinePoolImpl::current() {
-            //todo
-            _ = pool.grow(false);
+            let should_grow = match pool.state.get() {
+                PoolState::Created | PoolState::Running => true,
+                PoolState::Stopping(_) | PoolState::Stopped => false,
+            };
+            _ = pool.grow(should_grow);
         }
     }
 

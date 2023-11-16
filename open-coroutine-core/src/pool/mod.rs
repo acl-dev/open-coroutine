@@ -1,4 +1,5 @@
 use crate::common::{Blocker, Current};
+use crate::constants::PoolState;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::task::Task;
@@ -6,6 +7,7 @@ use crate::scheduler::{Scheduler, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
+use std::cell::Cell;
 use std::panic::RefUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -17,10 +19,18 @@ mod current;
 
 mod creator;
 
+#[cfg(test)]
+mod tests;
+
 static RESULT_TABLE: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct CoroutinePoolImpl<'p> {
+    //绑定到哪个CPU核心
+    cpu: usize,
+    //协程池状态
+    state: Cell<PoolState>,
     //任务队列
     task_queue: Injector<Task<'p>>,
     //工作协程组
@@ -53,6 +63,7 @@ impl Drop for CoroutinePoolImpl<'_> {
 
 impl CoroutinePoolImpl<'_> {
     pub fn new(
+        cpu: usize,
         stack_size: usize,
         min_size: usize,
         max_size: usize,
@@ -60,6 +71,8 @@ impl CoroutinePoolImpl<'_> {
         blocker: impl Blocker + 'static,
     ) -> Self {
         let mut pool = CoroutinePoolImpl {
+            cpu,
+            state: Cell::new(PoolState::Created),
             workers: SchedulerImpl::default(),
             stack_size,
             running: AtomicUsize::new(0),
@@ -185,45 +198,5 @@ impl CoroutinePoolImpl<'_> {
 
     pub fn get_result(task_name: &'static str) -> Option<usize> {
         RESULT_TABLE.remove(&task_name).map(|r| r.1)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::common::Named;
-
-    #[test]
-    fn test_simple() {
-        #[derive(Debug)]
-        struct SleepBlocker {}
-
-        impl Named for SleepBlocker {
-            fn get_name(&self) -> &str {
-                "SleepBlocker"
-            }
-        }
-        impl Blocker for SleepBlocker {
-            fn block(&self, time: Duration) {
-                std::thread::sleep(time)
-            }
-        }
-
-        let pool = Box::leak(Box::new(CoroutinePoolImpl::new(
-            0,
-            0,
-            2,
-            0,
-            SleepBlocker {},
-        )));
-        _ = pool.submit(|_, _| {
-            println!("1");
-            1
-        });
-        _ = pool.submit(|_, _| {
-            println!("2");
-            2
-        });
-        _ = pool.try_timed_schedule(Duration::from_secs(1));
     }
 }
