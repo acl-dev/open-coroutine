@@ -55,6 +55,7 @@ impl EventLoop {
             pool: MaybeUninit::uninit(),
         };
         let pool = CoroutinePoolImpl::new(
+            cpu as usize,
             stack_size,
             min_size,
             max_size,
