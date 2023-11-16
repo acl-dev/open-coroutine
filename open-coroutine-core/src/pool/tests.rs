@@ -25,13 +25,19 @@ fn test_simple() {
         0,
         SleepBlocker {},
     )));
-    _ = pool.submit(|_, _| {
-        println!("1");
-        1
-    });
-    _ = pool.submit(|_, _| {
-        println!("2");
-        2
-    });
+    _ = pool.submit(
+        |_, _| {
+            println!("1");
+            None
+        },
+        None,
+    );
+    _ = pool.submit(
+        |_, _| {
+            println!("2");
+            None
+        },
+        None,
+    );
     _ = pool.try_timed_schedule(Duration::from_secs(1));
 }

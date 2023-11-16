@@ -9,6 +9,7 @@ use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
+use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -68,9 +69,12 @@ impl EventLoop {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        param: Option<usize>,
     ) -> JoinHandle {
-        let task_name = unsafe { self.pool.assume_init_ref().submit(f) };
+        let task_name = unsafe { self.pool.assume_init_ref().submit(f, param) };
         JoinHandle::new(self, task_name)
     }
 
@@ -211,7 +215,7 @@ impl EventLoop {
     }
 
     #[must_use]
-    pub fn get_result(task_name: &'static str) -> Option<usize> {
+    pub fn get_result(task_name: &'static str) -> Option<Result<Option<usize>, &str>> {
         CoroutinePoolImpl::get_result(task_name)
     }
 }
@@ -289,14 +293,20 @@ mod tests {
     #[test]
     fn test_simple() {
         let pool = Box::leak(Box::new(EventLoop::new(0, 0, 0, 2, 0).unwrap()));
-        _ = pool.submit(|_, _| {
-            println!("1");
-            1
-        });
-        _ = pool.submit(|_, _| {
-            println!("2");
-            2
-        });
+        _ = pool.submit(
+            |_, _| {
+                println!("1");
+                None
+            },
+            None,
+        );
+        _ = pool.submit(
+            |_, _| {
+                println!("2");
+                None
+            },
+            None,
+        );
         _ = pool.wait_event(Some(Duration::from_secs(1)));
     }
 }

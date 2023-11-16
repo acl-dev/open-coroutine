@@ -8,6 +8,7 @@ use crate::scheduler::SchedulableSuspender;
 use libc::c_int;
 use once_cell::sync::{Lazy, OnceCell};
 use std::fmt::Debug;
+use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
@@ -162,10 +163,13 @@ impl EventLoops {
 
     /// todo This is actually an API for creating tasks, adding an API for creating coroutines
     pub fn submit(
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> usize + 'static,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        param: Option<usize>,
     ) -> JoinHandle {
         EventLoops::start();
-        EventLoops::next(true).submit(f)
+        EventLoops::next(true).submit(f, param)
     }
 
     pub(crate) fn submit_raw(task: Task<'static>) {
