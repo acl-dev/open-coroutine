@@ -39,5 +39,5 @@ fn test_simple() {
         },
         None,
     );
-    _ = pool.try_timed_schedule(Duration::from_secs(1));
+    _ = pool.try_timed_schedule_task(Duration::from_secs(1));
 }

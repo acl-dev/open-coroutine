@@ -28,7 +28,7 @@ pub fn crate_server(
     server_started.store(true, Ordering::Release);
     //invoke by libc::accept
     crate_co(2);
-    for stream in listener.incoming() {
+    if let Some(stream) = listener.incoming().next() {
         let mut stream = stream.expect("accept new connection failed !");
         let mut buffer: [u8; 512] = [0; 512];
         loop {
