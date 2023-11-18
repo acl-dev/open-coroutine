@@ -101,7 +101,7 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64>;
 
     /// Attempt to obtain coroutine result with the given `co_name`.
-    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>>;
+    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &'s str>>;
 
     /// Returns `true` if the ready queue, suspend queue, and syscall queue are all empty.
     fn is_empty(&self) -> bool {
@@ -362,7 +362,7 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
         }
     }
 
-    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>> {
+    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &'s str>> {
         self.results.remove(co_name).map(|r| r.1)
     }
 

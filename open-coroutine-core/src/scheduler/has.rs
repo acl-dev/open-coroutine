@@ -1,4 +1,4 @@
-use crate::common::{Current, JoinHandle, Named};
+use crate::common::Named;
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
@@ -7,25 +7,11 @@ use std::fmt::Debug;
 use std::panic::UnwindSafe;
 
 #[allow(missing_docs, clippy::missing_errors_doc)]
-pub trait HasScheduler: Debug + Default {
-    fn scheduler<'s>(&self) -> &SchedulerImpl<'s>;
+pub trait HasScheduler<'s>: Debug + Default {
+    fn scheduler(&self) -> &SchedulerImpl<'s>;
 
-    fn scheduler_mut<'s>(&mut self) -> &mut SchedulerImpl<'s>;
-}
+    fn scheduler_mut(&mut self) -> &mut SchedulerImpl<'s>;
 
-impl<HasSchedulerImpl: HasScheduler> Named for HasSchedulerImpl {
-    fn get_name(&self) -> &str {
-        self.scheduler().get_name()
-    }
-}
-
-impl<HasSchedulerImpl: HasScheduler> Listener for HasSchedulerImpl {}
-
-impl<'s, HasSchedulerImpl: HasScheduler + Current<'s>> Scheduler<'s, JoinHandleImpl<'s>>
-    for HasSchedulerImpl
-where
-    JoinHandleImpl<'s>: JoinHandle<HasSchedulerImpl>,
-{
     fn set_stack_size(&self, stack_size: usize) {
         self.scheduler().set_stack_size(stack_size);
     }
@@ -48,7 +34,7 @@ where
         self.scheduler().try_timeout_schedule(timeout_time)
     }
 
-    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &str>> {
+    fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &'s str>> {
         self.scheduler().try_get_co_result(co_name)
     }
 
@@ -58,5 +44,11 @@ where
 
     fn add_listener(&mut self, listener: impl Listener + 's) {
         self.scheduler_mut().add_listener(listener);
+    }
+}
+
+impl<'s, HasSchedulerImpl: HasScheduler<'s>> Named for HasSchedulerImpl {
+    fn get_name(&self) -> &str {
+        Box::leak(Box::from(self.scheduler().get_name()))
     }
 }

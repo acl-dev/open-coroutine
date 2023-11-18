@@ -5,6 +5,7 @@ use crate::net::event_loop::join::JoinHandle;
 use crate::net::selector::Selector;
 use crate::pool::task::Task;
 use crate::pool::CoroutinePoolImpl;
+use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
 use std::ffi::{CStr, CString};
@@ -157,7 +158,7 @@ impl EventLoop {
         let mut timeout = if schedule_before_wait {
             timeout.map(|time| {
                 Duration::from_nanos(unsafe {
-                    self.pool.assume_init_ref().try_timed_schedule(time)
+                    self.pool.assume_init_ref().try_timed_schedule_task(time)
                 })
             })
         } else {
