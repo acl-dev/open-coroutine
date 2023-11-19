@@ -1,10 +1,10 @@
-use crate::common::{Current, Named};
+use crate::common::{Current, JoinHandle, Named};
 use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
-use crate::net::event_loop::join::JoinHandle;
+use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::Selector;
 use crate::pool::task::Task;
-use crate::pool::CoroutinePoolImpl;
+use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
@@ -57,6 +57,7 @@ impl EventLoop {
             pool: MaybeUninit::uninit(),
         };
         let pool = CoroutinePoolImpl::new(
+            format!("open-coroutine-event-loop-{cpu}"),
             cpu as usize,
             stack_size,
             min_size,
@@ -74,9 +75,9 @@ impl EventLoop {
             + UnwindSafe
             + 'static,
         param: Option<usize>,
-    ) -> JoinHandle {
-        let task_name = unsafe { self.pool.assume_init_ref().submit(f, param) };
-        JoinHandle::new(self, task_name)
+    ) -> JoinHandleImpl {
+        let task_name = unsafe { self.pool.assume_init_ref().submit(None, f, param) };
+        JoinHandleImpl::new(self, task_name.get_name().unwrap())
     }
 
     pub(crate) fn submit_raw(&self, task: Task<'static>) {
@@ -88,7 +89,7 @@ impl EventLoop {
     }
 
     pub fn is_empty(&self) -> bool {
-        unsafe { self.pool.assume_init_ref().is_empty() }
+        unsafe { !self.pool.assume_init_ref().has_task() }
     }
 
     fn token(use_thread_id: bool) -> usize {
@@ -156,10 +157,12 @@ impl EventLoop {
         }
         #[allow(unused_mut)]
         let mut timeout = if schedule_before_wait {
-            timeout.map(|time| {
-                Duration::from_nanos(unsafe {
-                    self.pool.assume_init_ref().try_timed_schedule_task(time)
-                })
+            timeout.map(|time| unsafe {
+                if let Ok(left_time) = self.pool.assume_init_ref().try_timed_schedule_task(time) {
+                    Duration::from_nanos(left_time)
+                } else {
+                    time
+                }
             })
         } else {
             timeout
@@ -216,8 +219,13 @@ impl EventLoop {
     }
 
     #[must_use]
-    pub fn get_result(task_name: &'static str) -> Option<Result<Option<usize>, &str>> {
-        CoroutinePoolImpl::get_result(task_name)
+    pub fn get_result(&self, task_name: &str) -> Option<Result<Option<usize>, &str>> {
+        unsafe {
+            self.pool
+                .assume_init_ref()
+                .try_get_task_result(task_name)
+                .map(|r| r.1)
+        }
     }
 }
 

@@ -18,6 +18,7 @@ fn test_simple() {
     }
 
     let pool = Box::leak(Box::new(CoroutinePoolImpl::new(
+        Uuid::new_v4().to_string(),
         0,
         0,
         0,
@@ -26,6 +27,7 @@ fn test_simple() {
         SleepBlocker {},
     )));
     _ = pool.submit(
+        None,
         |_, _| {
             println!("1");
             None
@@ -33,6 +35,7 @@ fn test_simple() {
         None,
     );
     _ = pool.submit(
+        None,
         |_, _| {
             println!("2");
             None

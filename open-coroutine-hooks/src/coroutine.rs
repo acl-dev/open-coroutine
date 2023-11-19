@@ -1,12 +1,12 @@
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
-use open_coroutine_core::net::event_loop::join::JoinHandle;
+use open_coroutine_core::net::event_loop::join::JoinHandleImpl;
 use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
 use std::ffi::{c_long, c_void};
 use std::time::Duration;
 
 ///创建协程
 #[no_mangle]
-pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle {
+pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandleImpl {
     let _stack_size = if stack_size > 0 {
         Some(stack_size)
     } else {
@@ -26,7 +26,7 @@ pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) 
 
 ///等待协程完成
 #[no_mangle]
-pub extern "C" fn coroutine_join(handle: JoinHandle) -> c_long {
+pub extern "C" fn coroutine_join(handle: JoinHandleImpl) -> c_long {
     match handle.join() {
         Ok(ptr) => match ptr {
             Some(ptr) => match ptr {
@@ -44,7 +44,7 @@ pub extern "C" fn coroutine_join(handle: JoinHandle) -> c_long {
 
 ///等待协程完成
 #[no_mangle]
-pub extern "C" fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> c_long {
+pub extern "C" fn coroutine_timeout_join(handle: &JoinHandleImpl, ns_time: u64) -> c_long {
     match handle.timeout_join(Duration::from_nanos(ns_time)) {
         Ok(ptr) => match ptr {
             Some(ptr) => match ptr {
