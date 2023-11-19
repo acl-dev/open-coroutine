@@ -154,8 +154,8 @@ where
 pub enum PoolState {
     ///The pool is created.
     Created,
-    ///The pool is running in an additional thread.
-    Running,
+    ///The pool is running, `true` means thread mode.
+    Running(bool),
     ///The pool is stopping, `true` means thread mode.
     Stopping(bool),
     ///The pool is stopped.

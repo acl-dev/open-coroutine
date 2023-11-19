@@ -1,4 +1,4 @@
-use crate::common::{Blocker, Current, JoinHandle, Named, StatePool};
+use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -26,15 +26,9 @@ mod creator;
 mod tests;
 
 /// The `TaskPool` abstraction.
-pub trait TaskPool<'p>:
+pub trait TaskPool<'p, Join: JoinHandle<Self>>:
     Debug + Default + RefUnwindSafe + Named + StatePool + HasScheduler<'p>
 {
-    /// Change the blocker in this pool.
-    fn change_blocker(&self, blocker: impl Blocker + 'p) -> Box<dyn Blocker>;
-}
-
-/// The `SubmittableTaskPool` abstraction.
-pub trait SubmittableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p> {
     /// Submit a new task to this pool.
     ///
     /// Allow multiple threads to concurrently submit task to the pool,
@@ -69,10 +63,13 @@ pub trait SubmittableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p> {
 
     /// Returns the number of tasks owned by this pool.
     fn count(&self) -> usize;
+
+    /// Change the blocker in this pool.
+    fn change_blocker(&self, blocker: impl Blocker + 'p) -> Box<dyn Blocker>;
 }
 
 /// The `WaitableTaskPool` abstraction.
-pub trait WaitableTaskPool<'p, Join: JoinHandle<Self>>: SubmittableTaskPool<'p, Join> {
+pub trait WaitableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p, Join> {
     /// Submit a new task to this pool and wait for the task to complete.
     ///
     /// # Errors
@@ -203,14 +200,14 @@ pub struct CoroutinePoolImpl<'p> {
     stack_size: usize,
     //当前协程数
     running: AtomicUsize,
-    //当前空闲协程数
-    idle: AtomicUsize,
+    //尝试取出任务失败的次数
+    pop_fail_times: AtomicUsize,
     //最小协程数，即核心协程数
-    min_size: usize,
+    min_size: AtomicUsize,
     //最大协程数
-    max_size: usize,
+    max_size: AtomicUsize,
     //非核心协程的最大存活时间，单位ns
-    keep_alive_time: u64,
+    keep_alive_time: AtomicU64,
     //阻滞器
     blocker: RefCell<Box<dyn Blocker + 'p>>,
 }
@@ -253,11 +250,11 @@ impl<'p> CoroutinePoolImpl<'p> {
             workers: SchedulerImpl::default(),
             stack_size,
             running: AtomicUsize::new(0),
-            idle: AtomicUsize::new(0),
-            min_size,
-            max_size,
+            pop_fail_times: AtomicUsize::new(0),
+            min_size: AtomicUsize::new(min_size),
+            max_size: AtomicUsize::new(max_size),
             task_queue: Injector::default(),
-            keep_alive_time,
+            keep_alive_time: AtomicU64::new(keep_alive_time),
             blocker: RefCell::new(Box::new(blocker)),
         };
         pool.init();
@@ -303,47 +300,45 @@ impl<'p> CoroutinePoolImpl<'p> {
         self.task_queue.is_empty()
     }
 
-    fn grow(&'static self, _: bool) -> std::io::Result<()> {
-        if self.task_queue.is_empty() {
-            return Ok(());
-        }
-        if self.running.load(Ordering::Acquire) >= self.max_size {
+    fn grow(&self, should_grow: bool) -> std::io::Result<()> {
+        if !should_grow || self.is_empty() || self.get_running_size() >= self.get_max_size() {
             return Ok(());
         }
         let create_time = open_coroutine_timer::now();
         _ = self.submit_co(
             move |suspender, ()| {
                 loop {
-                    match self.task_queue.steal() {
+                    let pool = Self::current().expect("current pool not found");
+                    match pool.task_queue.steal() {
                         Steal::Empty => {
-                            let running = self.running.load(Ordering::Acquire);
+                            let running = pool.get_running_size();
                             if open_coroutine_timer::now().saturating_sub(create_time)
-                                >= self.keep_alive_time
-                                && running > self.min_size
+                                >= pool.get_keep_alive_time()
+                                && running > pool.get_min_size()
                             {
                                 //回收worker协程
-                                _ = self.running.fetch_sub(1, Ordering::Release);
-                                _ = self.idle.fetch_sub(1, Ordering::Release);
+                                pool.running.store(
+                                    pool.get_running_size().saturating_sub(1),
+                                    Ordering::Release,
+                                );
                                 return None;
                             }
-                            _ = self.idle.fetch_add(1, Ordering::Release);
-                            match self.idle.load(Ordering::Acquire).cmp(&running) {
+                            _ = pool.pop_fail_times.fetch_add(1, Ordering::Release);
+                            match pool.pop_fail_times.load(Ordering::Acquire).cmp(&running) {
                                 //让出CPU给下一个协程
                                 std::cmp::Ordering::Less => suspender.suspend(),
                                 //避免CPU在N个无任务的协程中空轮询
-                                std::cmp::Ordering::Equal => loop {
-                                    if let Ok(blocker) = self.blocker.try_borrow() {
+                                std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => loop {
+                                    if let Ok(blocker) = pool.blocker.try_borrow() {
                                         blocker.block(Duration::from_millis(1));
                                         break;
                                     }
+                                    pool.pop_fail_times.store(0, Ordering::Release);
                                 },
-                                std::cmp::Ordering::Greater => {
-                                    unreachable!("should never execute to here");
-                                }
                             }
                         }
                         Steal::Success(task) => {
-                            _ = self.idle.fetch_sub(1, Ordering::Release);
+                            pool.pop_fail_times.store(0, Ordering::Release);
                             let (task_name, result) = task.run(suspender);
                             assert!(
                                 RESULT_TABLE.insert(task_name.leak(), result).is_none(),
@@ -383,5 +378,36 @@ impl<'p> HasScheduler<'p> for CoroutinePoolImpl<'p> {
 
     fn scheduler_mut(&mut self) -> &mut SchedulerImpl<'p> {
         &mut self.workers
+    }
+}
+
+impl Pool for CoroutinePoolImpl<'_> {
+    fn set_min_size(&self, min_size: usize) {
+        self.min_size.store(min_size, Ordering::Release);
+    }
+
+    fn get_min_size(&self) -> usize {
+        self.min_size.load(Ordering::Acquire)
+    }
+
+    fn get_running_size(&self) -> usize {
+        self.running.load(Ordering::Acquire)
+    }
+
+    fn set_max_size(&self, max_size: usize) {
+        self.max_size.store(max_size, Ordering::Release);
+    }
+
+    fn get_max_size(&self) -> usize {
+        self.max_size.load(Ordering::Acquire)
+    }
+
+    fn set_keep_alive_time(&self, keep_alive_time: u64) {
+        self.keep_alive_time
+            .store(keep_alive_time, Ordering::Release);
+    }
+
+    fn get_keep_alive_time(&self) -> u64 {
+        self.keep_alive_time.load(Ordering::Acquire)
     }
 }

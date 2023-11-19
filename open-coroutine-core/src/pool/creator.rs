@@ -12,7 +12,7 @@ impl Listener for CoroutineCreator {
     fn on_schedule(&self, _: u64) {
         if let Some(pool) = CoroutinePoolImpl::current() {
             let should_grow = match pool.state.get() {
-                PoolState::Created | PoolState::Running => true,
+                PoolState::Created | PoolState::Running(_) => true,
                 PoolState::Stopping(_) | PoolState::Stopped => false,
             };
             _ = pool.grow(should_grow);

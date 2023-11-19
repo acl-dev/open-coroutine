@@ -2,6 +2,7 @@ use crate::constants::PoolState;
 use crate::coroutine::suspender::SimpleDelaySuspender;
 use crate::scheduler::SchedulableSuspender;
 use std::fmt::Debug;
+use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -187,12 +188,66 @@ pub trait Pool: Debug {
 }
 
 /// The `StatePool` abstraction.
-pub trait StatePool: Pool {
+pub trait StatePool: Pool + Named {
     /// Get the state of this pool.
-    fn get_state(&self) -> PoolState;
+    fn state(&self) -> PoolState;
 
     /// Change the state of this pool.
     fn change_state(&self, state: PoolState) -> PoolState;
+
+    /// created -> running
+    ///
+    /// # Errors
+    /// if change state fails.
+    fn running(&self, sync: bool) -> std::io::Result<()> {
+        let current = self.state();
+        if current == PoolState::Created {
+            let state = PoolState::Running(sync);
+            _ = self.change_state(state);
+            crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
+            return Ok(());
+        }
+        Err(Error::new(
+            ErrorKind::Other,
+            format!(
+                "{} unexpected {current}->{:?}",
+                self.get_name(),
+                PoolState::Running(sync)
+            ),
+        ))
+    }
+
+    /// running -> stopping
+    /// stopping -> stopped
+    ///
+    /// # Errors
+    /// if change state fails.
+    fn stop(&self) -> std::io::Result<()> {
+        let current = self.state();
+        match current {
+            PoolState::Running(sync) => {
+                let state = PoolState::Stopping(sync);
+                _ = self.change_state(state);
+                crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
+                return Ok(());
+            }
+            PoolState::Stopping(_) => {
+                let state = PoolState::Stopped;
+                _ = self.change_state(state);
+                crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
+                return Ok(());
+            }
+            _ => {}
+        }
+        Err(Error::new(
+            ErrorKind::Other,
+            format!(
+                "{} unexpected {current}->{:?}",
+                self.get_name(),
+                PoolState::Stopped
+            ),
+        ))
+    }
 }
 
 #[cfg(test)]
