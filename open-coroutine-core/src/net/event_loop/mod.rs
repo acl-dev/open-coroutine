@@ -2,7 +2,7 @@ use crate::common::Current;
 use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl};
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
-use crate::net::event_loop::join::JoinHandle;
+use crate::net::event_loop::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::SchedulableSuspender;
 use libc::c_int;
@@ -167,7 +167,7 @@ impl EventLoops {
             + UnwindSafe
             + 'static,
         param: Option<usize>,
-    ) -> JoinHandle {
+    ) -> JoinHandleImpl {
         EventLoops::start();
         EventLoops::next(true).submit(f, param)
     }

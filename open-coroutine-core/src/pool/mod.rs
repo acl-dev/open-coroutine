@@ -2,6 +2,7 @@ use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::pool::creator::CoroutineCreator;
+use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulerImpl;
@@ -16,7 +17,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Task abstraction and impl.
 pub mod task;
+
+/// Task join abstraction and impl.
+pub mod join;
 
 mod current;
 
@@ -65,7 +70,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
     fn count(&self) -> usize;
 
     /// Change the blocker in this pool.
-    fn change_blocker(&self, blocker: impl Blocker + 'p) -> Box<dyn Blocker>;
+    fn change_blocker(&self, blocker: impl Blocker + 'p) -> Box<dyn Blocker + 'p>;
 }
 
 /// The `WaitableTaskPool` abstraction.
@@ -124,7 +129,7 @@ pub trait AutoConsumableTaskPool<'p, Join: JoinHandle<Self>>: WaitableTaskPool<'
 
 /// The `CoroutinePool` abstraction.
 pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
-    Current<'p> + AutoConsumableTaskPool<'p, Join>
+    Current<'p> + WaitableTaskPool<'p, Join>
 {
     /// Create a new `CoroutinePool` instance.
     fn new(
@@ -140,7 +145,7 @@ pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
         Self: Sized;
 
     /// Attempt to run a task in current coroutine or thread.
-    fn try_run(&self) -> Option<()>;
+    fn try_run(&self, suspender: &dyn Suspender<Resume = (), Yield = ()>) -> Option<()>;
 
     /// Create a coroutine in this pool.
     ///
@@ -183,7 +188,7 @@ pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
     fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64>;
 }
 
-static RESULT_TABLE: Lazy<DashMap<&str, Result<Option<usize>, &str>>> = Lazy::new(DashMap::new);
+static RESULT_TABLE: Lazy<DashMap<String, Result<Option<usize>, &str>>> = Lazy::new(DashMap::new);
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -217,7 +222,10 @@ impl RefUnwindSafe for CoroutinePoolImpl<'_> {}
 impl Drop for CoroutinePoolImpl<'_> {
     fn drop(&mut self) {
         if !std::thread::panicking() {
-            assert!(self.is_empty(), "there are still tasks to be carried out !");
+            assert!(
+                !self.has_task(),
+                "there are still tasks to be carried out !"
+            );
         }
     }
 }
@@ -265,43 +273,8 @@ impl<'p> CoroutinePoolImpl<'p> {
         self.add_listener(CoroutineCreator::default());
     }
 
-    pub fn submit(
-        &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 'p,
-        param: Option<usize>,
-    ) -> &'static str {
-        let name = Uuid::new_v4().to_string();
-        let clone = name.clone().leak();
-        self.submit_raw(Task::new(name, f, param));
-        clone
-    }
-
-    pub(crate) fn submit_raw(&self, task: Task<'p>) {
-        self.task_queue.push(task);
-    }
-
-    pub fn pop(&self) -> Option<Task> {
-        // Fast path, if len == 0, then there are no values
-        if self.is_empty() {
-            return None;
-        }
-        loop {
-            match self.task_queue.steal() {
-                Steal::Success(item) => return Some(item),
-                Steal::Retry => continue,
-                Steal::Empty => return None,
-            }
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.task_queue.is_empty()
-    }
-
     fn grow(&self, should_grow: bool) -> std::io::Result<()> {
-        if !should_grow || self.is_empty() || self.get_running_size() >= self.get_max_size() {
+        if !should_grow || !self.has_task() || self.get_running_size() >= self.get_max_size() {
             return Ok(());
         }
         let create_time = open_coroutine_timer::now();
@@ -341,7 +314,7 @@ impl<'p> CoroutinePoolImpl<'p> {
                             pool.pop_fail_times.store(0, Ordering::Release);
                             let (task_name, result) = task.run(suspender);
                             assert!(
-                                RESULT_TABLE.insert(task_name.leak(), result).is_none(),
+                                RESULT_TABLE.insert(task_name, result).is_none(),
                                 "The previous result was not retrieved in a timely manner"
                             );
                         }
@@ -359,15 +332,11 @@ impl<'p> CoroutinePoolImpl<'p> {
         Ok(())
     }
 
-    pub fn try_timed_schedule_task(&self, time: Duration) -> u64 {
+    pub fn try_timeout_schedule_task(&self, time: Duration) -> std::io::Result<u64> {
         Self::init_current(self);
         let left_time = self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(time));
         Self::clean_current();
-        left_time.unwrap()
-    }
-
-    pub fn get_result(task_name: &str) -> Option<Result<Option<usize>, &str>> {
-        RESULT_TABLE.remove(task_name).map(|r| r.1)
+        left_time
     }
 }
 
@@ -409,5 +378,60 @@ impl Pool for CoroutinePoolImpl<'_> {
 
     fn get_keep_alive_time(&self) -> u64 {
         self.keep_alive_time.load(Ordering::Acquire)
+    }
+}
+
+impl StatePool for CoroutinePoolImpl<'_> {
+    fn state(&self) -> PoolState {
+        self.state.get()
+    }
+
+    fn change_state(&self, state: PoolState) -> PoolState {
+        self.state.replace(state)
+    }
+}
+
+impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+    fn submit_raw(&self, task: Task<'p>) {
+        self.task_queue.push(task);
+    }
+
+    fn pop(&self) -> Option<Task<'p>> {
+        // Fast path, if len == 0, then there are no values
+        if !self.has_task() {
+            return None;
+        }
+        loop {
+            match self.task_queue.steal() {
+                Steal::Success(item) => return Some(item),
+                Steal::Retry => continue,
+                Steal::Empty => return None,
+            }
+        }
+    }
+
+    fn count(&self) -> usize {
+        self.task_queue.len()
+    }
+
+    fn change_blocker(&self, blocker: impl Blocker + 'p) -> Box<dyn Blocker + 'p> {
+        self.blocker.replace(Box::new(blocker))
+    }
+}
+
+impl<'p> WaitableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+    fn try_get_task_result(
+        &self,
+        task_name: &str,
+    ) -> Option<(String, Result<Option<usize>, &str>)> {
+        RESULT_TABLE.remove(task_name)
+    }
+
+    fn wait_result(
+        &self,
+        _task_name: &str,
+        _wait_time: Duration,
+    ) -> std::io::Result<Option<(String, Result<Option<usize>, &str>)>> {
+        todo!()
     }
 }

@@ -26,6 +26,7 @@ fn test_simple() {
         SleepBlocker {},
     )));
     _ = pool.submit(
+        None,
         |_, _| {
             println!("1");
             None
@@ -33,11 +34,12 @@ fn test_simple() {
         None,
     );
     _ = pool.submit(
+        None,
         |_, _| {
             println!("2");
             None
         },
         None,
     );
-    _ = pool.try_timed_schedule_task(Duration::from_secs(1));
+    _ = pool.try_timeout_schedule_task(Duration::from_secs(1));
 }
