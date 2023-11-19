@@ -4,7 +4,7 @@ use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::Selector;
 use crate::pool::task::Task;
-use crate::pool::{CoroutinePoolImpl, TaskPool, WaitableTaskPool};
+use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
@@ -57,6 +57,7 @@ impl EventLoop {
             pool: MaybeUninit::uninit(),
         };
         let pool = CoroutinePoolImpl::new(
+            format!("open-coroutine-event-loop-{cpu}"),
             cpu as usize,
             stack_size,
             min_size,
@@ -157,7 +158,7 @@ impl EventLoop {
         #[allow(unused_mut)]
         let mut timeout = if schedule_before_wait {
             timeout.map(|time| unsafe {
-                if let Ok(left_time) = self.pool.assume_init_ref().try_timeout_schedule_task(time) {
+                if let Ok(left_time) = self.pool.assume_init_ref().try_timed_schedule_task(time) {
                     Duration::from_nanos(left_time)
                 } else {
                     time

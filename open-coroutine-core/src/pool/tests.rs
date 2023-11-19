@@ -18,6 +18,7 @@ fn test_simple() {
     }
 
     let pool = Box::leak(Box::new(CoroutinePoolImpl::new(
+        Uuid::new_v4().to_string(),
         0,
         0,
         0,
@@ -41,5 +42,5 @@ fn test_simple() {
         },
         None,
     );
-    _ = pool.try_timeout_schedule_task(Duration::from_secs(1));
+    _ = pool.try_timed_schedule_task(Duration::from_secs(1));
 }

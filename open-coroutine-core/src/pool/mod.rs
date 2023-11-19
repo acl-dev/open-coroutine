@@ -13,7 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -60,6 +60,9 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
 
     /// pop a task
     fn pop(&self) -> Option<Task<'p>>;
+
+    /// Attempt to run a task in current coroutine or thread.
+    fn try_run(&self, suspender: &dyn Suspender<Resume = (), Yield = ()>) -> Option<()>;
 
     /// Returns `true` if the task queue is empty.
     fn has_task(&self) -> bool {
@@ -144,9 +147,6 @@ pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
     where
         Self: Sized;
 
-    /// Attempt to run a task in current coroutine or thread.
-    fn try_run(&self, suspender: &dyn Suspender<Resume = (), Yield = ()>) -> Option<()>;
-
     /// Create a coroutine in this pool.
     ///
     /// # Errors
@@ -201,8 +201,6 @@ pub struct CoroutinePoolImpl<'p> {
     task_queue: Injector<Task<'p>>,
     //工作协程组
     workers: SchedulerImpl<'p>,
-    //协程栈大小
-    stack_size: usize,
     //当前协程数
     running: AtomicUsize,
     //尝试取出任务失败的次数
@@ -215,6 +213,8 @@ pub struct CoroutinePoolImpl<'p> {
     keep_alive_time: AtomicU64,
     //阻滞器
     blocker: RefCell<Box<dyn Blocker + 'p>>,
+    //正在等待结果的
+    waits: DashMap<&'p str, Arc<(Mutex<bool>, Condvar)>>,
 }
 
 impl RefUnwindSafe for CoroutinePoolImpl<'_> {}
@@ -233,6 +233,7 @@ impl Drop for CoroutinePoolImpl<'_> {
 impl Default for CoroutinePoolImpl<'_> {
     fn default() -> Self {
         Self::new(
+            format!("open-coroutine-pool-{}", Uuid::new_v4()),
             1,
             crate::constants::DEFAULT_STACK_SIZE,
             0,
@@ -243,100 +244,9 @@ impl Default for CoroutinePoolImpl<'_> {
     }
 }
 
-impl<'p> CoroutinePoolImpl<'p> {
-    pub fn new(
-        cpu: usize,
-        stack_size: usize,
-        min_size: usize,
-        max_size: usize,
-        keep_alive_time: u64,
-        blocker: impl Blocker + 'p,
-    ) -> Self {
-        let mut pool = CoroutinePoolImpl {
-            cpu,
-            state: Cell::new(PoolState::Created),
-            workers: SchedulerImpl::default(),
-            stack_size,
-            running: AtomicUsize::new(0),
-            pop_fail_times: AtomicUsize::new(0),
-            min_size: AtomicUsize::new(min_size),
-            max_size: AtomicUsize::new(max_size),
-            task_queue: Injector::default(),
-            keep_alive_time: AtomicU64::new(keep_alive_time),
-            blocker: RefCell::new(Box::new(blocker)),
-        };
-        pool.init();
-        pool
-    }
-
+impl CoroutinePoolImpl<'_> {
     fn init(&mut self) {
         self.add_listener(CoroutineCreator::default());
-    }
-
-    fn grow(&self, should_grow: bool) -> std::io::Result<()> {
-        if !should_grow || !self.has_task() || self.get_running_size() >= self.get_max_size() {
-            return Ok(());
-        }
-        let create_time = open_coroutine_timer::now();
-        _ = self.submit_co(
-            move |suspender, ()| {
-                loop {
-                    let pool = Self::current().expect("current pool not found");
-                    match pool.task_queue.steal() {
-                        Steal::Empty => {
-                            let running = pool.get_running_size();
-                            if open_coroutine_timer::now().saturating_sub(create_time)
-                                >= pool.get_keep_alive_time()
-                                && running > pool.get_min_size()
-                            {
-                                //回收worker协程
-                                pool.running.store(
-                                    pool.get_running_size().saturating_sub(1),
-                                    Ordering::Release,
-                                );
-                                return None;
-                            }
-                            _ = pool.pop_fail_times.fetch_add(1, Ordering::Release);
-                            match pool.pop_fail_times.load(Ordering::Acquire).cmp(&running) {
-                                //让出CPU给下一个协程
-                                std::cmp::Ordering::Less => suspender.suspend(),
-                                //避免CPU在N个无任务的协程中空轮询
-                                std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => loop {
-                                    if let Ok(blocker) = pool.blocker.try_borrow() {
-                                        blocker.block(Duration::from_millis(1));
-                                        break;
-                                    }
-                                    pool.pop_fail_times.store(0, Ordering::Release);
-                                },
-                            }
-                        }
-                        Steal::Success(task) => {
-                            pool.pop_fail_times.store(0, Ordering::Release);
-                            let (task_name, result) = task.run(suspender);
-                            assert!(
-                                RESULT_TABLE.insert(task_name, result).is_none(),
-                                "The previous result was not retrieved in a timely manner"
-                            );
-                        }
-                        Steal::Retry => continue,
-                    }
-                }
-            },
-            if self.stack_size > 0 {
-                Some(self.stack_size)
-            } else {
-                None
-            },
-        )?;
-        _ = self.running.fetch_add(1, Ordering::Release);
-        Ok(())
-    }
-
-    pub fn try_timeout_schedule_task(&self, time: Duration) -> std::io::Result<u64> {
-        Self::init_current(self);
-        let left_time = self.try_timeout_schedule(open_coroutine_timer::get_timeout_time(time));
-        Self::clean_current();
-        left_time
     }
 }
 
@@ -410,6 +320,23 @@ impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
         }
     }
 
+    fn try_run(&self, suspender: &dyn Suspender<Resume = (), Yield = ()>) -> Option<()> {
+        self.pop().map(|task| {
+            let (task_name, result) = task.run(suspender);
+            assert!(
+                RESULT_TABLE.insert(task_name.clone(), result).is_none(),
+                "The previous result was not retrieved in a timely manner"
+            );
+            if let Some(arc) = self.waits.get(&*task_name) {
+                let (lock, cvar) = &**arc;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                // Notify the condvar that the value has changed.
+                cvar.notify_one();
+            }
+        })
+    }
+
     fn count(&self) -> usize {
         self.task_queue.len()
     }
@@ -433,5 +360,94 @@ impl<'p> WaitableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
         _wait_time: Duration,
     ) -> std::io::Result<Option<(String, Result<Option<usize>, &str>)>> {
         todo!()
+    }
+}
+
+impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+    fn new(
+        name: String,
+        cpu: usize,
+        stack_size: usize,
+        min_size: usize,
+        max_size: usize,
+        keep_alive_time: u64,
+        blocker: impl Blocker + 'p,
+    ) -> Self
+    where
+        Self: Sized,
+    {
+        let mut pool = CoroutinePoolImpl {
+            cpu,
+            state: Cell::new(PoolState::Created),
+            workers: SchedulerImpl::new(name, stack_size),
+            running: AtomicUsize::new(0),
+            pop_fail_times: AtomicUsize::new(0),
+            min_size: AtomicUsize::new(min_size),
+            max_size: AtomicUsize::new(max_size),
+            task_queue: Injector::default(),
+            keep_alive_time: AtomicU64::new(keep_alive_time),
+            blocker: RefCell::new(Box::new(blocker)),
+            waits: DashMap::default(),
+        };
+        pool.init();
+        pool
+    }
+
+    fn grow(&self, should_grow: bool) -> std::io::Result<()> {
+        if !should_grow || !self.has_task() || self.get_running_size() >= self.get_max_size() {
+            return Ok(());
+        }
+        let create_time = open_coroutine_timer::now();
+        _ = self.submit_co(
+            move |suspender, ()| {
+                loop {
+                    let pool = Self::current().expect("current pool not found");
+                    if pool.try_run(suspender).is_some() {
+                        pool.pop_fail_times.store(0, Ordering::Release);
+                        continue;
+                    }
+                    let recycle = match pool.state() {
+                        PoolState::Created | PoolState::Running(_) => false,
+                        PoolState::Stopping(_) | PoolState::Stopped => true,
+                    };
+                    let running = pool.get_running_size();
+                    if open_coroutine_timer::now().saturating_sub(create_time)
+                        >= pool.get_keep_alive_time()
+                        && running > pool.get_min_size()
+                        || recycle
+                    {
+                        //回收worker协程
+                        pool.running
+                            .store(pool.get_running_size().saturating_sub(1), Ordering::Release);
+                        return None;
+                    }
+                    _ = pool.pop_fail_times.fetch_add(1, Ordering::Release);
+                    match pool.pop_fail_times.load(Ordering::Acquire).cmp(&running) {
+                        //让出CPU给下一个协程
+                        std::cmp::Ordering::Less => suspender.suspend(),
+                        //避免CPU在N个无任务的协程中空轮询
+                        std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
+                            loop {
+                                if let Ok(blocker) = pool.blocker.try_borrow() {
+                                    blocker.block(Duration::from_millis(1));
+                                    break;
+                                }
+                            }
+                            pool.pop_fail_times.store(0, Ordering::Release);
+                        }
+                    }
+                }
+            },
+            None,
+        )?;
+        _ = self.running.fetch_add(1, Ordering::Release);
+        Ok(())
+    }
+
+    fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64> {
+        Self::init_current(self);
+        let left_time = self.try_timeout_schedule(timeout_time);
+        Self::clean_current();
+        left_time
     }
 }

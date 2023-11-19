@@ -1,6 +1,6 @@
 use crate::common::Current;
 use crate::constants::{PoolState, Syscall, SyscallState};
-use crate::pool::CoroutinePoolImpl;
+use crate::pool::{CoroutinePool, CoroutinePoolImpl};
 use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;
 use std::sync::atomic::Ordering;
