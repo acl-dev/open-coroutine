@@ -249,7 +249,7 @@ pub trait StatePool: Pool + Named {
                 return Ok(());
             }
             PoolState::Stopped => return Ok(()),
-            _ => {}
+            PoolState::Created => {}
         }
         Err(Error::new(
             ErrorKind::Other,
