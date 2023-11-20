@@ -3,11 +3,10 @@ use crate::coroutine::suspender::Suspender;
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
 use crate::scheduler::{Scheduler, SchedulerImpl};
-use std::fmt::Debug;
 use std::panic::UnwindSafe;
 
 #[allow(missing_docs, clippy::missing_errors_doc)]
-pub trait HasScheduler<'s>: Debug + Default {
+pub trait HasScheduler<'s> {
     fn scheduler(&self) -> &SchedulerImpl<'s>;
 
     fn scheduler_mut(&mut self) -> &mut SchedulerImpl<'s>;
@@ -30,12 +29,24 @@ pub trait HasScheduler<'s>: Debug + Default {
         self.scheduler().try_resume(co_name)
     }
 
+    fn try_schedule(&self) -> std::io::Result<()> {
+        self.scheduler().try_schedule()
+    }
+
+    fn try_timed_schedule(&self, dur: std::time::Duration) -> std::io::Result<u64> {
+        self.scheduler().try_timed_schedule(dur)
+    }
+
     fn try_timeout_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
         self.scheduler().try_timeout_schedule(timeout_time)
     }
 
     fn try_get_co_result(&self, co_name: &str) -> Option<Result<Option<usize>, &'s str>> {
         self.scheduler().try_get_co_result(co_name)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.scheduler().is_empty()
     }
 
     fn size(&self) -> usize {

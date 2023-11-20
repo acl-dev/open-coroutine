@@ -4,7 +4,8 @@ use crate::coroutine::suspender::SimpleSuspender;
 use crate::coroutine::StateCoroutine;
 use crate::monitor::node::TaskNode;
 use crate::net::event_loop::EventLoops;
-use crate::scheduler::SchedulableCoroutine;
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 use once_cell::sync::{Lazy, OnceCell};
 use open_coroutine_timer::TimerList;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +23,7 @@ static MONITOR: OnceCell<JoinHandle<()>> = OnceCell::new();
 #[derive(Debug)]
 pub(crate) struct Monitor {
     tasks: TimerList<TaskNode>,
+    clean_queue: Vec<TaskNode>,
     started: AtomicBool,
 }
 
@@ -37,68 +39,58 @@ impl Drop for Monitor {
 }
 
 impl Monitor {
-    pub(crate) fn signum() -> libc::c_int {
-        cfg_if::cfg_if! {
-            if #[cfg(any(target_os = "linux",
-                         target_os = "l4re",
-                         target_os = "android",
-                         target_os = "emscripten"))] {
-                libc::SIGRTMIN()
-            } else {
-                libc::SIGURG
-            }
-        }
-    }
-
     #[cfg(unix)]
-    fn register_handler(sigurg_handler: libc::sighandler_t) {
-        unsafe {
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_sigaction = sigurg_handler;
-            assert_eq!(0, libc::sigaddset(&mut act.sa_mask, Monitor::signum()));
-            act.sa_flags = libc::SA_RESTART;
-            assert_eq!(
-                0,
-                libc::sigaction(Monitor::signum(), &act, std::ptr::null_mut())
-            );
-        }
+    fn register_handler(sigurg_handler: extern "C" fn(libc::c_int)) {
+        // install SIGURG signal handler
+        let mut set = SigSet::empty();
+        set.add(Signal::SIGURG);
+        let sa = SigAction::new(
+            SigHandler::Handler(sigurg_handler),
+            SaFlags::SA_RESTART,
+            set,
+        );
+        unsafe { _ = sigaction(Signal::SIGURG, &sa).unwrap() };
     }
 
     fn new() -> Self {
-        #[allow(clippy::fn_to_numeric_cast)]
-        unsafe extern "C" fn sigurg_handler(_signal: libc::c_int) {
-            // invoke by Monitor::signal()
-            if let Some(s) = crate::scheduler::SchedulableSuspender::current() {
-                //获取当前信号屏蔽集
-                let mut current_mask: libc::sigset_t = std::mem::zeroed();
-                assert_eq!(
-                    0,
-                    libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current_mask),
-                );
-                //删除对Monitor::signum()信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
-                assert_eq!(0, libc::sigdelset(&mut current_mask, Monitor::signum()));
-                assert_eq!(
-                    0,
-                    libc::pthread_sigmask(libc::SIG_SETMASK, &current_mask, std::ptr::null_mut())
-                );
-                s.suspend();
+        extern "C" fn sigurg_handler(_: libc::c_int) {
+            if let Ok(mut set) = SigSet::thread_get_mask() {
+                //删除对SIGURG信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                set.remove(Signal::SIGURG);
+                set.thread_set_mask()
+                    .expect("Failed to remove SIGURG signal mask!");
+                if let Some(suspender) = SchedulableSuspender::current() {
+                    suspender.suspend();
+                }
             }
         }
-        Monitor::register_handler(sigurg_handler as libc::sighandler_t);
+        Monitor::register_handler(sigurg_handler);
         //通过这种方式来初始化monitor线程
         _ = MONITOR.get_or_init(|| {
             std::thread::Builder::new()
                 .name("open-coroutine-monitor".to_string())
                 .spawn(|| {
                     // todo pin this thread to the CPU core closest to the network card
-                    #[cfg(target_os = "linux")]
-                    assert!(
-                        core_affinity::set_for_current(core_affinity::CoreId { id: 0 }),
-                        "pin monitor thread to a single CPU core failed !"
-                    );
+                    _ = core_affinity::set_for_current(core_affinity::CoreId {
+                        id: crate::constants::MONITOR_CPU,
+                    });
                     let event_loop = EventLoops::monitor();
                     let monitor = Monitor::global();
                     while monitor.started.load(Ordering::Acquire) || !monitor.tasks.is_empty() {
+                        {
+                            //清理过期节点
+                            let queue = &mut Monitor::global().clean_queue;
+                            let tasks = &mut Monitor::global().tasks;
+                            while let Some(node) = queue.pop() {
+                                let timestamp = node.timestamp();
+                                if let Some(entry) = tasks.get_entry(&timestamp) {
+                                    _ = entry.remove(&node);
+                                    if entry.is_empty() {
+                                        _ = tasks.remove(&timestamp);
+                                    }
+                                }
+                            }
+                        }
                         monitor.signal();
                         //monitor线程不执行协程计算任务，每次循环至少wait 1ms
                         _ = event_loop.wait_just(Some(Duration::from_millis(1)));
@@ -120,6 +112,7 @@ impl Monitor {
         });
         Monitor {
             tasks: TimerList::default(),
+            clean_queue: Vec::default(),
             started: AtomicBool::new(true),
         }
     }
@@ -139,12 +132,12 @@ impl Monitor {
                 break;
             }
             for node in entry.iter() {
-                let coroutine = node.get_coroutine();
+                let coroutine = node.coroutine();
                 unsafe {
                     if CoroutineState::Running == (*coroutine).state() {
                         //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
                         //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
-                        assert_eq!(0, libc::pthread_kill(node.get_pthread(), Monitor::signum()));
+                        assert_eq!(0, libc::pthread_kill(node.pthread(), libc::SIGURG));
                     }
                 }
             }
@@ -158,11 +151,7 @@ impl Monitor {
     }
 
     pub(crate) fn remove(time: u64, coroutine: &SchedulableCoroutine) {
-        let tasks = &mut Monitor::global().tasks;
-        if let Some(entry) = tasks.get_entry(&time) {
-            if !entry.is_empty() {
-                _ = entry.remove(&TaskNode::new(time, coroutine));
-            }
-        }
+        let queue = &mut Monitor::global().clean_queue;
+        queue.push(TaskNode::new(time, coroutine));
     }
 }

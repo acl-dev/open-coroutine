@@ -201,11 +201,22 @@ pub trait StatePool: Pool + Named {
     /// if change state fails.
     fn running(&self, sync: bool) -> std::io::Result<()> {
         let current = self.state();
-        if current == PoolState::Created {
-            let state = PoolState::Running(sync);
-            _ = self.change_state(state);
-            crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
-            return Ok(());
+        match current {
+            PoolState::Created => {
+                let state = PoolState::Running(sync);
+                _ = self.change_state(state);
+                crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
+                return Ok(());
+            }
+            PoolState::Running(pre) => {
+                if pre != sync {
+                    let state = PoolState::Running(sync);
+                    _ = self.change_state(state);
+                    crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
+                }
+                return Ok(());
+            }
+            _ => {}
         }
         Err(Error::new(
             ErrorKind::Other,
@@ -222,7 +233,7 @@ pub trait StatePool: Pool + Named {
     ///
     /// # Errors
     /// if change state fails.
-    fn stop(&self) -> std::io::Result<()> {
+    fn end(&self) -> std::io::Result<()> {
         let current = self.state();
         match current {
             PoolState::Running(sync) => {
@@ -237,7 +248,8 @@ pub trait StatePool: Pool + Named {
                 crate::info!("{} {:?}->{:?}", self.get_name(), current, state);
                 return Ok(());
             }
-            _ => {}
+            PoolState::Stopped => return Ok(()),
+            PoolState::Created => {}
         }
         Err(Error::new(
             ErrorKind::Other,
