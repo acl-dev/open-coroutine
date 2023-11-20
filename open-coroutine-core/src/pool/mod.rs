@@ -5,14 +5,15 @@ use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::has::HasScheduler;
-use crate::scheduler::SchedulerImpl;
+use crate::scheduler::{SchedulableSuspender, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
+use std::io::{Error, ErrorKind};
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
@@ -132,7 +133,7 @@ pub trait AutoConsumableTaskPool<'p, Join: JoinHandle<Self>>: WaitableTaskPool<'
 
 /// The `CoroutinePool` abstraction.
 pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
-    Current<'p> + WaitableTaskPool<'p, Join>
+    Current<'p> + AutoConsumableTaskPool<'p, Join>
 {
     /// Create a new `CoroutinePool` instance.
     fn new(
@@ -201,6 +202,8 @@ pub struct CoroutinePoolImpl<'p> {
     task_queue: Injector<Task<'p>>,
     //工作协程组
     workers: SchedulerImpl<'p>,
+    //是否正在调度，不允许多线程并行调度
+    scheduling: AtomicBool,
     //当前协程数
     running: AtomicUsize,
     //尝试取出任务失败的次数
@@ -356,9 +359,54 @@ impl<'p> WaitableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
 
     fn wait_result(
         &self,
-        _task_name: &str,
-        _wait_time: Duration,
+        task_name: &str,
+        wait_time: Duration,
     ) -> std::io::Result<Option<(String, Result<Option<usize>, &str>)>> {
+        let key = Box::leak(Box::from(task_name));
+        if let Some(r) = self.try_get_task_result(key) {
+            _ = self.waits.remove(key);
+            return Ok(Some(r));
+        }
+        if let Some(suspender) = SchedulableSuspender::current() {
+            let timeout_time = open_coroutine_timer::get_timeout_time(wait_time);
+            loop {
+                _ = self.try_run(suspender);
+                if let Some(r) = self.try_get_task_result(key) {
+                    return Ok(Some(r));
+                }
+                if timeout_time.saturating_sub(open_coroutine_timer::now()) == 0 {
+                    return Err(Error::new(ErrorKind::TimedOut, "wait timeout"));
+                }
+            }
+        }
+        let arc = if let Some(arc) = self.waits.get(key) {
+            arc.clone()
+        } else {
+            let arc = Arc::new((Mutex::new(true), Condvar::new()));
+            assert!(self.waits.insert(key, arc.clone()).is_none());
+            arc
+        };
+        let (lock, cvar) = &*arc;
+        _ = cvar
+            .wait_timeout_while(lock.lock().unwrap(), wait_time, |&mut pending| pending)
+            .unwrap();
+        if let Some(r) = self.try_get_task_result(key) {
+            assert!(self.waits.remove(key).is_some());
+            return Ok(Some(r));
+        }
+        Err(Error::new(ErrorKind::TimedOut, "wait timeout"))
+    }
+}
+
+impl<'p> AutoConsumableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+    fn start(self) -> std::io::Result<Arc<Self>>
+    where
+        'p: 'static,
+    {
+        todo!()
+    }
+
+    fn stop(&self, _wait_time: Duration) -> std::io::Result<()> {
         todo!()
     }
 }
@@ -380,6 +428,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
             cpu,
             state: Cell::new(PoolState::Created),
             workers: SchedulerImpl::new(name, stack_size),
+            scheduling: AtomicBool::new(false),
             running: AtomicUsize::new(0),
             pop_fail_times: AtomicUsize::new(0),
             min_size: AtomicUsize::new(min_size),
@@ -425,7 +474,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
                     match pool.pop_fail_times.load(Ordering::Acquire).cmp(&running) {
                         //让出CPU给下一个协程
                         std::cmp::Ordering::Less => suspender.suspend(),
-                        //避免CPU在N个无任务的协程中空轮询
+                        //减少CPU在N个无任务的协程中空轮询
                         std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
                             loop {
                                 if let Ok(blocker) = pool.blocker.try_borrow() {
@@ -445,9 +494,17 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
     }
 
     fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64> {
-        Self::init_current(self);
-        let left_time = self.try_timeout_schedule(timeout_time);
-        Self::clean_current();
-        left_time
+        if self
+            .scheduling
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            Self::init_current(self);
+            let result = self.try_timeout_schedule(timeout_time);
+            Self::clean_current();
+            self.scheduling.store(false, Ordering::Release);
+            return result;
+        }
+        Ok(timeout_time.saturating_sub(open_coroutine_timer::now()))
     }
 }
