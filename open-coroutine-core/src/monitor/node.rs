@@ -18,11 +18,15 @@ impl TaskNode {
         }
     }
 
-    pub fn get_pthread(&self) -> Pthread {
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    pub fn pthread(&self) -> Pthread {
         self.pthread
     }
 
-    pub fn get_coroutine(&self) -> &SchedulableCoroutine {
+    pub fn coroutine(&self) -> &SchedulableCoroutine {
         unsafe { &*(self.coroutine.cast::<SchedulableCoroutine>()) }
     }
 }

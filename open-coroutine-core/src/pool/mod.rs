@@ -8,7 +8,6 @@ use crate::scheduler::has::HasScheduler;
 use crate::scheduler::{SchedulableSuspender, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
-use once_cell::sync::Lazy;
 use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
@@ -27,6 +26,9 @@ pub mod join;
 mod current;
 
 mod creator;
+
+/// Has coroutine pool abstraction.
+pub mod has;
 
 #[cfg(test)]
 mod tests;
@@ -98,8 +100,10 @@ pub trait WaitableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p, Join> {
     }
 
     /// Attempt to obtain task results with the given `task_name`.
-    fn try_get_task_result(&self, task_name: &str)
-        -> Option<(String, Result<Option<usize>, &str>)>;
+    fn try_get_task_result(
+        &self,
+        task_name: &str,
+    ) -> Option<(String, Result<Option<usize>, &'p str>)>;
 
     /// Use the given `task_name` to obtain task results, and if no results are found,
     /// block the current thread for `wait_time`.
@@ -189,8 +193,6 @@ pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
     fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64>;
 }
 
-static RESULT_TABLE: Lazy<DashMap<String, Result<Option<usize>, &str>>> = Lazy::new(DashMap::new);
-
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct CoroutinePoolImpl<'p> {
@@ -216,6 +218,8 @@ pub struct CoroutinePoolImpl<'p> {
     keep_alive_time: AtomicU64,
     //阻滞器
     blocker: RefCell<Box<dyn Blocker + 'p>>,
+    //任务执行结果
+    results: DashMap<String, Result<Option<usize>, &'p str>>,
     //正在等待结果的
     waits: DashMap<&'p str, Arc<(Mutex<bool>, Condvar)>>,
 }
@@ -327,7 +331,7 @@ impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
         self.pop().map(|task| {
             let (task_name, result) = task.run(suspender);
             assert!(
-                RESULT_TABLE.insert(task_name.clone(), result).is_none(),
+                self.results.insert(task_name.clone(), result).is_none(),
                 "The previous result was not retrieved in a timely manner"
             );
             if let Some(arc) = self.waits.get(&*task_name) {
@@ -353,8 +357,8 @@ impl<'p> WaitableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
     fn try_get_task_result(
         &self,
         task_name: &str,
-    ) -> Option<(String, Result<Option<usize>, &str>)> {
-        RESULT_TABLE.remove(task_name)
+    ) -> Option<(String, Result<Option<usize>, &'p str>)> {
+        self.results.remove(task_name)
     }
 
     fn wait_result(
@@ -403,10 +407,12 @@ impl<'p> AutoConsumableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p
     where
         'p: 'static,
     {
+        self.running(false)?;
         todo!()
     }
 
     fn stop(&self, _wait_time: Duration) -> std::io::Result<()> {
+        self.end()?;
         todo!()
     }
 }
@@ -436,6 +442,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
             task_queue: Injector::default(),
             keep_alive_time: AtomicU64::new(keep_alive_time),
             blocker: RefCell::new(Box::new(blocker)),
+            results: DashMap::new(),
             waits: DashMap::default(),
         };
         pool.init();
@@ -499,6 +506,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
         {
+            self.running(true)?;
             Self::init_current(self);
             let result = self.try_timeout_schedule(timeout_time);
             Self::clean_current();
