@@ -46,6 +46,7 @@
 //! Associate `VecDeque` with `timestamps`.
 use std::collections::vec_deque::{Iter, IterMut};
 use std::collections::{BTreeMap, VecDeque};
+use std::ops::Bound::Included;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// get the current wall clock in ns
@@ -162,7 +163,7 @@ impl<T> TimerList<T> {
             return 0;
         }
         let mut total = 0;
-        for entry in self.0.values() {
+        for (_, entry) in self.0.range((Included(&0), Included(&u64::MAX))) {
             total += entry.len();
         }
         total

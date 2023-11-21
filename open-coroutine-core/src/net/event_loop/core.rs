@@ -3,7 +3,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::Selector;
-use crate::pool::task::Task;
+use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulableCoroutine;
@@ -23,6 +23,7 @@ cfg_if::cfg_if! {
     }
 }
 
+#[repr(C)]
 #[derive(Debug)]
 pub struct EventLoop {
     cpu: u32,
@@ -78,18 +79,6 @@ impl EventLoop {
     ) -> JoinHandleImpl {
         let task_name = unsafe { self.pool.assume_init_ref().submit(None, f, param) };
         JoinHandleImpl::new(self, task_name.get_name().unwrap())
-    }
-
-    pub(crate) fn submit_raw(&self, task: Task<'static>) {
-        unsafe { self.pool.assume_init_ref().submit_raw(task) };
-    }
-
-    pub fn pop(&self) -> Option<Task> {
-        unsafe { self.pool.assume_init_ref().pop() }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        unsafe { !self.pool.assume_init_ref().has_task() }
     }
 
     fn token(use_thread_id: bool) -> usize {
@@ -157,8 +146,8 @@ impl EventLoop {
         }
         #[allow(unused_mut)]
         let mut timeout = if schedule_before_wait {
-            timeout.map(|time| unsafe {
-                if let Ok(left_time) = self.pool.assume_init_ref().try_timed_schedule_task(time) {
+            timeout.map(|time| {
+                if let Ok(left_time) = self.try_timed_schedule_task(time) {
                     Duration::from_nanos(left_time)
                 } else {
                     time
@@ -214,18 +203,23 @@ impl EventLoop {
             return;
         }
         if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
-            _ = self.pool.assume_init_ref().try_resume(co_name);
+            _ = self.try_resume(co_name);
         }
     }
 
     #[must_use]
-    pub fn get_result(&self, task_name: &str) -> Option<Result<Option<usize>, &str>> {
-        unsafe {
-            self.pool
-                .assume_init_ref()
-                .try_get_task_result(task_name)
-                .map(|r| r.1)
-        }
+    pub fn try_get_task_result(&self, task_name: &str) -> Option<Result<Option<usize>, &str>> {
+        self.pool().try_get_task_result(task_name).map(|r| r.1)
+    }
+}
+
+impl HasCoroutinePool<'static> for EventLoop {
+    fn pool(&self) -> &CoroutinePoolImpl<'static> {
+        unsafe { self.pool.assume_init_ref() }
+    }
+
+    fn pool_mut(&mut self) -> &mut CoroutinePoolImpl<'static> {
+        unsafe { self.pool.assume_init_mut() }
     }
 }
 
