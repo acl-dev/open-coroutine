@@ -3,6 +3,7 @@ use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::JoinHandleImpl;
+use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
 use crate::scheduler::SchedulableSuspender;
 use libc::c_int;
@@ -112,7 +113,7 @@ impl EventLoops {
                                 }
                                 let event_loop = EventLoops::next(true);
                                 while EVENT_LOOP_STARTED.load(Ordering::Acquire)
-                                    || !event_loop.is_empty()
+                                    || event_loop.has_task()
                                 {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                 }

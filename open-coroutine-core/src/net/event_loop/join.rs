@@ -37,7 +37,7 @@ impl JoinHandleImpl {
                     return Ok(None);
                 }
                 let event_loop = unsafe { &*self.0 };
-                let mut result = event_loop.get_result(co_name);
+                let mut result = event_loop.try_get_task_result(co_name);
                 while result.is_none() {
                     let left_time = timeout_time
                         .saturating_sub(open_coroutine_timer::now())
@@ -47,7 +47,7 @@ impl JoinHandleImpl {
                         return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
                     }
                     event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
-                    result = event_loop.get_result(co_name);
+                    result = event_loop.try_get_task_result(co_name);
                 }
                 Ok(result)
             }
@@ -65,10 +65,10 @@ impl JoinHandleImpl {
                     return Ok(None);
                 }
                 let event_loop = unsafe { &*self.0 };
-                let mut result = event_loop.get_result(co_name);
+                let mut result = event_loop.try_get_task_result(co_name);
                 while result.is_none() {
                     event_loop.wait_event(Some(Duration::from_millis(10)))?;
-                    result = event_loop.get_result(co_name);
+                    result = event_loop.try_get_task_result(co_name);
                 }
                 Ok(result)
             }
