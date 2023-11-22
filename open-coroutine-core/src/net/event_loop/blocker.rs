@@ -2,6 +2,7 @@ use crate::common::{Blocker, Named};
 use crate::net::event_loop::core::EventLoop;
 use std::time::Duration;
 
+#[repr(C)]
 #[derive(Debug)]
 pub(crate) struct SelectBlocker {
     event_loop: &'static EventLoop,

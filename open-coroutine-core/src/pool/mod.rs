@@ -193,6 +193,7 @@ pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
     fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64>;
 }
 
+#[repr(C)]
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct CoroutinePoolImpl<'p> {

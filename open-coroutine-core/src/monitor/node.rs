@@ -2,6 +2,7 @@ use crate::scheduler::SchedulableCoroutine;
 use nix::sys::pthread::{pthread_self, Pthread};
 use std::ffi::c_void;
 
+#[repr(C)]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct TaskNode {
     timestamp: u64,
