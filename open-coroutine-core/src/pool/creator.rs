@@ -5,6 +5,7 @@ use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;
 use std::sync::atomic::Ordering;
 
+#[repr(C)]
 #[derive(Debug, Default)]
 pub(crate) struct CoroutineCreator {}
 

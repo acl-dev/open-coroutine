@@ -23,6 +23,7 @@ pub(crate) mod creator;
 
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 
+#[repr(C)]
 #[derive(Debug)]
 pub(crate) struct Monitor {
     tasks: TimerList<TaskNode>,
@@ -144,11 +145,6 @@ impl Monitor {
                     }
                 }
                 crate::warn!("open-coroutine-monitor has exited");
-                let pair = EventLoops::new_condition();
-                let (lock, cvar) = pair.as_ref();
-                let pending = lock.lock().unwrap();
-                _ = pending.fetch_add(1, Ordering::Release);
-                cvar.notify_one();
             })
             .expect("failed to spawn monitor thread");
         Monitor {
@@ -165,6 +161,11 @@ impl Monitor {
 
     pub fn stop() {
         Monitor::global().started.store(false, Ordering::Release);
+        let pair = EventLoops::new_condition();
+        let (lock, cvar) = pair.as_ref();
+        let pending = lock.lock().unwrap();
+        _ = pending.fetch_add(1, Ordering::Release);
+        cvar.notify_one();
     }
 
     pub(crate) fn submit(time: u64, coroutine: &SchedulableCoroutine) {

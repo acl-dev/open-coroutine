@@ -45,6 +45,10 @@ pub trait Selector: Debug {
 
 pub trait Event {
     fn get_token(&self) -> usize;
+
+    fn readable(&self) -> bool;
+
+    fn writable(&self) -> bool;
 }
 
 static TOKEN_FD: Lazy<DashMap<usize, c_int>> = Lazy::new(DashMap::new);

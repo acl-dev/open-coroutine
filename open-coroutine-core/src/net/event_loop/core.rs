@@ -3,7 +3,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::has::HasSelector;
-use crate::net::selector::{Events, Selector, SelectorImpl};
+use crate::net::selector::{Event, Events, Selector, SelectorImpl};
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
@@ -113,19 +113,22 @@ impl EventLoop {
         self.selector.add_write_event(fd, EventLoop::token(false))
     }
 
-    pub fn wait_just(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
-        self.wait(timeout, false)
-    }
-
     pub fn wait_event(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
-        self.wait(timeout, true)
+        let left_time = if SchedulableCoroutine::current().is_some() {
+            timeout
+        } else if let Some(time) = timeout {
+            Some(
+                self.try_timed_schedule_task(time)
+                    .map(Duration::from_nanos)?,
+            )
+        } else {
+            self.try_schedule_task()?;
+            None
+        };
+        self.wait_just(left_time)
     }
 
-    fn wait(
-        &'static self,
-        timeout: Option<Duration>,
-        schedule_before_wait: bool,
-    ) -> std::io::Result<()> {
+    pub fn wait_just(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
         if self
             .waiting
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -133,41 +136,32 @@ impl EventLoop {
         {
             return Ok(());
         }
-        #[allow(unused_mut)]
-        let mut timeout = if schedule_before_wait {
-            timeout.map(|time| {
-                if let Ok(left_time) = self.try_timed_schedule_task(time) {
-                    Duration::from_nanos(left_time)
-                } else {
-                    time
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                let mut timeout = timeout;
+                if open_coroutine_iouring::version::support_io_uring() {
+                    // use io_uring
+                    let mut result = self.operator.select(timeout).map_err(|e| {
+                        self.waiting.store(false, Ordering::Release);
+                        e
+                    })?;
+                    for cqe in &mut result.1 {
+                        let syscall_result = cqe.result();
+                        let token = cqe.user_data() as usize;
+                        // resolve completed read/write tasks
+                        if let Some((_, pair)) = SYSCALL_WAIT_TABLE.remove(&token) {
+                            let (lock, cvar) = &*pair;
+                            let mut pending = lock.lock().unwrap();
+                            *pending = Some(syscall_result as ssize_t);
+                            // notify the condvar that the value has changed.
+                            cvar.notify_one();
+                        }
+                        unsafe { self.resume(token) };
+                    }
+                    if result.0 > 0 && timeout.is_some() {
+                        timeout = Some(Duration::ZERO);
+                    }
                 }
-            })
-        } else {
-            timeout
-        };
-
-        #[cfg(target_os = "linux")]
-        if open_coroutine_iouring::version::support_io_uring() {
-            // use io_uring
-            let mut result = self.operator.select(timeout).map_err(|e| {
-                self.waiting.store(false, Ordering::Release);
-                e
-            })?;
-            for cqe in &mut result.1 {
-                let syscall_result = cqe.result();
-                let token = cqe.user_data() as usize;
-                // resolve completed read/write tasks
-                if let Some((_, pair)) = SYSCALL_WAIT_TABLE.remove(&token) {
-                    let (lock, cvar) = &*pair;
-                    let mut pending = lock.lock().unwrap();
-                    *pending = Some(syscall_result as ssize_t);
-                    // notify the condvar that the value has changed.
-                    cvar.notify_one();
-                }
-                unsafe { self.resume(token) };
-            }
-            if result.0 > 0 && timeout.is_some() {
-                timeout = Some(Duration::ZERO);
             }
         }
 
@@ -179,8 +173,8 @@ impl EventLoop {
         })?;
         self.waiting.store(false, Ordering::Release);
         for event in &events {
-            let token = event.key;
-            if event.readable || event.writable {
+            let token = event.get_token();
+            if event.readable() || event.writable() {
                 unsafe { self.resume(token) };
             }
         }

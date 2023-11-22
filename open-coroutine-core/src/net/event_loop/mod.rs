@@ -31,6 +31,7 @@ pub mod core;
 /// 做C兼容时会用到
 pub type UserFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
 
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
 

@@ -13,9 +13,18 @@ impl crate::net::selector::Event for &Event {
     fn get_token(&self) -> usize {
         self.key
     }
+
+    fn readable(&self) -> bool {
+        self.readable
+    }
+
+    fn writable(&self) -> bool {
+        self.writable
+    }
 }
 
 /// Event driven impl.
+#[repr(C)]
 #[derive(Debug)]
 pub struct SelectorImpl(Poller);
 
