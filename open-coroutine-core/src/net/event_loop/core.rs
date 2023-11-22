@@ -3,7 +3,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::has::HasSelector;
-use crate::net::selector::{Selector, SelectorImpl};
+use crate::net::selector::{Events, Selector, SelectorImpl};
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
@@ -172,7 +172,7 @@ impl EventLoop {
         }
 
         // use epoll/kevent/iocp
-        let mut events = Vec::with_capacity(1024);
+        let mut events = Events::with_capacity(1024);
         self.selector.select(&mut events, timeout).map_err(|e| {
             self.waiting.store(false, Ordering::Release);
             e
