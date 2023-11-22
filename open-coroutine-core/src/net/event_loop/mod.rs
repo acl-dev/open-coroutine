@@ -3,6 +3,7 @@ use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::JoinHandleImpl;
+use crate::net::selector::Selector;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
 use crate::scheduler::SchedulableSuspender;
@@ -206,13 +207,13 @@ impl EventLoops {
 
     pub fn wait_read_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = EventLoops::next(false);
-        event_loop.add_read_event(fd)?;
+        event_loop.add_read(fd)?;
         Self::slice_wait(timeout, event_loop)
     }
 
     pub fn wait_write_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = EventLoops::next(false);
-        event_loop.add_write_event(fd)?;
+        event_loop.add_write(fd)?;
         Self::slice_wait(timeout, event_loop)
     }
 

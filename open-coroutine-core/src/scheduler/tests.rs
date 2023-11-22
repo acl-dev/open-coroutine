@@ -96,6 +96,8 @@ fn test_state() -> std::io::Result<()> {
                 if let Some(suspender) = SchedulableSuspender::current() {
                     suspender.suspend();
                 }
+            }
+            if let Some(coroutine) = SchedulableCoroutine::current() {
                 match coroutine.state() {
                     CoroutineState::Running => println!("syscall nanosleep finished !"),
                     _ => unreachable!("test_state 2 should never execute to here"),
