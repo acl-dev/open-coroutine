@@ -2,7 +2,8 @@ use crate::common::{Current, JoinHandle, Named};
 use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::JoinHandleImpl;
-use crate::net::selector::Selector;
+use crate::net::selector::has::HasSelector;
+use crate::net::selector::{Selector, SelectorImpl};
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
@@ -29,7 +30,7 @@ pub struct EventLoop {
     cpu: u32,
     #[cfg(target_os = "linux")]
     operator: open_coroutine_iouring::io_uring::IoUringOperator,
-    selector: Selector,
+    selector: SelectorImpl,
     //是否正在执行select
     waiting: AtomicBool,
     //协程池
@@ -53,7 +54,7 @@ impl EventLoop {
             cpu,
             #[cfg(target_os = "linux")]
             operator: open_coroutine_iouring::io_uring::IoUringOperator::new(cpu)?,
-            selector: Selector::new()?,
+            selector: SelectorImpl::new()?,
             waiting: AtomicBool::new(false),
             pool: MaybeUninit::uninit(),
         };
@@ -104,24 +105,12 @@ impl EventLoop {
         }
     }
 
-    pub fn add_read_event(&self, fd: c_int) -> std::io::Result<()> {
+    pub fn add_read(&self, fd: c_int) -> std::io::Result<()> {
         self.selector.add_read_event(fd, EventLoop::token(false))
     }
 
-    pub fn add_write_event(&self, fd: c_int) -> std::io::Result<()> {
+    pub fn add_write(&self, fd: c_int) -> std::io::Result<()> {
         self.selector.add_write_event(fd, EventLoop::token(false))
-    }
-
-    pub fn del_event(&self, fd: c_int) -> std::io::Result<()> {
-        self.selector.del_event(fd)
-    }
-
-    pub fn del_read_event(&self, fd: c_int) -> std::io::Result<()> {
-        self.selector.del_read_event(fd)
-    }
-
-    pub fn del_write_event(&self, fd: c_int) -> std::io::Result<()> {
-        self.selector.del_write_event(fd)
     }
 
     pub fn wait_just(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
@@ -184,7 +173,7 @@ impl EventLoop {
 
         // use epoll/kevent/iocp
         let mut events = Vec::with_capacity(1024);
-        _ = self.selector.select(&mut events, timeout).map_err(|e| {
+        self.selector.select(&mut events, timeout).map_err(|e| {
             self.waiting.store(false, Ordering::Release);
             e
         })?;
@@ -220,6 +209,12 @@ impl HasCoroutinePool<'static> for EventLoop {
 
     fn pool_mut(&mut self) -> &mut CoroutinePoolImpl<'static> {
         unsafe { self.pool.assume_init_mut() }
+    }
+}
+
+impl HasSelector for EventLoop {
+    fn selector(&self) -> &SelectorImpl {
+        &self.selector
     }
 }
 
