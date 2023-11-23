@@ -1,4 +1,5 @@
 use crate::net::event_loop::core::EventLoop;
+use crate::pool::has::HasCoroutinePool;
 use std::ffi::{c_char, CStr, CString};
 use std::time::Duration;
 
@@ -37,8 +38,7 @@ impl JoinHandleImpl {
                     return Ok(None);
                 }
                 let event_loop = unsafe { &*self.0 };
-                let mut result = event_loop.try_get_task_result(co_name);
-                while result.is_none() {
+                loop {
                     let left_time = timeout_time
                         .saturating_sub(open_coroutine_timer::now())
                         .min(10_000_000);
@@ -47,9 +47,10 @@ impl JoinHandleImpl {
                         return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
                     }
                     event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
-                    result = event_loop.try_get_task_result(co_name);
+                    if let Some((_, result)) = event_loop.try_get_task_result(co_name) {
+                        return Ok(Some(result));
+                    }
                 }
-                Ok(result)
             }
             Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -65,12 +66,12 @@ impl JoinHandleImpl {
                     return Ok(None);
                 }
                 let event_loop = unsafe { &*self.0 };
-                let mut result = event_loop.try_get_task_result(co_name);
-                while result.is_none() {
+                loop {
                     event_loop.wait_event(Some(Duration::from_millis(10)))?;
-                    result = event_loop.try_get_task_result(co_name);
+                    if let Some((_, result)) = event_loop.try_get_task_result(co_name) {
+                        return Ok(Some(result));
+                    }
                 }
-                Ok(result)
             }
             Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
