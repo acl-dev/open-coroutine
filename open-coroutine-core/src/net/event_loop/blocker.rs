@@ -24,6 +24,6 @@ impl Named for SelectBlocker {
 
 impl Blocker for SelectBlocker {
     fn block(&self, time: Duration) {
-        _ = self.event_loop.wait_just(Some(time));
+        _ = self.event_loop.wait_event(Some(time));
     }
 }

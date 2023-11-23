@@ -5,7 +5,7 @@ use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::has::HasSelector;
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};
 use crate::pool::has::HasCoroutinePool;
-use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
+use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
 use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
@@ -188,11 +188,6 @@ impl EventLoop {
         if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
             _ = self.try_resume(co_name);
         }
-    }
-
-    #[must_use]
-    pub fn try_get_task_result(&self, task_name: &str) -> Option<Result<Option<usize>, &str>> {
-        self.pool().try_get_task_result(task_name).map(|r| r.1)
     }
 }
 
