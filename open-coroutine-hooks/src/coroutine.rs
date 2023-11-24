@@ -1,3 +1,4 @@
+use open_coroutine_core::common::JoinHandle;
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
 use open_coroutine_core::net::event_loop::join::JoinHandleImpl;
 use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
@@ -29,14 +30,11 @@ pub extern "C" fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) 
 pub extern "C" fn coroutine_join(handle: JoinHandleImpl) -> c_long {
     match handle.join() {
         Ok(ptr) => match ptr {
-            Some(ptr) => match ptr {
-                Ok(ptr) => match ptr {
-                    Some(ptr) => ptr as *mut c_void as c_long,
-                    None => 0,
-                },
-                Err(_) => -1,
+            Ok(ptr) => match ptr {
+                Some(ptr) => ptr as *mut c_void as c_long,
+                None => 0,
             },
-            None => -1,
+            Err(_) => -1,
         },
         Err(_) => -1,
     }
@@ -47,14 +45,11 @@ pub extern "C" fn coroutine_join(handle: JoinHandleImpl) -> c_long {
 pub extern "C" fn coroutine_timeout_join(handle: &JoinHandleImpl, ns_time: u64) -> c_long {
     match handle.timeout_join(Duration::from_nanos(ns_time)) {
         Ok(ptr) => match ptr {
-            Some(ptr) => match ptr {
-                Ok(ptr) => match ptr {
-                    Some(ptr) => ptr as *mut c_void as c_long,
-                    None => 0,
-                },
-                Err(_) => -1,
+            Ok(ptr) => match ptr {
+                Some(ptr) => ptr as *mut c_void as c_long,
+                None => 0,
             },
-            None => -1,
+            Err(_) => -1,
         },
         Err(_) => -1,
     }
