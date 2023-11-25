@@ -1,9 +1,6 @@
 use crate::common::Named;
-use crate::coroutine::suspender::Suspender;
-use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
-use crate::scheduler::{Scheduler, SchedulerImpl};
-use std::panic::UnwindSafe;
+use crate::scheduler::{SchedulableCoroutine, Scheduler, SchedulerImpl};
 
 #[allow(missing_docs, clippy::missing_errors_doc)]
 pub trait HasScheduler<'s> {
@@ -15,14 +12,8 @@ pub trait HasScheduler<'s> {
         self.scheduler().set_stack_size(stack_size);
     }
 
-    fn submit_co(
-        &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
-        stack_size: Option<usize>,
-    ) -> std::io::Result<JoinHandleImpl<'s>> {
-        self.scheduler().submit_co(f, stack_size)
+    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
+        self.scheduler().submit_raw_co(coroutine)
     }
 
     fn try_resume(&self, co_name: &str) -> std::io::Result<()> {

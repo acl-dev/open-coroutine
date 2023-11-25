@@ -38,6 +38,10 @@ mod tests;
 pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     Debug + Default + Named + Current<'s> + Listener
 {
+    /// Get the default stack stack size for the coroutines in this scheduler.
+    /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
+    fn get_stack_size(&self) -> usize;
+
     /// Set the default stack stack size for the coroutines in this scheduler.
     /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
     fn set_stack_size(&self, stack_size: usize);
@@ -55,7 +59,22 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
             + UnwindSafe
             + 'static,
         stack_size: Option<usize>,
-    ) -> std::io::Result<Join>;
+    ) -> std::io::Result<Join> {
+        let coroutine = SchedulableCoroutine::new(
+            format!("{}|{}", self.get_name(), Uuid::new_v4()),
+            f,
+            stack_size.unwrap_or(self.get_stack_size()),
+        )?;
+        let co_name = Box::leak(Box::from(coroutine.get_name()));
+        self.submit_raw_co(coroutine)?;
+        Ok(Join::new(self, co_name))
+    }
+
+    /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()>;
 
     /// Resume a coroutine from the system call table to the ready queue,
     /// it's generally only required for framework level crates.
@@ -241,27 +260,19 @@ impl Named for SchedulerImpl<'_> {
 }
 
 impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
+    fn get_stack_size(&self) -> usize {
+        self.stack_size.load(Ordering::Acquire)
+    }
+
     fn set_stack_size(&self, stack_size: usize) {
         self.stack_size.store(stack_size, Ordering::Release);
     }
 
-    fn submit_co(
-        &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
-        stack_size: Option<usize>,
-    ) -> std::io::Result<JoinHandleImpl<'s>> {
-        let coroutine = SchedulableCoroutine::new(
-            format!("{}|{}", self.name, Uuid::new_v4()),
-            f,
-            stack_size.unwrap_or(self.stack_size.load(Ordering::Acquire)),
-        )?;
+    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
         coroutine.ready()?;
-        let co_name = Box::leak(Box::from(coroutine.get_name()));
         self.on_create(&coroutine);
         self.ready.push_back(coroutine);
-        Ok(JoinHandleImpl::new(self, co_name))
+        Ok(())
     }
 
     fn try_resume(&self, co_name: &str) -> std::io::Result<()> {
