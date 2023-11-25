@@ -238,6 +238,14 @@ impl Drop for CoroutinePoolImpl<'_> {
     }
 }
 
+impl Eq for CoroutinePoolImpl<'_> {}
+
+impl PartialEq for CoroutinePoolImpl<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_name().eq(other.get_name())
+    }
+}
+
 impl Default for CoroutinePoolImpl<'_> {
     fn default() -> Self {
         Self::new(

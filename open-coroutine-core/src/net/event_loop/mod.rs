@@ -113,14 +113,14 @@ impl EventLoops {
                                         "pin event loop thread to a single CPU core failed !"
                                     );
                                 }
-                                let event_loop = EventLoops::next(true);
+                                let event_loop = Self::next(true);
                                 while EVENT_LOOP_STARTED.load(Ordering::Acquire)
                                     || event_loop.has_task()
                                 {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                 }
                                 crate::warn!("open-coroutine-event-loop-{i} has exited");
-                                let pair = EventLoops::new_condition();
+                                let pair = Self::new_condition();
                                 let (lock, cvar) = pair.as_ref();
                                 let pending = lock.lock().unwrap();
                                 _ = pending.fetch_add(1, Ordering::Release);
@@ -171,12 +171,12 @@ impl EventLoops {
             + 'static,
         param: Option<usize>,
     ) -> JoinHandleImpl {
-        EventLoops::start();
-        EventLoops::next(true).submit(f, param)
+        Self::start();
+        Self::next(true).submit(f, param)
     }
 
     pub(crate) fn submit_raw(task: Task<'static>) {
-        EventLoops::next(true).submit_raw(task);
+        Self::next(true).submit_raw(task);
     }
 
     fn slice_wait(
@@ -203,36 +203,44 @@ impl EventLoops {
     }
 
     pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
-        Self::slice_wait(timeout, EventLoops::next(false))
+        Self::slice_wait(timeout, Self::next(true))
     }
 
     pub fn wait_read_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
-        let event_loop = EventLoops::next(false);
+        let event_loop = Self::next(false);
         event_loop.add_read(fd)?;
+        if Self::monitor() == event_loop {
+            // wait only happens in non-monitor for non-monitor thread
+            return Self::wait_event(timeout);
+        }
         Self::slice_wait(timeout, event_loop)
     }
 
     pub fn wait_write_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
-        let event_loop = EventLoops::next(false);
+        let event_loop = Self::next(false);
         event_loop.add_write(fd)?;
+        if Self::monitor() == event_loop {
+            // wait only happens in non-monitor for non-monitor thread
+            return Self::wait_event(timeout);
+        }
         Self::slice_wait(timeout, event_loop)
     }
 
     pub fn del_event(fd: c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
-            _ = EventLoops::next(false).del_event(fd);
+            _ = Self::next(false).del_event(fd);
         });
     }
 
     pub fn del_read_event(fd: c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
-            _ = EventLoops::next(false).del_read_event(fd);
+            _ = Self::next(false).del_read_event(fd);
         });
     }
 
     pub fn del_write_event(fd: c_int) {
         (0..unsafe { EVENT_LOOPS.len() }).for_each(|_| {
-            _ = EventLoops::next(false).del_write_event(fd);
+            _ = Self::next(false).del_write_event(fd);
         });
     }
 }
@@ -249,7 +257,7 @@ impl EventLoops {
         len: socklen_t,
     ) -> c_int {
         if open_coroutine_iouring::version::support_io_uring() {
-            let event_loop = EventLoops::next(false);
+            let event_loop = Self::next(false);
             let r = event_loop.connect(socket, address, len);
             if r.is_err() {
                 return -1;
@@ -282,7 +290,7 @@ impl EventLoops {
         flags: c_int,
     ) -> ssize_t {
         if open_coroutine_iouring::version::support_io_uring() {
-            let event_loop = EventLoops::next(false);
+            let event_loop = Self::next(false);
             let r = event_loop.recv(socket, buf, len, flags);
             if r.is_err() {
                 return -1;
@@ -315,7 +323,7 @@ impl EventLoops {
         flags: c_int,
     ) -> ssize_t {
         if open_coroutine_iouring::version::support_io_uring() {
-            let event_loop = EventLoops::next(false);
+            let event_loop = Self::next(false);
             let r = event_loop.send(socket, buf, len, flags);
             if r.is_err() {
                 return -1;

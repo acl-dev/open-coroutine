@@ -37,6 +37,14 @@ pub struct EventLoop {
     pool: MaybeUninit<CoroutinePoolImpl<'static>>,
 }
 
+impl Eq for EventLoop {}
+
+impl PartialEq for EventLoop {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_name().eq(other.get_name())
+    }
+}
+
 #[allow(clippy::type_complexity)]
 #[cfg(target_os = "linux")]
 static SYSCALL_WAIT_TABLE: Lazy<DashMap<usize, Arc<(Mutex<Option<ssize_t>>, Condvar)>>> =
