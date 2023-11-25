@@ -5,7 +5,7 @@ use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::has::HasScheduler;
-use crate::scheduler::{SchedulableSuspender, SchedulerImpl};
+use crate::scheduler::{SchedulableSuspender, Scheduler, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
@@ -51,7 +51,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
         param: Option<usize>,
     ) -> Join {
         let name = name.unwrap_or(format!("{}|{}", self.get_name(), Uuid::new_v4()));
-        self.submit_raw(Task::new(name.clone(), func, param));
+        self.submit_raw_task(Task::new(name.clone(), func, param));
         Join::new(self, &name)
     }
 
@@ -59,7 +59,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
     ///
     /// Allow multiple threads to concurrently submit task to the pool,
     /// but only allow one thread to execute scheduling.
-    fn submit_raw(&self, task: Task<'p>);
+    fn submit_raw_task(&self, task: Task<'p>);
 
     /// pop a task
     fn pop(&self) -> Option<Task<'p>>;
@@ -318,7 +318,7 @@ impl StatePool for CoroutinePoolImpl<'_> {
 }
 
 impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
-    fn submit_raw(&self, task: Task<'p>) {
+    fn submit_raw_task(&self, task: Task<'p>) {
         self.task_queue.push(task);
     }
 
@@ -463,7 +463,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
             return Ok(());
         }
         let create_time = open_coroutine_timer::now();
-        _ = self.submit_co(
+        _ = self.scheduler().submit_co(
             move |suspender, ()| {
                 loop {
                     let pool = Self::current().expect("current pool not found");

@@ -13,8 +13,8 @@ pub trait HasCoroutinePool<'p> {
 
     fn pool_mut(&mut self) -> &mut CoroutinePoolImpl<'p>;
 
-    fn submit_raw(&self, task: Task<'p>) {
-        self.pool().submit_raw(task);
+    fn submit_raw_task(&self, task: Task<'p>) {
+        self.pool().submit_raw_task(task);
     }
 
     /// pop a task

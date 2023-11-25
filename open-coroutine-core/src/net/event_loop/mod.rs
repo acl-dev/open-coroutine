@@ -176,7 +176,7 @@ impl EventLoops {
     }
 
     pub(crate) fn submit_raw(task: Task<'static>) {
-        Self::next(true).submit_raw(task);
+        Self::next(true).submit_raw_task(task);
     }
 
     fn slice_wait(

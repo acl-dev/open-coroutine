@@ -5,7 +5,8 @@ use crate::net::event_loop::join::JoinHandleImpl;
 use crate::net::selector::has::HasSelector;
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};
 use crate::pool::has::HasCoroutinePool;
-use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
+use crate::pool::task::Task;
+use crate::pool::{CoroutinePool, CoroutinePoolImpl};
 use crate::scheduler::has::HasScheduler;
 use crate::scheduler::SchedulableCoroutine;
 use libc::{c_char, c_int, c_void};
@@ -86,8 +87,9 @@ impl EventLoop {
             + 'static,
         param: Option<usize>,
     ) -> JoinHandleImpl {
-        let task_name = unsafe { self.pool.assume_init_ref().submit(None, f, param) };
-        JoinHandleImpl::new(self, task_name.get_name().unwrap())
+        let name = format!("{}|{}", self.get_name(), uuid::Uuid::new_v4());
+        self.submit_raw_task(Task::new(name.clone(), f, param));
+        JoinHandleImpl::new(self, &name)
     }
 
     fn token(use_thread_id: bool) -> usize {
