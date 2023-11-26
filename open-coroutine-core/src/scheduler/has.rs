@@ -8,6 +8,10 @@ pub trait HasScheduler<'s> {
 
     fn scheduler_mut(&mut self) -> &mut SchedulerImpl<'s>;
 
+    fn get_stack_size(&self) -> usize {
+        self.scheduler().get_stack_size()
+    }
+
     fn set_stack_size(&self, stack_size: usize) {
         self.scheduler().set_stack_size(stack_size);
     }
