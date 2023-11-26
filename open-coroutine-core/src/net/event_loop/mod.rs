@@ -135,8 +135,6 @@ impl EventLoops {
 
     pub fn stop() {
         crate::warn!("open-coroutine is exiting...");
-        #[cfg(all(unix, feature = "preemptive-schedule"))]
-        crate::monitor::Monitor::stop();
         EVENT_LOOP_STARTED.store(false, Ordering::Release);
         // wait for the event-loops to stop
         let (lock, cvar) = EVENT_LOOP_STOP.as_ref();
@@ -144,19 +142,12 @@ impl EventLoops {
             .wait_timeout_while(
                 lock.lock().unwrap(),
                 Duration::from_millis(30000),
-                |stopped| {
-                    cfg_if::cfg_if! {
-                        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-                            let condition = unsafe { EVENT_LOOPS.len() };
-                        } else {
-                            let condition = unsafe { EVENT_LOOPS.len() } - 1;
-                        }
-                    }
-                    stopped.load(Ordering::Acquire) < condition
-                },
+                |stopped| stopped.load(Ordering::Acquire) < unsafe { EVENT_LOOPS.len() } - 1,
             )
             .unwrap()
             .1;
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
+        crate::monitor::Monitor::stop();
         if result.timed_out() {
             crate::error!("open-coroutine didn't exit successfully within 30 seconds !");
         } else {

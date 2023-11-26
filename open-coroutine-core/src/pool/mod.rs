@@ -1,11 +1,12 @@
 use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
+use crate::coroutine::Coroutine;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::has::HasScheduler;
-use crate::scheduler::{SchedulableSuspender, Scheduler, SchedulerImpl};
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
@@ -35,8 +36,34 @@ mod tests;
 
 /// The `TaskPool` abstraction.
 pub trait TaskPool<'p, Join: JoinHandle<Self>>:
-    Debug + Default + RefUnwindSafe + Named + StatePool + HasScheduler<'p>
+    Debug + Default + RefUnwindSafe + Named + Current<'p> + StatePool + HasScheduler<'p>
 {
+    /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    ///
+    /// # Errors
+    /// if create coroutine fails.
+    fn submit_co(
+        &self,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        stack_size: Option<usize>,
+    ) -> std::io::Result<Join> {
+        let coroutine = SchedulableCoroutine::new(
+            format!("{}|{}", self.get_name(), Uuid::new_v4()),
+            f,
+            stack_size.unwrap_or(self.get_stack_size()),
+        )?;
+        let co_name = Box::leak(Box::from(coroutine.get_name()));
+        Self::init_current(self);
+        self.submit_raw_co(coroutine)?;
+        Self::clean_current();
+        Ok(Join::new(self, co_name))
+    }
+
     /// Submit a new task to this pool.
     ///
     /// Allow multiple threads to concurrently submit task to the pool,
@@ -463,7 +490,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
             return Ok(());
         }
         let create_time = open_coroutine_timer::now();
-        _ = self.scheduler().submit_co(
+        self.submit_co(
             move |suspender, ()| {
                 loop {
                     let pool = Self::current().expect("current pool not found");
@@ -481,9 +508,6 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
                         && running > pool.get_min_size()
                         || recycle
                     {
-                        //回收worker协程
-                        pool.running
-                            .store(pool.get_running_size().saturating_sub(1), Ordering::Release);
                         return None;
                     }
                     _ = pool.pop_fail_times.fetch_add(1, Ordering::Release);
@@ -504,9 +528,8 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
                 }
             },
             None,
-        )?;
-        _ = self.running.fetch_add(1, Ordering::Release);
-        Ok(())
+        )
+        .map(|_| ())
     }
 
     fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64> {
