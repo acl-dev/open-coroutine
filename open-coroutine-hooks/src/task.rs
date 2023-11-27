@@ -1,31 +1,28 @@
 use open_coroutine_core::common::JoinHandle;
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
-use open_coroutine_core::net::event_loop::join::CoJoinHandleImpl;
-use open_coroutine_core::net::event_loop::{CoFunc, EventLoops};
+use open_coroutine_core::net::event_loop::join::TaskJoinHandleImpl;
+use open_coroutine_core::net::event_loop::{EventLoops, TaskFunc};
 use std::ffi::{c_long, c_void};
 use std::time::Duration;
 
-///创建协程
+///创建任务
 #[no_mangle]
-pub extern "C" fn coroutine_crate(f: CoFunc, stack_size: usize) -> CoJoinHandleImpl {
-    let stack_size = if stack_size > 0 {
-        Some(stack_size)
-    } else {
-        None
-    };
-    EventLoops::submit_co(
-        move |suspender, ()| {
+pub extern "C" fn task_crate(f: TaskFunc, param: usize) -> TaskJoinHandleImpl {
+    EventLoops::submit(
+        move |suspender, p| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]
-            Some(f(suspender as *const _ as *const SuspenderImpl<(), ()>))
+            Some(f(
+                suspender as *const _ as *const SuspenderImpl<(), ()>,
+                p.unwrap_or(0),
+            ))
         },
-        stack_size,
+        Some(param),
     )
-    .unwrap_or_else(|_| CoJoinHandleImpl::err())
 }
 
-///等待协程完成
+///等待任务完成
 #[no_mangle]
-pub extern "C" fn coroutine_join(handle: CoJoinHandleImpl) -> c_long {
+pub extern "C" fn task_join(handle: TaskJoinHandleImpl) -> c_long {
     match handle.join() {
         Ok(ptr) => match ptr {
             Ok(ptr) => match ptr {
@@ -38,9 +35,9 @@ pub extern "C" fn coroutine_join(handle: CoJoinHandleImpl) -> c_long {
     }
 }
 
-///等待协程完成
+///等待任务完成
 #[no_mangle]
-pub extern "C" fn coroutine_timeout_join(handle: &CoJoinHandleImpl, ns_time: u64) -> c_long {
+pub extern "C" fn task_timeout_join(handle: &TaskJoinHandleImpl, ns_time: u64) -> c_long {
     match handle.timeout_join(Duration::from_nanos(ns_time)) {
         Ok(ptr) => match ptr {
             Ok(ptr) => match ptr {

@@ -1,15 +1,22 @@
-use crate::join::JoinHandle;
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
-use open_coroutine_core::net::event_loop::UserFunc;
-use std::ffi::c_void;
+use open_coroutine_core::net::event_loop::core::EventLoop;
+use open_coroutine_core::net::event_loop::TaskFunc;
+use std::cmp::Ordering;
+use std::ffi::{c_char, c_void};
+use std::io::{Error, ErrorKind};
+use std::time::Duration;
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle;
+    fn task_crate(f: TaskFunc, param: usize) -> JoinHandle;
+
+    fn task_join(handle: JoinHandle) -> libc::c_long;
+
+    fn task_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long;
 }
 
 #[allow(dead_code)]
-pub fn co<F, P: 'static, R: 'static>(f: F, param: P, stack_size: usize) -> JoinHandle
+pub fn task<F, P: 'static, R: 'static>(f: F, param: P) -> JoinHandle
 where
     F: FnOnce(*const SuspenderImpl<(), ()>, P) -> R + Copy,
 {
@@ -29,27 +36,47 @@ where
     }
     let inner = Box::leak(Box::new((f, param)));
     unsafe {
-        coroutine_crate(
+        task_crate(
             co_main::<F, P, R>,
             (inner as *mut (F, P)).cast::<c_void>() as usize,
-            stack_size,
         )
     }
 }
 
 #[macro_export]
-macro_rules! co {
-    ( $f: expr , $param:expr $(,)? ) => {{
-        $crate::coroutine::co(
-            $f,
-            $param,
-            //min stack size for backtrace
-            64 * 1024,
-        )
-    }};
-    ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{
-        $crate::coroutine::co($f, $param, $stack_size)
-    }};
+macro_rules! task {
+    ( $f: expr , $param:expr $(,)? ) => {
+        $crate::task::task($f, $param)
+    };
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct JoinHandle(*const EventLoop, *const c_char);
+
+impl JoinHandle {
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn timeout_join<R>(&self, dur: Duration) -> std::io::Result<Option<R>> {
+        unsafe {
+            let ptr = task_timeout_join(self, dur.as_nanos() as u64);
+            match ptr.cmp(&0) {
+                Ordering::Less => Err(Error::new(ErrorKind::Other, "timeout join failed")),
+                Ordering::Equal => Ok(None),
+                Ordering::Greater => Ok(Some(std::ptr::read_unaligned(ptr as *mut R))),
+            }
+        }
+    }
+
+    pub fn join<R>(self) -> std::io::Result<Option<R>> {
+        unsafe {
+            let ptr = task_join(self);
+            match ptr.cmp(&0) {
+                Ordering::Less => Err(Error::new(ErrorKind::Other, "join failed")),
+                Ordering::Equal => Ok(None),
+                Ordering::Greater => Ok(Some(std::ptr::read_unaligned(ptr as *mut R))),
+            }
+        }
+    }
 }
 
 #[cfg(all(test, not(windows)))]
@@ -58,23 +85,22 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn simplest() -> std::io::Result<()> {
+    fn task_simplest() -> std::io::Result<()> {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::Builder::new()
             .name("test_join".to_string())
             .spawn(move || {
-                let handler1 = co!(
+                let handler1 = task!(
                     |_, input| {
-                        println!("[coroutine1] launched with {}", input);
+                        println!("[task1] launched with {}", input);
                         input
                     },
                     1,
-                    1024 * 1024,
                 );
-                let handler2 = co!(
+                let handler2 = task!(
                     |_, input| {
-                        println!("[coroutine2] launched with {}", input);
+                        println!("[task2] launched with {}", input);
                         input
                     },
                     "hello",

@@ -2,7 +2,7 @@ use crate::common::Current;
 use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl};
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
-use crate::net::event_loop::join::JoinHandleImpl;
+use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
 use crate::net::selector::Selector;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
@@ -29,7 +29,9 @@ mod blocker;
 pub mod core;
 
 /// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
+pub type CoFunc = extern "C" fn(*const SuspenderImpl<(), ()>) -> usize;
+
+pub type TaskFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -155,13 +157,22 @@ impl EventLoops {
         }
     }
 
-    /// todo This is actually an API for creating tasks, adding an API for creating coroutines
+    pub fn submit_co(
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        stack_size: Option<usize>,
+    ) -> std::io::Result<CoJoinHandleImpl> {
+        Self::start();
+        Self::next(true).submit_co(f, stack_size)
+    }
+
     pub fn submit(
         f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
             + UnwindSafe
             + 'static,
         param: Option<usize>,
-    ) -> JoinHandleImpl {
+    ) -> TaskJoinHandleImpl {
         Self::start();
         Self::next(true).submit(f, param)
     }

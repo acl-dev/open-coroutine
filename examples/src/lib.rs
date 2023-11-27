@@ -1,4 +1,4 @@
-use open_coroutine::co;
+use open_coroutine::task;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -6,7 +6,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 fn crate_co(input: i32) {
-    _ = co!(
+    _ = task!(
         |_, param| {
             println!("[coroutine] launched param:{}", param);
         },
@@ -123,7 +123,7 @@ pub fn crate_co_server(
     //invoke by libc::accept
     crate_co(12);
     for stream in listener.incoming() {
-        _ = co!(
+        _ = task!(
             |_, input| {
                 let mut stream = input.expect("accept new connection failed !");
                 let mut buffer: [u8; 512] = [0; 512];
@@ -177,7 +177,7 @@ pub fn crate_co_server(
 pub fn crate_co_client(port: u16, server_started: Arc<AtomicBool>) {
     //等服务端起来
     while !server_started.load(Ordering::Acquire) {}
-    _ = co!(
+    _ = task!(
         |_, input| {
             //invoke by libc::connect
             crate_co(13);
@@ -231,13 +231,13 @@ fn now() -> u64 {
 }
 
 pub fn sleep_test(millis: u64) {
-    _ = co!(
+    _ = task!(
         |_, _| {
             println!("[coroutine1] launched");
         },
         (),
     );
-    _ = co!(
+    _ = task!(
         |_, _| {
             println!("[coroutine2] launched");
         },
@@ -250,7 +250,7 @@ pub fn sleep_test(millis: u64) {
 }
 
 pub fn sleep_test_co(millis: u64) {
-    _ = co!(
+    _ = task!(
         |_, _| {
             let start = now();
             std::thread::sleep(Duration::from_millis(millis));
@@ -260,7 +260,7 @@ pub fn sleep_test_co(millis: u64) {
         },
         (),
     );
-    _ = co!(
+    _ = task!(
         |_, _| {
             std::thread::sleep(Duration::from_millis(500));
             println!("[coroutine2] launched");

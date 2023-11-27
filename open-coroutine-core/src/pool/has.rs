@@ -3,7 +3,7 @@ use crate::constants::PoolState;
 use crate::pool::task::Task;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool, WaitableTaskPool};
 use crate::scheduler::has::HasScheduler;
-use crate::scheduler::SchedulerImpl;
+use crate::scheduler::{SchedulableCoroutine, SchedulerImpl};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -12,6 +12,10 @@ pub trait HasCoroutinePool<'p> {
     fn pool(&self) -> &CoroutinePoolImpl<'p>;
 
     fn pool_mut(&mut self) -> &mut CoroutinePoolImpl<'p>;
+
+    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
+        self.pool().submit_raw_co(coroutine)
+    }
 
     fn submit_raw_task(&self, task: Task<'p>) {
         self.pool().submit_raw_task(task);

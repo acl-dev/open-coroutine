@@ -6,7 +6,7 @@ use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::has::HasScheduler;
-use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, SchedulerImpl};
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
@@ -58,11 +58,15 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
             stack_size.unwrap_or(self.get_stack_size()),
         )?;
         let co_name = Box::leak(Box::from(coroutine.get_name()));
-        Self::init_current(self);
         self.submit_raw_co(coroutine)?;
-        Self::clean_current();
         Ok(Join::new(self, co_name))
     }
+
+    /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
+    ///
+    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
+    /// but only allow one thread to execute scheduling.
+    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()>;
 
     /// Submit a new task to this pool.
     ///
@@ -345,6 +349,13 @@ impl StatePool for CoroutinePoolImpl<'_> {
 }
 
 impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
+        Self::init_current(self);
+        let result = self.scheduler().submit_raw_co(coroutine);
+        Self::clean_current();
+        result
+    }
+
     fn submit_raw_task(&self, task: Task<'p>) {
         self.task_queue.push(task);
     }

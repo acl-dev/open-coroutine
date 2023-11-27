@@ -1,6 +1,6 @@
 use crate::common::Named;
 use crate::scheduler::listener::Listener;
-use crate::scheduler::{SchedulableCoroutine, Scheduler, SchedulerImpl};
+use crate::scheduler::{Scheduler, SchedulerImpl};
 
 #[allow(missing_docs, clippy::missing_errors_doc)]
 pub trait HasScheduler<'s> {
@@ -14,10 +14,6 @@ pub trait HasScheduler<'s> {
 
     fn set_stack_size(&self, stack_size: usize) {
         self.scheduler().set_stack_size(stack_size);
-    }
-
-    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
-        self.scheduler().submit_raw_co(coroutine)
     }
 
     fn try_resume(&self, co_name: &str) -> std::io::Result<()> {
