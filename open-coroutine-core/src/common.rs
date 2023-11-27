@@ -126,6 +126,15 @@ cfg_if::cfg_if! {
 /// Join abstraction.
 pub trait JoinHandle<T> {
     /// create `JoinHandle` instance.
+    #[must_use]
+    fn err() -> Self
+    where
+        Self: Sized,
+    {
+        Self::new(std::ptr::null(), "")
+    }
+
+    /// create `JoinHandle` instance.
     fn new(t: *const T, name: &str) -> Self;
 
     /// get the task name.

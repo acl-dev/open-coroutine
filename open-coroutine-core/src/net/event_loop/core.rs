@@ -1,7 +1,8 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::coroutine::suspender::Suspender;
+use crate::coroutine::Coroutine;
 use crate::net::event_loop::blocker::SelectBlocker;
-use crate::net::event_loop::join::JoinHandleImpl;
+use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
 use crate::net::selector::has::HasSelector;
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};
 use crate::pool::has::HasCoroutinePool;
@@ -15,6 +16,7 @@ use std::mem::MaybeUninit;
 use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use uuid::Uuid;
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "linux")] {
@@ -80,16 +82,33 @@ impl EventLoop {
         Ok(event_loop)
     }
 
+    pub fn submit_co(
+        &self,
+        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
+            + UnwindSafe
+            + 'static,
+        stack_size: Option<usize>,
+    ) -> std::io::Result<CoJoinHandleImpl> {
+        let coroutine = SchedulableCoroutine::new(
+            format!("{}|{}", self.get_name(), Uuid::new_v4()),
+            f,
+            stack_size.unwrap_or(self.get_stack_size()),
+        )?;
+        let co_name = Box::leak(Box::from(coroutine.get_name()));
+        self.submit_raw_co(coroutine)?;
+        Ok(CoJoinHandleImpl::new(self, co_name))
+    }
+
     pub fn submit(
         &self,
         f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
             + UnwindSafe
             + 'static,
         param: Option<usize>,
-    ) -> JoinHandleImpl {
-        let name = format!("{}|{}", self.get_name(), uuid::Uuid::new_v4());
+    ) -> TaskJoinHandleImpl {
+        let name = format!("{}|{}", self.get_name(), Uuid::new_v4());
         self.submit_raw_task(Task::new(name.clone(), f, param));
-        JoinHandleImpl::new(self, &name)
+        TaskJoinHandleImpl::new(self, &name)
     }
 
     fn token(use_thread_id: bool) -> usize {
