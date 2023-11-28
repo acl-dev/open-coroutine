@@ -1,13 +1,13 @@
 use open_coroutine_core::common::JoinHandle;
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
 use open_coroutine_core::net::event_loop::join::TaskJoinHandleImpl;
-use open_coroutine_core::net::event_loop::{EventLoops, TaskFunc};
+use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
 use std::ffi::{c_long, c_void};
 use std::time::Duration;
 
 ///创建任务
 #[no_mangle]
-pub extern "C" fn task_crate(f: TaskFunc, param: usize) -> TaskJoinHandleImpl {
+pub extern "C" fn task_crate(f: UserFunc, param: usize) -> TaskJoinHandleImpl {
     EventLoops::submit(
         move |suspender, p| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]

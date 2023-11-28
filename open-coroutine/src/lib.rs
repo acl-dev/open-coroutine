@@ -49,6 +49,8 @@
 pub use open_coroutine_core::net::config::Config;
 pub use open_coroutine_macros::*;
 
+pub mod coroutine;
+
 pub mod task;
 
 extern "C" {

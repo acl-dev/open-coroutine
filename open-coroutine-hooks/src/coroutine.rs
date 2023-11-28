@@ -1,13 +1,17 @@
 use open_coroutine_core::common::JoinHandle;
 use open_coroutine_core::coroutine::suspender::SuspenderImpl;
 use open_coroutine_core::net::event_loop::join::CoJoinHandleImpl;
-use open_coroutine_core::net::event_loop::{CoFunc, EventLoops};
+use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
 use std::ffi::{c_long, c_void};
 use std::time::Duration;
 
 ///创建协程
 #[no_mangle]
-pub extern "C" fn coroutine_crate(f: CoFunc, stack_size: usize) -> CoJoinHandleImpl {
+pub extern "C" fn coroutine_crate(
+    f: UserFunc,
+    param: usize,
+    stack_size: usize,
+) -> CoJoinHandleImpl {
     let stack_size = if stack_size > 0 {
         Some(stack_size)
     } else {
@@ -16,7 +20,10 @@ pub extern "C" fn coroutine_crate(f: CoFunc, stack_size: usize) -> CoJoinHandleI
     EventLoops::submit_co(
         move |suspender, ()| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]
-            Some(f(suspender as *const _ as *const SuspenderImpl<(), ()>))
+            Some(f(
+                suspender as *const _ as *const SuspenderImpl<(), ()>,
+                param,
+            ))
         },
         stack_size,
     )
