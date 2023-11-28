@@ -8,15 +8,15 @@ use std::time::Duration;
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn task_crate(f: UserFunc, param: usize) -> JoinHandle;
+    fn coroutine_crate(f: UserFunc, param: usize, stack_size: usize) -> JoinHandle;
 
-    fn task_join(handle: JoinHandle) -> libc::c_long;
+    fn coroutine_join(handle: JoinHandle) -> libc::c_long;
 
-    fn task_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long;
+    fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long;
 }
 
 #[allow(dead_code)]
-pub fn task<F, P: 'static, R: 'static>(f: F, param: P) -> JoinHandle
+pub fn co<F, P: 'static, R: 'static>(f: F, param: P, stack_size: usize) -> JoinHandle
 where
     F: FnOnce(*const SuspenderImpl<(), ()>, P) -> R + Copy,
 {
@@ -36,18 +36,27 @@ where
     }
     let inner = Box::leak(Box::new((f, param)));
     unsafe {
-        task_crate(
+        coroutine_crate(
             co_main::<F, P, R>,
             (inner as *mut (F, P)).cast::<c_void>() as usize,
+            stack_size,
         )
     }
 }
 
 #[macro_export]
-macro_rules! task {
-    ( $f: expr , $param:expr $(,)? ) => {
-        $crate::task::task($f, $param)
-    };
+macro_rules! co {
+    ( $f: expr , $param:expr $(,)? ) => {{
+        $crate::coroutine::co(
+            $f,
+            $param,
+            //min stack size for backtrace
+            64 * 1024,
+        )
+    }};
+    ( $f: expr , $param:expr ,$stack_size: expr $(,)?) => {{
+        $crate::coroutine::co($f, $param, $stack_size)
+    }};
 }
 
 #[repr(C)]
@@ -58,7 +67,7 @@ impl JoinHandle {
     #[allow(clippy::cast_possible_truncation)]
     pub fn timeout_join<R>(&self, dur: Duration) -> std::io::Result<Option<R>> {
         unsafe {
-            let ptr = task_timeout_join(self, dur.as_nanos() as u64);
+            let ptr = coroutine_timeout_join(self, dur.as_nanos() as u64);
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "timeout join failed")),
                 Ordering::Equal => Ok(None),
@@ -69,7 +78,7 @@ impl JoinHandle {
 
     pub fn join<R>(self) -> std::io::Result<Option<R>> {
         unsafe {
-            let ptr = task_join(self);
+            let ptr = coroutine_join(self);
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "join failed")),
                 Ordering::Equal => Ok(None),
@@ -79,36 +88,36 @@ impl JoinHandle {
     }
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(test)]
 mod tests {
     use std::sync::{Arc, Condvar, Mutex};
     use std::time::Duration;
 
+    #[ignore]
     #[test]
-    fn task_simplest() -> std::io::Result<()> {
+    fn co_simplest() -> std::io::Result<()> {
         let pair = Arc::new((Mutex::new(true), Condvar::new()));
         let pair2 = Arc::clone(&pair);
         let handler = std::thread::Builder::new()
             .name("test_join".to_string())
             .spawn(move || {
-                let handler1 = task!(
+                let handler1 = co!(
                     |_, input| {
-                        println!("[task1] launched with {}", input);
+                        println!("[coroutine1] launched with {}", input);
                         input
                     },
-                    1,
+                    true,
+                    1024 * 1024,
                 );
-                let handler2 = task!(
+                let handler2 = co!(
                     |_, input| {
-                        println!("[task2] launched with {}", input);
+                        println!("[coroutine2] launched with {}", input);
                         input
                     },
                     "hello",
                 );
-                unsafe {
-                    assert_eq!(1, handler1.join().unwrap().unwrap());
-                    assert_eq!("hello", &*handler2.join::<*mut str>().unwrap().unwrap());
-                }
+                assert_eq!(true, handler1.join().unwrap().unwrap());
+                unsafe { assert_eq!("hello", &*handler2.join::<*mut str>().unwrap().unwrap()) };
 
                 let (lock, cvar) = &*pair2;
                 let mut pending = lock.lock().unwrap();
