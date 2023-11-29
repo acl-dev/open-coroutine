@@ -1,40 +1,50 @@
 [package]
 name = "open-coroutine-core"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
-description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
-repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-core"
-keywords = ["coroutine", "fiber", "stackful", "hook"]
-categories = ["data-structures", "concurrency", "asynchronous", "web-programming", "wasm"]
+description = "The open-coroutine is a simple, efficient and generic coroutine library."
+repository = "https://github.com/acl-dev/open-coroutine"
+keywords = ["runtime", "coroutine", "hook", "preempt", "work-steal"]
+categories = ["concurrency", "asynchronous", "os", "network-programming", "wasm"]
 license = "LGPL-3.0 OR Apache-2.0"
+readme = "../README.md"
 
 [dependencies]
-corosensei = { version = "0.1.4", optional = true }
-libc = "0.2.137"
+# log
+log = { version = "0.4.20", optional = true }
+simplelog = { version = "0.12.1", optional = true }
+# common
 cfg-if = "1.0.0"
-once_cell = "1.13.0"
-num_cpus = "1.14.0"
+# coroutine
+corosensei = { version = "0.1.4", optional = true }
 uuid = { version = "1.3.0", features = [
     "v4",
     "fast-rng",
     "macro-diagnostics",
 ] }
-crossbeam-utils = "0.8.15"
-crossbeam-deque = "0.8.2"
-dashmap = "5.5.1"
-polling = "2.8.0"
-core_affinity = "0.8.0"
-open-coroutine-timer = { version = "0.1.1", path = "../open-coroutine-timer" }
-open-coroutine-queue = { version = "0.1.2", path = "../open-coroutine-queue" }
+dashmap = "5.5.3"
+# scheduler
+once_cell = "1.18.0"
+open-coroutine-timer = { version = "0.5.0", path = "../open-coroutine-timer" }
+open-coroutine-queue = { version = "0.5.0", path = "../open-coroutine-queue" }
+# coroutine pool
+crossbeam-deque = "0.8.3"
+# monitor
+core_affinity = "0.8.1"
+# net
+crossbeam-utils = { version = "0.8.16", optional = true }
+num_cpus = { version = "1.16.0", optional = true }
+polling = { version = "2.8.0", optional = true }
 open-coroutine-iouring = { version = "0.1.0", path = "../open-coroutine-iouring", optional = true }
-log = { version = "0.4.20", optional = true }
-simplelog = { version = "0.12.1", optional = true }
 
 [target.'cfg(unix)'.dependencies]
+# coroutine
+libc = "0.2.150"
 nix = { version = "0.27.1", features = ["signal"] }
 
 [target.'cfg(windows)'.dependencies]
+# common
 windows-sys = { version = "0.52.0", features = [
     "Win32_Foundation",
     "Win32_System_Kernel",
@@ -44,10 +54,20 @@ windows-sys = { version = "0.52.0", features = [
 ] }
 
 [dev-dependencies]
-backtrace = "0.3.67"
+backtrace = "0.3.69"
+
+[build-dependencies]
+cfg-if = "1.0.0"
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+cc = "1.0.82"
 
 [features]
 default = ["full"]
+
+# Print some help log.
+# Enable for default.
+logs = ["log", "simplelog"]
 
 korosensei = ["corosensei", "nix/pthread"]
 
@@ -55,11 +75,12 @@ korosensei = ["corosensei", "nix/pthread"]
 # Enable for default.
 preemptive-schedule = ["korosensei"]
 
-# Print some help log.
-# Enable for default.
-logs = ["log", "simplelog"]
+# Provide net API abstraction and implementation.
+net = ["korosensei", "num_cpus", "crossbeam-utils", "polling"]
 
-io_uring = ["open-coroutine-iouring"]
+# Provide io_uring abstraction and implementation.
+# This feature only works in linux.
+io_uring = ["net", "open-coroutine-iouring"]
 
 # Enable all features
 full = ["io_uring", "preemptive-schedule", "logs"]

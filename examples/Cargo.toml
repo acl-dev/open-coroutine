@@ -8,6 +8,7 @@ repository = "https://github.com/acl-dev/open-coroutine/tree/dev/examples"
 keywords = ["open-coroutine", "example"]
 categories = ["os", "concurrency", "asynchronous"]
 license = "LGPL-3.0 OR Apache-2.0"
+readme = "../README.md"
 
 [dependencies]
-open-coroutine = { version = "0.4.0", path = "../open-coroutine" }
+open-coroutine = { version = "0.5.0", path = "../open-coroutine" }
