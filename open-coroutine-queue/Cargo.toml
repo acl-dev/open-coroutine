@@ -1,6 +1,6 @@
 [package]
 name = "open-coroutine-queue"
-version = "0.1.2"
+version = "0.5.0"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 description = "Concurrent work-stealing queue, implemented using st3 and crossbeam-deque."
