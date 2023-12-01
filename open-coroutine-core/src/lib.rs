@@ -81,4 +81,9 @@ macro_rules! unbreakable {
 #[cfg(all(unix, feature = "preemptive-schedule"))]
 mod monitor;
 
+#[cfg(feature = "net")]
 pub mod net;
+
+#[allow(clippy::similar_names, clippy::not_unsafe_ptr_arg_deref)]
+#[cfg(all(unix, feature = "syscall"))]
+pub mod syscall;

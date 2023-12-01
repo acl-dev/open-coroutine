@@ -16,7 +16,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 cfg_if::cfg_if! {
-    if #[cfg(target_os = "linux")] {
+    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use crate::coroutine::suspender::SimpleSuspender;
         use libc::{c_void, size_t, sockaddr, socklen_t, ssize_t};
     }
@@ -34,9 +34,6 @@ pub type UserFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
-
-#[cfg(any(target_os = "linux", windows))]
-static BIND: Lazy<bool> = Lazy::new(|| unsafe { EVENT_LOOPS.len() } <= num_cpus::get());
 
 static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
@@ -104,12 +101,8 @@ impl EventLoops {
                         std::thread::Builder::new()
                             .name(format!("open-coroutine-event-loop-{i}"))
                             .spawn(move || {
-                                #[cfg(any(target_os = "linux", windows))]
-                                if *BIND {
-                                    assert!(
-                                        core_affinity::set_for_current(core_affinity::CoreId {
-                                            id: i
-                                        }),
+                                if core_affinity::set_for_current(core_affinity::CoreId { id: i }) {
+                                    crate::warn!(
                                         "pin event loop thread to a single CPU core failed !"
                                     );
                                 }
@@ -246,7 +239,7 @@ impl EventLoops {
 }
 
 #[allow(unused_variables, clippy::not_unsafe_ptr_arg_deref)]
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoops {
     /// socket
     #[must_use]

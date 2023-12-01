@@ -56,12 +56,6 @@ windows-sys = { version = "0.52.0", features = [
 [dev-dependencies]
 backtrace = "0.3.69"
 
-[build-dependencies]
-cfg-if = "1.0.0"
-
-[target.'cfg(target_os = "linux")'.build-dependencies]
-cc = "1.0.82"
-
 [features]
 default = ["full"]
 
@@ -82,5 +76,8 @@ net = ["korosensei", "num_cpus", "crossbeam-utils", "polling"]
 # This feature only works in linux.
 io_uring = ["net", "open-coroutine-iouring"]
 
+# Provide syscall implementation.
+syscall = ["io_uring"]
+
 # Enable all features
-full = ["io_uring", "preemptive-schedule", "logs"]
+full = ["syscall", "preemptive-schedule", "logs"]
