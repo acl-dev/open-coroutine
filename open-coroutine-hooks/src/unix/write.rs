@@ -1,7 +1,6 @@
 use libc::{c_int, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use open_coroutine_core::common::Current;
-use open_coroutine_core::constants::Syscall;
 use open_coroutine_core::coroutine::StateCoroutine;
 use std::ffi::c_void;
 
@@ -22,7 +21,7 @@ pub extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags: c_
                     flags,
                 );
             }
-            impl_expected_write_hook!((Lazy::force(&SEND))(socket, buf, len, flags))
+            impl_expected_write_hook!(Lazy::force(&SEND), socket, buf, len, flags)
         },
         send
     )
@@ -42,9 +41,7 @@ pub extern "C" fn sendto(
     addrlen: socklen_t,
 ) -> ssize_t {
     open_coroutine_core::unbreakable!(
-        impl_expected_write_hook!((Lazy::force(&SENDTO))(
-            socket, buf, len, flags, addr, addrlen
-        )),
+        impl_expected_write_hook!(Lazy::force(&SENDTO), socket, buf, len, flags, addr, addrlen),
         sendto
     )
 }
@@ -55,7 +52,7 @@ static PWRITE: Lazy<extern "C" fn(c_int, *const c_void, size_t, off_t) -> ssize_
 #[no_mangle]
 pub extern "C" fn pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
-        impl_expected_write_hook!((Lazy::force(&PWRITE))(fd, buf, count, offset)),
+        impl_expected_write_hook!(Lazy::force(&PWRITE), fd, buf, count, offset),
         pwrite
     )
 }
@@ -66,7 +63,7 @@ static WRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int) -> ssize_t> = init
 #[no_mangle]
 pub extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
     open_coroutine_core::unbreakable!(
-        impl_expected_batch_write_hook!((Lazy::force(&WRITEV))(fd, iov, iovcnt,)),
+        impl_expected_batch_write_hook!(Lazy::force(&WRITEV), fd, iov, iovcnt,),
         writev
     )
 }
@@ -78,7 +75,7 @@ static PWRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t
 #[no_mangle]
 pub extern "C" fn pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t {
     open_coroutine_core::unbreakable!(
-        impl_expected_batch_write_hook!((Lazy::force(&PWRITEV))(fd, iov, iovcnt, offset)),
+        impl_expected_batch_write_hook!(Lazy::force(&PWRITEV), fd, iov, iovcnt, offset),
         pwritev
     )
 }
