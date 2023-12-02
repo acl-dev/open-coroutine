@@ -66,12 +66,18 @@ macro_rules! unbreakable {
         $crate::info!("{} hooked", syscall);
         $crate::constants::Syscall::init_current($crate::constants::Syscall::$syscall);
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
-            co.syscall((), syscall, $crate::constants::SyscallState::Executing)
-                .expect("change to syscall state failed !");
+            if co
+                .syscall((), syscall, $crate::constants::SyscallState::Executing)
+                .is_err()
+            {
+                $crate::error!("{} change to syscall state failed !", co.get_name());
+            }
         }
         let r = $f;
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
-            co.running().expect("change to running state failed !");
+            if co.running().is_err() {
+                $crate::error!("{} change to running state failed !", co.get_name());
+            }
         }
         $crate::constants::Syscall::clean_current();
         return r;

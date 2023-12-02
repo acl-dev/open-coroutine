@@ -1,12 +1,12 @@
-use crate::common::Current;
+use crate::common::{Current, Named};
 use crate::coroutine::StateCoroutine;
-use crate::impl_read_hook;
 use crate::net::event_loop::EventLoops;
 use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
 use crate::syscall::raw::RawLinuxSyscall;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
+use crate::{impl_expected_read_hook, impl_read_hook};
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
@@ -199,7 +199,10 @@ pub extern "C" fn accept(
     address: *mut sockaddr,
     address_len: *mut socklen_t,
 ) -> c_int {
-    impl_read_hook!(CHAIN, accept, fn_ptr, socket, address, address_len)
+    unbreakable!(
+        impl_read_hook!(CHAIN, accept, fn_ptr, socket, address, address_len),
+        accept
+    )
 }
 
 #[must_use]
@@ -308,7 +311,7 @@ pub extern "C" fn shutdown(
 
 #[must_use]
 pub extern "C" fn close(fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-    CHAIN.close(fn_ptr, fd)
+    unbreakable!(CHAIN.close(fn_ptr, fd), close)
 }
 
 /// read
@@ -321,7 +324,16 @@ pub extern "C" fn recv(
     len: size_t,
     flags: c_int,
 ) -> ssize_t {
-    CHAIN.recv(fn_ptr, socket, buf, len, flags)
+    unbreakable!(
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return crate::net::event_loop::EventLoops::recv(fn_ptr, socket, buf, len, flags);
+            }
+            impl_expected_read_hook!(CHAIN, recv, fn_ptr, socket, buf, len, flags)
+        },
+        recv
+    )
 }
 
 #[must_use]
@@ -336,7 +348,10 @@ pub extern "C" fn recvfrom(
     addr: *mut sockaddr,
     addrlen: *mut socklen_t,
 ) -> ssize_t {
-    CHAIN.recvfrom(fn_ptr, socket, buf, len, flags, addr, addrlen)
+    unbreakable!(
+        impl_expected_read_hook!(CHAIN, recvfrom, fn_ptr, socket, buf, len, flags, addr, addrlen),
+        recvfrom
+    )
 }
 
 #[must_use]
@@ -346,7 +361,10 @@ pub extern "C" fn read(
     buf: *mut c_void,
     count: size_t,
 ) -> ssize_t {
-    CHAIN.read(fn_ptr, fd, buf, count)
+    unbreakable!(
+        impl_expected_read_hook!(CHAIN, read, fn_ptr, fd, buf, count,),
+        read
+    )
 }
 
 #[must_use]
@@ -357,7 +375,10 @@ pub extern "C" fn pread(
     count: size_t,
     offset: off_t,
 ) -> ssize_t {
-    CHAIN.pread(fn_ptr, fd, buf, count, offset)
+    unbreakable!(
+        impl_expected_read_hook!(CHAIN, pread, fn_ptr, fd, buf, count, offset),
+        pread
+    )
 }
 
 #[must_use]
@@ -367,6 +388,7 @@ pub extern "C" fn readv(
     iov: *const iovec,
     iovcnt: c_int,
 ) -> ssize_t {
+    //todo
     CHAIN.readv(fn_ptr, fd, iov, iovcnt)
 }
 
@@ -496,5 +518,8 @@ pub extern "C" fn accept4(
     len: *mut socklen_t,
     flg: c_int,
 ) -> c_int {
-    impl_read_hook!(CHAIN, accept4, fn_ptr, fd, addr, len, flg)
+    unbreakable!(
+        impl_read_hook!(CHAIN, accept4, fn_ptr, fd, addr, len, flg),
+        accept4
+    )
 }

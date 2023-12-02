@@ -12,52 +12,6 @@ macro_rules! init_hook {
     };
 }
 
-macro_rules! impl_expected_read_hook {
-    ( $fn: expr, $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
-        let socket = $socket;
-        let blocking = $crate::unix::is_blocking(socket);
-        if blocking {
-            $crate::unix::set_non_blocking(socket);
-        }
-        let mut received = 0;
-        let mut r = 0;
-        while received < $length {
-            r = $fn(
-                $socket,
-                ($buffer as usize + received) as *mut c_void,
-                $length - received,
-                $($arg, )*
-            );
-            if r != -1 {
-                $crate::unix::reset_errno();
-                received += r as size_t;
-                if received >= $length || r == 0 {
-                    r = received as ssize_t;
-                    break;
-                }
-            }
-            let error_kind = std::io::Error::last_os_error().kind();
-            if error_kind == std::io::ErrorKind::WouldBlock {
-                //wait read event
-                if open_coroutine_core::net::event_loop::EventLoops::wait_read_event(
-                    socket,
-                    Some(std::time::Duration::from_millis(10)),
-                )
-                .is_err()
-                {
-                    break;
-                }
-            } else if error_kind != std::io::ErrorKind::Interrupted {
-                break;
-            }
-        }
-        if blocking {
-            $crate::unix::set_blocking(socket);
-        }
-        r
-    }};
-}
-
 macro_rules! impl_expected_batch_read_hook {
     ( $fn: expr, $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
