@@ -2,7 +2,7 @@ use crate::common::Current;
 use crate::coroutine::StateCoroutine;
 use crate::impl_read_hook;
 use crate::net::event_loop::EventLoops;
-use crate::syscall::common::{reset_errno, set_errno};
+use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
 use crate::syscall::raw::RawLinuxSyscall;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
@@ -209,8 +209,77 @@ pub extern "C" fn connect(
     address: *const sockaddr,
     len: socklen_t,
 ) -> c_int {
-    //todo
-    CHAIN.connect(fn_ptr, socket, address, len)
+    unbreakable!(
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return crate::net::event_loop::EventLoops::connect(fn_ptr, socket, address, len);
+            }
+            let blocking = is_blocking(socket);
+            if blocking {
+                set_non_blocking(socket);
+            }
+            let mut r;
+            loop {
+                r = CHAIN.connect(fn_ptr, socket, address, len);
+                if r == 0 {
+                    reset_errno();
+                    break;
+                }
+                let errno = std::io::Error::last_os_error().raw_os_error();
+                if errno == Some(libc::EINPROGRESS) {
+                    //阻塞，直到写事件发生
+                    if EventLoops::wait_write_event(socket, Some(Duration::from_millis(10)))
+                        .is_err()
+                    {
+                        r = -1;
+                        break;
+                    }
+                    let mut err: c_int = 0;
+                    unsafe {
+                        let mut len: socklen_t = std::mem::zeroed();
+                        r = libc::getsockopt(
+                            socket,
+                            libc::SOL_SOCKET,
+                            libc::SO_ERROR,
+                            (std::ptr::addr_of_mut!(err)).cast::<c_void>(),
+                            &mut len,
+                        );
+                    }
+                    if r != 0 {
+                        r = -1;
+                        break;
+                    }
+                    if err != 0 {
+                        set_errno(err);
+                        r = -1;
+                        break;
+                    };
+                    unsafe {
+                        let mut address = std::mem::zeroed();
+                        let mut address_len = std::mem::zeroed();
+                        r = libc::getpeername(socket, &mut address, &mut address_len);
+                    }
+                    if r == 0 {
+                        reset_errno();
+                        r = 0;
+                        break;
+                    }
+                } else if errno != Some(libc::EINTR) {
+                    r = -1;
+                    break;
+                }
+            }
+            if blocking {
+                set_blocking(socket);
+            }
+            if r == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ETIMEDOUT) {
+                set_errno(libc::EINPROGRESS);
+            }
+            r
+        },
+        connect
+    )
 }
 
 #[must_use]
@@ -219,7 +288,22 @@ pub extern "C" fn shutdown(
     socket: c_int,
     how: c_int,
 ) -> c_int {
-    CHAIN.shutdown(fn_ptr, socket, how)
+    unbreakable!(
+        {
+            //取消对fd的监听
+            match how {
+                libc::SHUT_RD => EventLoops::del_read_event(socket),
+                libc::SHUT_WR => EventLoops::del_write_event(socket),
+                libc::SHUT_RDWR => EventLoops::del_event(socket),
+                _ => {
+                    set_errno(libc::EINVAL);
+                    return -1;
+                }
+            };
+            CHAIN.shutdown(fn_ptr, socket, how)
+        },
+        shutdown
+    )
 }
 
 #[must_use]
@@ -412,5 +496,5 @@ pub extern "C" fn accept4(
     len: *mut socklen_t,
     flg: c_int,
 ) -> c_int {
-    CHAIN.accept4(fn_ptr, fd, addr, len, flg)
+    impl_read_hook!(CHAIN, accept4, fn_ptr, fd, addr, len, flg)
 }
