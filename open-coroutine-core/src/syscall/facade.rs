@@ -1,12 +1,12 @@
-use crate::common::Current;
+use crate::common::{Current, Named};
 use crate::coroutine::StateCoroutine;
-use crate::impl_read_hook;
 use crate::net::event_loop::EventLoops;
 use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
 use crate::syscall::raw::RawLinuxSyscall;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
+use crate::{impl_expected_batch_read_hook, impl_expected_read_hook, impl_read_hook};
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
@@ -199,7 +199,10 @@ pub extern "C" fn accept(
     address: *mut sockaddr,
     address_len: *mut socklen_t,
 ) -> c_int {
-    impl_read_hook!(CHAIN, accept, fn_ptr, socket, address, address_len)
+    unbreakable!(
+        impl_read_hook!(CHAIN, accept, fn_ptr, socket, address, address_len),
+        accept
+    )
 }
 
 #[must_use]
@@ -308,7 +311,7 @@ pub extern "C" fn shutdown(
 
 #[must_use]
 pub extern "C" fn close(fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-    CHAIN.close(fn_ptr, fd)
+    unbreakable!(CHAIN.close(fn_ptr, fd), close)
 }
 
 /// read
@@ -321,7 +324,16 @@ pub extern "C" fn recv(
     len: size_t,
     flags: c_int,
 ) -> ssize_t {
-    CHAIN.recv(fn_ptr, socket, buf, len, flags)
+    unbreakable!(
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return crate::net::event_loop::EventLoops::recv(fn_ptr, socket, buf, len, flags);
+            }
+            impl_expected_read_hook!(CHAIN, recv, fn_ptr, socket, buf, len, flags)
+        },
+        recv
+    )
 }
 
 #[must_use]
@@ -336,7 +348,10 @@ pub extern "C" fn recvfrom(
     addr: *mut sockaddr,
     addrlen: *mut socklen_t,
 ) -> ssize_t {
-    CHAIN.recvfrom(fn_ptr, socket, buf, len, flags, addr, addrlen)
+    unbreakable!(
+        impl_expected_read_hook!(CHAIN, recvfrom, fn_ptr, socket, buf, len, flags, addr, addrlen),
+        recvfrom
+    )
 }
 
 #[must_use]
@@ -346,7 +361,10 @@ pub extern "C" fn read(
     buf: *mut c_void,
     count: size_t,
 ) -> ssize_t {
-    CHAIN.read(fn_ptr, fd, buf, count)
+    unbreakable!(
+        impl_expected_read_hook!(CHAIN, read, fn_ptr, fd, buf, count,),
+        read
+    )
 }
 
 #[must_use]
@@ -357,7 +375,10 @@ pub extern "C" fn pread(
     count: size_t,
     offset: off_t,
 ) -> ssize_t {
-    CHAIN.pread(fn_ptr, fd, buf, count, offset)
+    unbreakable!(
+        impl_expected_read_hook!(CHAIN, pread, fn_ptr, fd, buf, count, offset),
+        pread
+    )
 }
 
 #[must_use]
@@ -367,7 +388,10 @@ pub extern "C" fn readv(
     iov: *const iovec,
     iovcnt: c_int,
 ) -> ssize_t {
-    CHAIN.readv(fn_ptr, fd, iov, iovcnt)
+    unbreakable!(
+        impl_expected_batch_read_hook!(CHAIN, readv, fn_ptr, fd, iov, iovcnt,),
+        readv
+    )
 }
 
 #[must_use]
@@ -378,7 +402,10 @@ pub extern "C" fn preadv(
     iovcnt: c_int,
     offset: off_t,
 ) -> ssize_t {
-    CHAIN.preadv(fn_ptr, fd, iov, iovcnt, offset)
+    unbreakable!(
+        impl_expected_batch_read_hook!(CHAIN, preadv, fn_ptr, fd, iov, iovcnt, offset),
+        preadv
+    )
 }
 
 #[must_use]
@@ -388,7 +415,100 @@ pub extern "C" fn recvmsg(
     msg: *mut msghdr,
     flags: c_int,
 ) -> ssize_t {
-    CHAIN.recvmsg(fn_ptr, fd, msg, flags)
+    unbreakable!(
+        {
+            let blocking = is_blocking(fd);
+            if blocking {
+                set_non_blocking(fd);
+            }
+            let msghdr = unsafe { *msg };
+            let mut vec = std::collections::VecDeque::from(unsafe {
+                Vec::from_raw_parts(
+                    msghdr.msg_iov,
+                    msghdr.msg_iovlen as usize,
+                    msghdr.msg_iovlen as usize,
+                )
+            });
+            let mut length = 0;
+            let mut pices = std::collections::VecDeque::new();
+            for iovec in &vec {
+                length += iovec.iov_len;
+                pices.push_back(length);
+            }
+            let mut received = 0;
+            let mut r = 0;
+            while received < length {
+                // find from-index
+                let mut from_index = 0;
+                for (i, v) in pices.iter().enumerate() {
+                    if received < *v {
+                        from_index = i;
+                        break;
+                    }
+                }
+                // calculate offset
+                let current_received_offset = if from_index > 0 {
+                    received.saturating_sub(pices[from_index.saturating_sub(1)])
+                } else {
+                    received
+                };
+                // remove already received
+                for _ in 0..from_index {
+                    _ = vec.pop_front();
+                    _ = pices.pop_front();
+                }
+                // build syscall args
+                vec[0] = iovec {
+                    iov_base: (vec[0].iov_base as usize + current_received_offset) as *mut c_void,
+                    iov_len: vec[0].iov_len - current_received_offset,
+                };
+                cfg_if::cfg_if! {
+                    if #[cfg(any(
+                        target_os = "linux",
+                        target_os = "l4re",
+                        target_os = "android",
+                        target_os = "emscripten"
+                    ))] {
+                        let len = vec.len();
+                    } else {
+                        let len = c_int::try_from(vec.len()).unwrap();
+                    }
+                }
+                let mut new_msg = msghdr {
+                    msg_name: msghdr.msg_name,
+                    msg_namelen: msghdr.msg_namelen,
+                    msg_iov: vec.get_mut(0).unwrap(),
+                    msg_iovlen: len,
+                    msg_control: msghdr.msg_control,
+                    msg_controllen: msghdr.msg_controllen,
+                    msg_flags: msghdr.msg_flags,
+                };
+                r = CHAIN.recvmsg(fn_ptr, fd, &mut new_msg, flags);
+                if r != -1 {
+                    reset_errno();
+                    received += r as usize;
+                    if received >= length || r == 0 {
+                        r = received as ssize_t;
+                        break;
+                    }
+                }
+                let error_kind = std::io::Error::last_os_error().kind();
+                if error_kind == std::io::ErrorKind::WouldBlock {
+                    //wait read event
+                    if EventLoops::wait_read_event(fd, Some(Duration::from_millis(10))).is_err() {
+                        break;
+                    }
+                } else if error_kind != std::io::ErrorKind::Interrupted {
+                    break;
+                }
+            }
+            if blocking {
+                set_blocking(fd);
+            }
+            r
+        },
+        recvmsg
+    )
 }
 
 /// write
@@ -496,5 +616,8 @@ pub extern "C" fn accept4(
     len: *mut socklen_t,
     flg: c_int,
 ) -> c_int {
-    impl_read_hook!(CHAIN, accept4, fn_ptr, fd, addr, len, flg)
+    unbreakable!(
+        impl_read_hook!(CHAIN, accept4, fn_ptr, fd, addr, len, flg),
+        accept4
+    )
 }

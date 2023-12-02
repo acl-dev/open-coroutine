@@ -66,12 +66,18 @@ macro_rules! unbreakable {
         $crate::info!("{} hooked", syscall);
         $crate::constants::Syscall::init_current($crate::constants::Syscall::$syscall);
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
-            co.syscall((), syscall, $crate::constants::SyscallState::Executing)
-                .expect("change to syscall state failed !");
+            if co
+                .syscall((), syscall, $crate::constants::SyscallState::Executing)
+                .is_err()
+            {
+                $crate::error!("{} change to syscall state failed !", co.get_name());
+            }
         }
         let r = $f;
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
-            co.running().expect("change to running state failed !");
+            if co.running().is_err() {
+                $crate::error!("{} change to running state failed !", co.get_name());
+            }
         }
         $crate::constants::Syscall::clean_current();
         return r;
@@ -89,7 +95,10 @@ pub mod net;
     clippy::not_unsafe_ptr_arg_deref,
     clippy::many_single_char_names,
     clippy::cast_sign_loss,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::unnecessary_cast,
+    trivial_numeric_casts
 )]
 #[cfg(all(unix, feature = "syscall"))]
 pub mod syscall;
