@@ -111,7 +111,7 @@ pub extern "C" fn accept(
     address_len: *mut socklen_t,
 ) -> c_int {
     open_coroutine_core::unbreakable!(
-        impl_read_hook!((Lazy::force(&ACCEPT))(socket, address, address_len)),
+        impl_read_hook!(Lazy::force(&ACCEPT), socket, address, address_len),
         accept
     )
 }

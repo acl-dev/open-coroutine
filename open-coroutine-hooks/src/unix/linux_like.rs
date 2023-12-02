@@ -15,7 +15,7 @@ pub extern "C" fn accept4(
     flg: c_int,
 ) -> c_int {
     open_coroutine_core::unbreakable!(
-        impl_read_hook!((Lazy::force(&ACCEPT4))(fd, addr, len, flg)),
+        impl_read_hook!(Lazy::force(&ACCEPT4), fd, addr, len, flg),
         accept4
     )
 }

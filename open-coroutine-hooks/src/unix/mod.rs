@@ -13,7 +13,7 @@ macro_rules! init_hook {
 }
 
 macro_rules! impl_read_hook {
-    ( ($fn: expr) ( $socket:expr, $($arg: expr),* $(,)* )) => {{
+    ( $fn: expr, $socket:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
         let blocking = $crate::unix::is_blocking(socket);
         if blocking {
@@ -45,7 +45,7 @@ macro_rules! impl_read_hook {
 }
 
 macro_rules! impl_expected_read_hook {
-    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
+    ( $fn: expr, $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
         let blocking = $crate::unix::is_blocking(socket);
         if blocking {
@@ -91,7 +91,7 @@ macro_rules! impl_expected_read_hook {
 }
 
 macro_rules! impl_expected_batch_read_hook {
-    ( ($fn: expr) ( $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
+    ( $fn: expr, $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
         let blocking = $crate::unix::is_blocking(socket);
         if blocking {
@@ -165,7 +165,7 @@ macro_rules! impl_expected_batch_read_hook {
 }
 
 macro_rules! impl_expected_write_hook {
-    ( ($fn: expr) ( $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
+    ( $fn: expr, $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
         let blocking = $crate::unix::is_blocking(socket);
         if blocking {
@@ -211,7 +211,7 @@ macro_rules! impl_expected_write_hook {
 }
 
 macro_rules! impl_expected_batch_write_hook {
-    ( ($fn: expr) ( $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* )) => {{
+    ( $fn: expr, $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
         let blocking = $crate::unix::is_blocking(socket);
         if blocking {
