@@ -6,7 +6,10 @@ use crate::syscall::raw::RawLinuxSyscall;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
-use crate::{impl_expected_batch_read_hook, impl_expected_read_hook, impl_read_hook};
+use crate::{
+    impl_expected_batch_read_hook, impl_expected_read_hook, impl_expected_write_hook,
+    impl_read_hook,
+};
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
@@ -521,7 +524,16 @@ pub extern "C" fn send(
     len: size_t,
     flags: c_int,
 ) -> ssize_t {
-    CHAIN.send(fn_ptr, socket, buf, len, flags)
+    unbreakable!(
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return crate::net::event_loop::EventLoops::send(fn_ptr, socket, buf, len, flags);
+            }
+            impl_expected_write_hook!(CHAIN, send, fn_ptr, socket, buf, len, flags)
+        },
+        send
+    )
 }
 
 #[must_use]
@@ -536,7 +548,10 @@ pub extern "C" fn sendto(
     addr: *const sockaddr,
     addrlen: socklen_t,
 ) -> ssize_t {
-    CHAIN.sendto(fn_ptr, socket, buf, len, flags, addr, addrlen)
+    unbreakable!(
+        impl_expected_write_hook!(CHAIN, sendto, fn_ptr, socket, buf, len, flags, addr, addrlen),
+        sendto
+    )
 }
 
 #[must_use]
@@ -546,7 +561,10 @@ pub extern "C" fn write(
     buf: *const c_void,
     count: size_t,
 ) -> ssize_t {
-    CHAIN.write(fn_ptr, fd, buf, count)
+    unbreakable!(
+        impl_expected_write_hook!(CHAIN, write, fn_ptr, fd, buf, count,),
+        pwrite
+    )
 }
 
 #[must_use]
@@ -557,7 +575,10 @@ pub extern "C" fn pwrite(
     count: size_t,
     offset: off_t,
 ) -> ssize_t {
-    CHAIN.pwrite(fn_ptr, fd, buf, count, offset)
+    unbreakable!(
+        impl_expected_write_hook!(CHAIN, pwrite, fn_ptr, fd, buf, count, offset),
+        pwrite
+    )
 }
 
 #[must_use]

@@ -9,22 +9,7 @@ static SEND: Lazy<extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>
 
 #[no_mangle]
 pub extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t {
-    open_coroutine_core::unbreakable!(
-        {
-            #[cfg(target_os = "linux")]
-            if open_coroutine_iouring::version::support_io_uring() {
-                return open_coroutine_core::net::event_loop::EventLoops::send(
-                    Some(Lazy::force(&SEND)),
-                    socket,
-                    buf,
-                    len,
-                    flags,
-                );
-            }
-            impl_expected_write_hook!(Lazy::force(&SEND), socket, buf, len, flags)
-        },
-        send
-    )
+    open_coroutine_core::syscall::send(Some(Lazy::force(&SEND)), socket, buf, len, flags)
 }
 
 static SENDTO: Lazy<
@@ -40,9 +25,14 @@ pub extern "C" fn sendto(
     addr: *const sockaddr,
     addrlen: socklen_t,
 ) -> ssize_t {
-    open_coroutine_core::unbreakable!(
-        impl_expected_write_hook!(Lazy::force(&SENDTO), socket, buf, len, flags, addr, addrlen),
-        sendto
+    open_coroutine_core::syscall::sendto(
+        Some(Lazy::force(&SENDTO)),
+        socket,
+        buf,
+        len,
+        flags,
+        addr,
+        addrlen,
     )
 }
 
@@ -51,10 +41,7 @@ static PWRITE: Lazy<extern "C" fn(c_int, *const c_void, size_t, off_t) -> ssize_
 
 #[no_mangle]
 pub extern "C" fn pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_t) -> ssize_t {
-    open_coroutine_core::unbreakable!(
-        impl_expected_write_hook!(Lazy::force(&PWRITE), fd, buf, count, offset),
-        pwrite
-    )
+    open_coroutine_core::syscall::pwrite(Some(Lazy::force(&PWRITE)), fd, buf, count, offset)
 }
 
 static WRITEV: Lazy<extern "C" fn(c_int, *const iovec, c_int) -> ssize_t> = init_hook!("writev");
