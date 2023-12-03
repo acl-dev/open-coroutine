@@ -6,7 +6,10 @@ use crate::syscall::raw::RawLinuxSyscall;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
-use crate::{impl_expected_batch_read_hook, impl_expected_read_hook, impl_read_hook};
+use crate::{
+    impl_expected_batch_read_hook, impl_expected_batch_write_hook, impl_expected_read_hook,
+    impl_expected_write_hook, impl_read_hook,
+};
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
@@ -521,7 +524,16 @@ pub extern "C" fn send(
     len: size_t,
     flags: c_int,
 ) -> ssize_t {
-    CHAIN.send(fn_ptr, socket, buf, len, flags)
+    unbreakable!(
+        {
+            #[cfg(target_os = "linux")]
+            if open_coroutine_iouring::version::support_io_uring() {
+                return crate::net::event_loop::EventLoops::send(fn_ptr, socket, buf, len, flags);
+            }
+            impl_expected_write_hook!(CHAIN, send, fn_ptr, socket, buf, len, flags)
+        },
+        send
+    )
 }
 
 #[must_use]
@@ -536,7 +548,10 @@ pub extern "C" fn sendto(
     addr: *const sockaddr,
     addrlen: socklen_t,
 ) -> ssize_t {
-    CHAIN.sendto(fn_ptr, socket, buf, len, flags, addr, addrlen)
+    unbreakable!(
+        impl_expected_write_hook!(CHAIN, sendto, fn_ptr, socket, buf, len, flags, addr, addrlen),
+        sendto
+    )
 }
 
 #[must_use]
@@ -546,7 +561,10 @@ pub extern "C" fn write(
     buf: *const c_void,
     count: size_t,
 ) -> ssize_t {
-    CHAIN.write(fn_ptr, fd, buf, count)
+    unbreakable!(
+        impl_expected_write_hook!(CHAIN, write, fn_ptr, fd, buf, count,),
+        pwrite
+    )
 }
 
 #[must_use]
@@ -557,7 +575,10 @@ pub extern "C" fn pwrite(
     count: size_t,
     offset: off_t,
 ) -> ssize_t {
-    CHAIN.pwrite(fn_ptr, fd, buf, count, offset)
+    unbreakable!(
+        impl_expected_write_hook!(CHAIN, pwrite, fn_ptr, fd, buf, count, offset),
+        pwrite
+    )
 }
 
 #[must_use]
@@ -567,7 +588,10 @@ pub extern "C" fn writev(
     iov: *const iovec,
     iovcnt: c_int,
 ) -> ssize_t {
-    CHAIN.writev(fn_ptr, fd, iov, iovcnt)
+    unbreakable!(
+        impl_expected_batch_write_hook!(CHAIN, writev, fn_ptr, fd, iov, iovcnt,),
+        writev
+    )
 }
 
 #[must_use]
@@ -578,7 +602,10 @@ pub extern "C" fn pwritev(
     iovcnt: c_int,
     offset: off_t,
 ) -> ssize_t {
-    CHAIN.pwritev(fn_ptr, fd, iov, iovcnt, offset)
+    unbreakable!(
+        impl_expected_batch_write_hook!(CHAIN, pwritev, fn_ptr, fd, iov, iovcnt, offset),
+        pwritev
+    )
 }
 
 #[must_use]
@@ -588,7 +615,101 @@ pub extern "C" fn sendmsg(
     msg: *const msghdr,
     flags: c_int,
 ) -> ssize_t {
-    CHAIN.sendmsg(fn_ptr, fd, msg, flags)
+    // CHAIN.sendmsg(fn_ptr, fd, msg, flags)
+    unbreakable!(
+        {
+            let blocking = is_blocking(fd);
+            if blocking {
+                set_non_blocking(fd);
+            }
+            let msghdr = unsafe { *msg };
+            let mut vec = std::collections::VecDeque::from(unsafe {
+                Vec::from_raw_parts(
+                    msghdr.msg_iov,
+                    msghdr.msg_iovlen as usize,
+                    msghdr.msg_iovlen as usize,
+                )
+            });
+            let mut length = 0;
+            let mut pices = std::collections::VecDeque::new();
+            for iovec in &vec {
+                length += iovec.iov_len;
+                pices.push_back(length);
+            }
+            let mut sent = 0;
+            let mut r = 0;
+            while sent < length {
+                // find from-index
+                let mut from_index = 0;
+                for (i, v) in pices.iter().enumerate() {
+                    if sent < *v {
+                        from_index = i;
+                        break;
+                    }
+                }
+                // calculate offset
+                let current_sent_offset = if from_index > 0 {
+                    sent.saturating_sub(pices[from_index.saturating_sub(1)])
+                } else {
+                    sent
+                };
+                // remove already sent
+                for _ in 0..from_index {
+                    _ = vec.pop_front();
+                    _ = pices.pop_front();
+                }
+                // build syscall args
+                vec[0] = iovec {
+                    iov_base: (vec[0].iov_base as usize + current_sent_offset) as *mut c_void,
+                    iov_len: vec[0].iov_len - current_sent_offset,
+                };
+                cfg_if::cfg_if! {
+                    if #[cfg(any(
+                        target_os = "linux",
+                        target_os = "l4re",
+                        target_os = "android",
+                        target_os = "emscripten"
+                    ))] {
+                        let len = vec.len();
+                    } else {
+                        let len = c_int::try_from(vec.len()).unwrap();
+                    }
+                }
+                let new_msg = msghdr {
+                    msg_name: msghdr.msg_name,
+                    msg_namelen: msghdr.msg_namelen,
+                    msg_iov: vec.get_mut(0).unwrap(),
+                    msg_iovlen: len,
+                    msg_control: msghdr.msg_control,
+                    msg_controllen: msghdr.msg_controllen,
+                    msg_flags: msghdr.msg_flags,
+                };
+                r = CHAIN.sendmsg(fn_ptr, fd, &new_msg, flags);
+                if r != -1 {
+                    reset_errno();
+                    sent += r as usize;
+                    if sent >= length {
+                        r = sent as ssize_t;
+                        break;
+                    }
+                }
+                let error_kind = std::io::Error::last_os_error().kind();
+                if error_kind == std::io::ErrorKind::WouldBlock {
+                    //wait write event
+                    if EventLoops::wait_write_event(fd, Some(Duration::from_millis(10))).is_err() {
+                        break;
+                    }
+                } else if error_kind != std::io::ErrorKind::Interrupted {
+                    break;
+                }
+            }
+            if blocking {
+                set_blocking(fd);
+            }
+            r
+        },
+        sendmsg
+    )
 }
 
 /// poll
