@@ -1,3 +1,8 @@
+use crate::common::{Current, Named};
+use crate::coroutine::StateCoroutine;
+#[cfg(target_os = "linux")]
+use crate::syscall::LinuxSyscall;
+use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
@@ -6,40 +11,63 @@ use libc::{
 };
 use std::ffi::{c_int, c_uint, c_void};
 
-pub mod common;
+#[derive(Debug, Default)]
+pub struct StateLinuxSyscall<I: UnixSyscall> {
+    inner: I,
+}
 
-pub mod raw;
+macro_rules! syscall_state {
+    ( $invoker: expr , $syscall: ident, $($arg: expr),* $(,)* ) => {{
+        let syscall = $crate::constants::Syscall::$syscall;
+        $crate::info!("{} hooked", syscall);
+        $crate::constants::Syscall::init_current($crate::constants::Syscall::$syscall);
+        if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
+            if co
+                .syscall((), syscall, $crate::constants::SyscallState::Executing)
+                .is_err()
+            {
+                $crate::error!("{} change to syscall state failed !", co.get_name());
+            }
+        }
+        let r = $invoker.inner.$syscall($($arg, )*);
+        if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
+            if co.running().is_err() {
+                $crate::error!("{} change to running state failed !", co.get_name());
+            }
+        }
+        $crate::constants::Syscall::clean_current();
+        return r;
+    }};
+}
 
-pub mod nio;
-
-pub mod state;
-
-mod facade;
-pub use facade::*;
-
-pub trait UnixSyscall {
-    /// sleep
-
+impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
     extern "C" fn sleep(
         &self,
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>,
         secs: c_uint,
-    ) -> c_uint;
+    ) -> c_uint {
+        crate::info!("sleep hooked");
+        self.inner.sleep(fn_ptr, secs)
+    }
 
     extern "C" fn usleep(
         &self,
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
         microseconds: c_uint,
-    ) -> c_int;
+    ) -> c_int {
+        crate::info!("usleep hooked");
+        self.inner.usleep(fn_ptr, microseconds)
+    }
 
     extern "C" fn nanosleep(
         &self,
         fn_ptr: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
         rqtp: *const timespec,
         rmtp: *mut timespec,
-    ) -> c_int;
-
-    /// poll
+    ) -> c_int {
+        crate::info!("nanosleep hooked");
+        self.inner.nanosleep(fn_ptr, rqtp, rmtp)
+    }
 
     extern "C" fn poll(
         &self,
@@ -47,7 +75,9 @@ pub trait UnixSyscall {
         fds: *mut pollfd,
         nfds: nfds_t,
         timeout: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, poll, fn_ptr, fds, nfds, timeout)
+    }
 
     extern "C" fn select(
         &self,
@@ -59,9 +89,9 @@ pub trait UnixSyscall {
         writefds: *mut fd_set,
         errorfds: *mut fd_set,
         timeout: *mut timeval,
-    ) -> c_int;
-
-    /// socket
+    ) -> c_int {
+        syscall_state!(self, select, fn_ptr, nfds, readfds, writefds, errorfds, timeout)
+    }
 
     extern "C" fn socket(
         &self,
@@ -69,14 +99,18 @@ pub trait UnixSyscall {
         domain: c_int,
         ty: c_int,
         protocol: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, socket, fn_ptr, domain, ty, protocol)
+    }
 
     extern "C" fn listen(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
         socket: c_int,
         backlog: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, listen, fn_ptr, socket, backlog)
+    }
 
     extern "C" fn accept(
         &self,
@@ -84,7 +118,9 @@ pub trait UnixSyscall {
         socket: c_int,
         address: *mut sockaddr,
         address_len: *mut socklen_t,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, accept, fn_ptr, socket, address, address_len)
+    }
 
     extern "C" fn connect(
         &self,
@@ -92,18 +128,22 @@ pub trait UnixSyscall {
         socket: c_int,
         address: *const sockaddr,
         len: socklen_t,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, connect, fn_ptr, socket, address, len)
+    }
 
     extern "C" fn shutdown(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
         socket: c_int,
         how: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, shutdown, fn_ptr, socket, how)
+    }
 
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int;
-
-    /// read
+    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
+        syscall_state!(self, close, fn_ptr, fd)
+    }
 
     extern "C" fn recv(
         &self,
@@ -112,7 +152,9 @@ pub trait UnixSyscall {
         buf: *mut c_void,
         len: size_t,
         flags: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, recv, fn_ptr, socket, buf, len, flags)
+    }
 
     extern "C" fn recvfrom(
         &self,
@@ -132,7 +174,9 @@ pub trait UnixSyscall {
         flags: c_int,
         addr: *mut sockaddr,
         addrlen: *mut socklen_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, recvfrom, fn_ptr, socket, buf, len, flags, addr, addrlen)
+    }
 
     extern "C" fn read(
         &self,
@@ -140,7 +184,9 @@ pub trait UnixSyscall {
         fd: c_int,
         buf: *mut c_void,
         count: size_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, read, fn_ptr, fd, buf, count)
+    }
 
     extern "C" fn pread(
         &self,
@@ -149,7 +195,9 @@ pub trait UnixSyscall {
         buf: *mut c_void,
         count: size_t,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, pread, fn_ptr, fd, buf, count, offset)
+    }
 
     extern "C" fn readv(
         &self,
@@ -157,7 +205,9 @@ pub trait UnixSyscall {
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, readv, fn_ptr, fd, iov, iovcnt)
+    }
 
     extern "C" fn preadv(
         &self,
@@ -166,7 +216,9 @@ pub trait UnixSyscall {
         iov: *const iovec,
         iovcnt: c_int,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, preadv, fn_ptr, fd, iov, iovcnt, offset)
+    }
 
     extern "C" fn recvmsg(
         &self,
@@ -174,9 +226,9 @@ pub trait UnixSyscall {
         fd: c_int,
         msg: *mut msghdr,
         flags: c_int,
-    ) -> ssize_t;
-
-    /// write
+    ) -> ssize_t {
+        syscall_state!(self, recvmsg, fn_ptr, fd, msg, flags)
+    }
 
     extern "C" fn send(
         &self,
@@ -185,7 +237,9 @@ pub trait UnixSyscall {
         buf: *const c_void,
         len: size_t,
         flags: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, send, fn_ptr, socket, buf, len, flags)
+    }
 
     extern "C" fn sendto(
         &self,
@@ -205,7 +259,9 @@ pub trait UnixSyscall {
         flags: c_int,
         addr: *const sockaddr,
         addrlen: socklen_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, sendto, fn_ptr, socket, buf, len, flags, addr, addrlen)
+    }
 
     extern "C" fn write(
         &self,
@@ -213,7 +269,9 @@ pub trait UnixSyscall {
         fd: c_int,
         buf: *const c_void,
         count: size_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, write, fn_ptr, fd, buf, count)
+    }
 
     extern "C" fn pwrite(
         &self,
@@ -222,7 +280,9 @@ pub trait UnixSyscall {
         buf: *const c_void,
         count: size_t,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, pwrite, fn_ptr, fd, buf, count, offset)
+    }
 
     extern "C" fn writev(
         &self,
@@ -230,7 +290,9 @@ pub trait UnixSyscall {
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, writev, fn_ptr, fd, iov, iovcnt)
+    }
 
     extern "C" fn pwritev(
         &self,
@@ -239,7 +301,9 @@ pub trait UnixSyscall {
         iov: *const iovec,
         iovcnt: c_int,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, pwritev, fn_ptr, fd, iov, iovcnt, offset)
+    }
 
     extern "C" fn sendmsg(
         &self,
@@ -247,13 +311,13 @@ pub trait UnixSyscall {
         fd: c_int,
         msg: *const msghdr,
         flags: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        syscall_state!(self, sendmsg, fn_ptr, fd, msg, flags)
+    }
 }
 
 #[cfg(target_os = "linux")]
-pub trait LinuxSyscall: UnixSyscall {
-    /// poll
-
+impl<I: LinuxSyscall> LinuxSyscall for StateLinuxSyscall<I> {
     extern "C" fn epoll_ctl(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int, c_int, *mut epoll_event) -> c_int>,
@@ -261,9 +325,9 @@ pub trait LinuxSyscall: UnixSyscall {
         op: c_int,
         fd: c_int,
         event: *mut epoll_event,
-    ) -> c_int;
-
-    /// socket
+    ) -> c_int {
+        syscall_state!(self, epoll_ctl, fn_ptr, epfd, op, fd, event)
+    }
 
     extern "C" fn accept4(
         &self,
@@ -272,5 +336,7 @@ pub trait LinuxSyscall: UnixSyscall {
         addr: *mut sockaddr,
         len: *mut socklen_t,
         flg: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        syscall_state!(self, accept4, fn_ptr, fd, addr, len, flg)
+    }
 }

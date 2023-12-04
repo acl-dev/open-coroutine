@@ -1,5 +1,5 @@
 use crate::common::{Current, JoinHandle, Named};
-use crate::coroutine::suspender::Suspender;
+use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender};
 use crate::coroutine::Coroutine;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
@@ -9,7 +9,7 @@ use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl};
 use crate::scheduler::has::HasScheduler;
-use crate::scheduler::SchedulableCoroutine;
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::panic::UnwindSafe;
@@ -157,6 +157,14 @@ impl EventLoop {
     }
 
     pub fn wait_just(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
+        let mut timeout = timeout;
+        if let Some(time) = timeout {
+            if let Some(suspender) = SchedulableSuspender::current() {
+                suspender.delay(time);
+                //回来的时候等待的时间已经到了
+                timeout = Some(Duration::ZERO);
+            }
+        }
         if self
             .waiting
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -164,32 +172,28 @@ impl EventLoop {
         {
             return Ok(());
         }
-        cfg_if::cfg_if! {
-            if #[cfg(target_os = "linux")] {
-                let mut timeout = timeout;
-                if open_coroutine_iouring::version::support_io_uring() {
-                    // use io_uring
-                    let mut result = self.operator.select(timeout).map_err(|e| {
-                        self.waiting.store(false, Ordering::Release);
-                        e
-                    })?;
-                    for cqe in &mut result.1 {
-                        let syscall_result = cqe.result();
-                        let token = cqe.user_data() as usize;
-                        // resolve completed read/write tasks
-                        if let Some((_, pair)) = SYSCALL_WAIT_TABLE.remove(&token) {
-                            let (lock, cvar) = &*pair;
-                            let mut pending = lock.lock().unwrap();
-                            *pending = Some(syscall_result as ssize_t);
-                            // notify the condvar that the value has changed.
-                            cvar.notify_one();
-                        }
-                        unsafe { self.resume(token) };
-                    }
-                    if result.0 > 0 && timeout.is_some() {
-                        timeout = Some(Duration::ZERO);
-                    }
+        #[cfg(target_os = "linux")]
+        if open_coroutine_iouring::version::support_io_uring() {
+            // use io_uring
+            let mut result = self.operator.select(timeout).map_err(|e| {
+                self.waiting.store(false, Ordering::Release);
+                e
+            })?;
+            for cqe in &mut result.1 {
+                let syscall_result = cqe.result();
+                let token = cqe.user_data() as usize;
+                // resolve completed read/write tasks
+                if let Some((_, pair)) = SYSCALL_WAIT_TABLE.remove(&token) {
+                    let (lock, cvar) = &*pair;
+                    let mut pending = lock.lock().unwrap();
+                    *pending = Some(syscall_result as ssize_t);
+                    // notify the condvar that the value has changed.
+                    cvar.notify_one();
                 }
+                unsafe { self.resume(token) };
+            }
+            if result.0 > 0 && timeout.is_some() {
+                timeout = Some(Duration::ZERO);
             }
         }
 
