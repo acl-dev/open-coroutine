@@ -1,12 +1,10 @@
-use crate::common::Current;
-use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender, SuspenderImpl};
+use crate::coroutine::suspender::{Suspender, SuspenderImpl};
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
 use crate::net::selector::Selector;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
-use crate::scheduler::SchedulableSuspender;
 use once_cell::sync::{Lazy, OnceCell};
 use std::ffi::c_int;
 use std::fmt::Debug;
@@ -17,7 +15,9 @@ use std::time::Duration;
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+        use crate::common::Current;
         use crate::coroutine::suspender::SimpleSuspender;
+        use crate::scheduler::SchedulableSuspender;
         use libc::{c_void, size_t, sockaddr, socklen_t, ssize_t};
     }
 }
@@ -176,13 +176,7 @@ impl EventLoops {
         timeout: Option<Duration>,
         event_loop: &'static EventLoop,
     ) -> std::io::Result<()> {
-        let time = timeout.unwrap_or(Duration::MAX);
-        if let Some(suspender) = SchedulableSuspender::current() {
-            suspender.delay(time);
-            //回来的时候等待的时间已经到了
-            return event_loop.wait_just(Some(Duration::ZERO));
-        }
-        let timeout_time = open_coroutine_timer::get_timeout_time(time);
+        let timeout_time = timeout.map_or(u64::MAX, open_coroutine_timer::get_timeout_time);
         loop {
             let left_time = timeout_time
                 .saturating_sub(open_coroutine_timer::now())

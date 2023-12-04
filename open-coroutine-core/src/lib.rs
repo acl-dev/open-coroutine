@@ -59,31 +59,6 @@ pub mod scheduler;
 
 pub mod pool;
 
-#[macro_export]
-macro_rules! unbreakable {
-    ( $f: expr , $syscall: ident ) => {{
-        let syscall = $crate::constants::Syscall::$syscall;
-        $crate::info!("{} hooked", syscall);
-        $crate::constants::Syscall::init_current($crate::constants::Syscall::$syscall);
-        if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
-            if co
-                .syscall((), syscall, $crate::constants::SyscallState::Executing)
-                .is_err()
-            {
-                $crate::error!("{} change to syscall state failed !", co.get_name());
-            }
-        }
-        let r = $f;
-        if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
-            if co.running().is_err() {
-                $crate::error!("{} change to running state failed !", co.get_name());
-            }
-        }
-        $crate::constants::Syscall::clean_current();
-        return r;
-    }};
-}
-
 #[cfg(all(unix, feature = "preemptive-schedule"))]
 mod monitor;
 
