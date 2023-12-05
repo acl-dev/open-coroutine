@@ -122,7 +122,7 @@ impl EventLoops {
                             .spawn(move || {
                                 if core_affinity::set_for_current(core_affinity::CoreId { id: i }) {
                                     crate::warn!(
-                                        "pin event loop thread to a single CPU core failed !"
+                                        "pin event-loop-{i} thread to a single CPU core failed !"
                                     );
                                 }
                                 let event_loop = Self::next(true);
@@ -255,6 +255,16 @@ impl EventLoops {
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoops {
     /// socket
+
+    pub fn accept4(
+        fd: c_int,
+        addr: *mut sockaddr,
+        len: *mut socklen_t,
+        flg: c_int,
+    ) -> std::io::Result<c_int> {
+        wrap_io_uring!(accept4, fd, addr, len, flg)
+    }
+
     pub fn connect(
         socket: c_int,
         address: *const sockaddr,

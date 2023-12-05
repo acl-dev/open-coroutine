@@ -258,6 +258,16 @@ impl HasSelector for EventLoop {
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoop {
     /// socket
+    pub fn accept4(
+        &self,
+        fd: c_int,
+        addr: *mut sockaddr,
+        len: *mut socklen_t,
+        flg: c_int,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, accept4, fd, addr, len, flg)
+    }
+
     pub fn connect(
         &self,
         socket: c_int,

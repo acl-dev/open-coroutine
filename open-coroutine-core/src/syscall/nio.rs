@@ -938,6 +938,10 @@ impl<I: LinuxSyscall> LinuxSyscall for NioLinuxSyscall<I> {
         len: *mut socklen_t,
         flg: c_int,
     ) -> c_int {
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        if let Ok(r) = EventLoops::accept4(fd, addr, len, flg) {
+            return r;
+        }
         impl_read_hook!(self.inner, accept4, fn_ptr, fd, addr, len, flg)
     }
 }
