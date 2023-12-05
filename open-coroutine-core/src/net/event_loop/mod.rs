@@ -256,6 +256,14 @@ impl EventLoops {
 impl EventLoops {
     /// socket
 
+    pub fn socket(domain: c_int, ty: c_int, protocol: c_int) -> std::io::Result<c_int> {
+        wrap_io_uring!(socket, domain, ty, protocol)
+    }
+
+    pub fn accept(fd: c_int, addr: *mut sockaddr, len: *mut socklen_t) -> std::io::Result<c_int> {
+        wrap_io_uring!(accept, fd, addr, len)
+    }
+
     pub fn accept4(
         fd: c_int,
         addr: *mut sockaddr,
@@ -271,6 +279,14 @@ impl EventLoops {
         len: socklen_t,
     ) -> std::io::Result<c_int> {
         wrap_io_uring!(connect, socket, address, len)
+    }
+
+    pub fn shutdown(socket: c_int, how: c_int) -> std::io::Result<c_int> {
+        wrap_io_uring!(shutdown, socket, how)
+    }
+
+    pub fn close(fd: c_int) -> std::io::Result<c_int> {
+        wrap_io_uring!(close, fd)
     }
 
     /// read
