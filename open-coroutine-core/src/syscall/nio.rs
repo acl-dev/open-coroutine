@@ -17,7 +17,6 @@ pub struct NioLinuxSyscall<I: UnixSyscall> {
     inner: I,
 }
 
-#[macro_export]
 macro_rules! impl_read_hook {
     ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
@@ -50,7 +49,6 @@ macro_rules! impl_read_hook {
     }};
 }
 
-#[macro_export]
 macro_rules! impl_expected_read_hook {
     ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
@@ -98,7 +96,6 @@ macro_rules! impl_expected_read_hook {
     }};
 }
 
-#[macro_export]
 macro_rules! impl_expected_batch_read_hook {
     ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
@@ -173,7 +170,6 @@ macro_rules! impl_expected_batch_read_hook {
     }};
 }
 
-#[macro_export]
 macro_rules! impl_expected_write_hook {
     ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
@@ -221,7 +217,6 @@ macro_rules! impl_expected_write_hook {
     }};
 }
 
-#[macro_export]
 macro_rules! impl_expected_batch_write_hook {
     ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $iov:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
@@ -473,9 +468,9 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         address: *const sockaddr,
         len: socklen_t,
     ) -> c_int {
-        #[cfg(target_os = "linux")]
-        if open_coroutine_iouring::version::support_io_uring() {
-            return crate::net::event_loop::EventLoops::connect(fn_ptr, socket, address, len);
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        if let Ok(r) = EventLoops::connect(socket, address, len) {
+            return r;
         }
         let blocking = is_blocking(socket);
         if blocking {
@@ -571,9 +566,9 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         len: size_t,
         flags: c_int,
     ) -> ssize_t {
-        #[cfg(target_os = "linux")]
-        if open_coroutine_iouring::version::support_io_uring() {
-            return crate::net::event_loop::EventLoops::recv(fn_ptr, socket, buf, len, flags);
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        if let Ok(r) = EventLoops::recv(socket, buf, len, flags) {
+            return r;
         }
         impl_expected_read_hook!(self.inner, recv, fn_ptr, socket, buf, len, flags)
     }
@@ -750,9 +745,9 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         len: size_t,
         flags: c_int,
     ) -> ssize_t {
-        #[cfg(target_os = "linux")]
-        if open_coroutine_iouring::version::support_io_uring() {
-            return crate::net::event_loop::EventLoops::send(fn_ptr, socket, buf, len, flags);
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        if let Ok(r) = EventLoops::send(socket, buf, len, flags) {
+            return r;
         }
         impl_expected_write_hook!(self.inner, send, fn_ptr, socket, buf, len, flags)
     }
@@ -943,6 +938,10 @@ impl<I: LinuxSyscall> LinuxSyscall for NioLinuxSyscall<I> {
         len: *mut socklen_t,
         flg: c_int,
     ) -> c_int {
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        if let Ok(r) = EventLoops::accept4(fd, addr, len, flg) {
+            return r;
+        }
         impl_read_hook!(self.inner, accept4, fn_ptr, fd, addr, len, flg)
     }
 }

@@ -1,4 +1,6 @@
-#[cfg(target_os = "linux")]
+use crate::net::event_loop::EventLoops;
+use crate::syscall::LinuxSyscall;
+use crate::syscall::UnixSyscall;
 use libc::epoll_event;
 use libc::{
     fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timespec,
@@ -6,44 +8,36 @@ use libc::{
 };
 use std::ffi::{c_int, c_uint, c_void};
 
-pub mod common;
+#[derive(Debug, Default)]
+pub struct IoUringLinuxSyscall<I: UnixSyscall> {
+    inner: I,
+}
 
-pub mod raw;
-
-pub mod nio;
-
-#[allow(unused_variables)]
-#[cfg(all(target_os = "linux", feature = "io_uring"))]
-pub mod io_uring;
-
-pub mod state;
-
-mod facade;
-pub use facade::*;
-
-pub trait UnixSyscall {
-    /// sleep
-
+impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
     extern "C" fn sleep(
         &self,
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>,
         secs: c_uint,
-    ) -> c_uint;
+    ) -> c_uint {
+        todo!()
+    }
 
     extern "C" fn usleep(
         &self,
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
         microseconds: c_uint,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn nanosleep(
         &self,
         fn_ptr: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
         rqtp: *const timespec,
         rmtp: *mut timespec,
-    ) -> c_int;
-
-    /// poll
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn poll(
         &self,
@@ -51,7 +45,9 @@ pub trait UnixSyscall {
         fds: *mut pollfd,
         nfds: nfds_t,
         timeout: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn select(
         &self,
@@ -63,9 +59,9 @@ pub trait UnixSyscall {
         writefds: *mut fd_set,
         errorfds: *mut fd_set,
         timeout: *mut timeval,
-    ) -> c_int;
-
-    /// socket
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn socket(
         &self,
@@ -73,14 +69,18 @@ pub trait UnixSyscall {
         domain: c_int,
         ty: c_int,
         protocol: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn listen(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
         socket: c_int,
         backlog: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn accept(
         &self,
@@ -88,7 +88,9 @@ pub trait UnixSyscall {
         socket: c_int,
         address: *mut sockaddr,
         address_len: *mut socklen_t,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn connect(
         &self,
@@ -96,18 +98,25 @@ pub trait UnixSyscall {
         socket: c_int,
         address: *const sockaddr,
         len: socklen_t,
-    ) -> c_int;
+    ) -> c_int {
+        if let Ok(r) = EventLoops::connect(socket, address, len) {
+            return r;
+        }
+        self.inner.connect(fn_ptr, socket, address, len)
+    }
 
     extern "C" fn shutdown(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
         socket: c_int,
         how: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int;
-
-    /// read
+    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
+        todo!()
+    }
 
     extern "C" fn recv(
         &self,
@@ -116,7 +125,12 @@ pub trait UnixSyscall {
         buf: *mut c_void,
         len: size_t,
         flags: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        if let Ok(r) = EventLoops::recv(socket, buf, len, flags) {
+            return r;
+        }
+        self.inner.recv(fn_ptr, socket, buf, len, flags)
+    }
 
     extern "C" fn recvfrom(
         &self,
@@ -136,7 +150,9 @@ pub trait UnixSyscall {
         flags: c_int,
         addr: *mut sockaddr,
         addrlen: *mut socklen_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn read(
         &self,
@@ -144,7 +160,9 @@ pub trait UnixSyscall {
         fd: c_int,
         buf: *mut c_void,
         count: size_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn pread(
         &self,
@@ -153,7 +171,9 @@ pub trait UnixSyscall {
         buf: *mut c_void,
         count: size_t,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn readv(
         &self,
@@ -161,7 +181,9 @@ pub trait UnixSyscall {
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn preadv(
         &self,
@@ -170,7 +192,9 @@ pub trait UnixSyscall {
         iov: *const iovec,
         iovcnt: c_int,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn recvmsg(
         &self,
@@ -178,9 +202,9 @@ pub trait UnixSyscall {
         fd: c_int,
         msg: *mut msghdr,
         flags: c_int,
-    ) -> ssize_t;
-
-    /// write
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn send(
         &self,
@@ -189,7 +213,12 @@ pub trait UnixSyscall {
         buf: *const c_void,
         len: size_t,
         flags: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        if let Ok(r) = EventLoops::send(socket, buf, len, flags) {
+            return r;
+        }
+        self.inner.send(fn_ptr, socket, buf, len, flags)
+    }
 
     extern "C" fn sendto(
         &self,
@@ -209,7 +238,9 @@ pub trait UnixSyscall {
         flags: c_int,
         addr: *const sockaddr,
         addrlen: socklen_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn write(
         &self,
@@ -217,7 +248,9 @@ pub trait UnixSyscall {
         fd: c_int,
         buf: *const c_void,
         count: size_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn pwrite(
         &self,
@@ -226,7 +259,9 @@ pub trait UnixSyscall {
         buf: *const c_void,
         count: size_t,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn writev(
         &self,
@@ -234,7 +269,9 @@ pub trait UnixSyscall {
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn pwritev(
         &self,
@@ -243,7 +280,9 @@ pub trait UnixSyscall {
         iov: *const iovec,
         iovcnt: c_int,
         offset: off_t,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 
     extern "C" fn sendmsg(
         &self,
@@ -251,13 +290,12 @@ pub trait UnixSyscall {
         fd: c_int,
         msg: *const msghdr,
         flags: c_int,
-    ) -> ssize_t;
+    ) -> ssize_t {
+        todo!()
+    }
 }
 
-#[cfg(target_os = "linux")]
-pub trait LinuxSyscall: UnixSyscall {
-    /// poll
-
+impl<I: LinuxSyscall> LinuxSyscall for IoUringLinuxSyscall<I> {
     extern "C" fn epoll_ctl(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int, c_int, *mut epoll_event) -> c_int>,
@@ -265,9 +303,9 @@ pub trait LinuxSyscall: UnixSyscall {
         op: c_int,
         fd: c_int,
         event: *mut epoll_event,
-    ) -> c_int;
-
-    /// socket
+    ) -> c_int {
+        todo!()
+    }
 
     extern "C" fn accept4(
         &self,
@@ -276,5 +314,7 @@ pub trait LinuxSyscall: UnixSyscall {
         addr: *mut sockaddr,
         len: *mut socklen_t,
         flg: c_int,
-    ) -> c_int;
+    ) -> c_int {
+        todo!()
+    }
 }
