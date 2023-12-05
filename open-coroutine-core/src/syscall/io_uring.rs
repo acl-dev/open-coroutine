@@ -244,7 +244,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         addr: *const sockaddr,
         addrlen: socklen_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, sendto, fn_ptr, socket, buf, len, flags, addr, addrlen)
     }
 
     extern "C" fn write(
@@ -254,7 +254,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         buf: *const c_void,
         count: size_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, write, fn_ptr, fd, buf, count)
     }
 
     extern "C" fn pwrite(
@@ -265,7 +265,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         count: size_t,
         offset: off_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, pwrite, fn_ptr, fd, buf, count, offset)
     }
 
     extern "C" fn writev(
@@ -275,7 +275,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         iov: *const iovec,
         iovcnt: c_int,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, writev, fn_ptr, fd, iov, iovcnt)
     }
 
     extern "C" fn pwritev(
@@ -286,7 +286,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         iovcnt: c_int,
         offset: off_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, pwritev, fn_ptr, fd, iov, iovcnt, offset)
     }
 
     extern "C" fn sendmsg(
@@ -296,7 +296,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         msg: *const msghdr,
         flags: c_int,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, sendmsg, fn_ptr, fd, msg, flags)
     }
 }
 
@@ -309,7 +309,7 @@ impl<I: LinuxSyscall> LinuxSyscall for IoUringLinuxSyscall<I> {
         fd: c_int,
         event: *mut epoll_event,
     ) -> c_int {
-        todo!()
+        impl_io_uring!(self, epoll_ctl, fn_ptr, epfd, op, fd, event)
     }
 
     extern "C" fn accept4(

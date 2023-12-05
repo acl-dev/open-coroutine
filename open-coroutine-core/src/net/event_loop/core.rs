@@ -20,9 +20,9 @@ use uuid::Uuid;
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use dashmap::DashMap;
+        use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
         use once_cell::sync::Lazy;
         use std::sync::{Arc, Condvar, Mutex};
-        use libc::{size_t, ssize_t, sockaddr, socklen_t};
 
         macro_rules! io_uring_impl {
             ( $invoker: expr , $syscall: ident, $($arg: expr),* $(,)* ) => {{
@@ -257,6 +257,16 @@ impl HasSelector for EventLoop {
 
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoop {
+    pub fn epoll_ctl(
+        &self,
+        epfd: c_int,
+        op: c_int,
+        fd: c_int,
+        event: *mut epoll_event,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, epoll_ctl, epfd, op, fd, event)
+    }
+
     /// socket
     pub fn socket(
         &self,
@@ -328,6 +338,74 @@ impl EventLoop {
         flags: c_int,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
         io_uring_impl!(self.operator, send, socket, buf, len, flags)
+    }
+
+    pub fn sendto(
+        &self,
+        socket: c_int,
+        buf: *const c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *const sockaddr,
+        addrlen: socklen_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(
+            self.operator,
+            sendto,
+            socket,
+            buf,
+            len,
+            flags,
+            addr,
+            addrlen
+        )
+    }
+
+    pub fn write(
+        &self,
+        fd: c_int,
+        buf: *const c_void,
+        count: size_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, write, fd, buf, count)
+    }
+
+    pub fn pwrite(
+        &self,
+        fd: c_int,
+        buf: *const c_void,
+        count: size_t,
+        offset: off_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, pwrite, fd, buf, count, offset)
+    }
+
+    pub fn writev(
+        &self,
+        fd: c_int,
+        iov: *const iovec,
+        iovcnt: c_int,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, writev, fd, iov, iovcnt)
+    }
+
+    pub fn pwritev(
+        &self,
+        fd: c_int,
+        iov: *const iovec,
+        iovcnt: c_int,
+        offset: off_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, pwritev, fd, iov, iovcnt, offset)
+    }
+
+    pub fn sendmsg(
+        &self,
+        fd: c_int,
+        msg: *const msghdr,
+        flags: c_int,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, sendmsg, fd, msg, flags)
     }
 }
 
