@@ -18,7 +18,7 @@ cfg_if::cfg_if! {
         use crate::common::Current;
         use crate::coroutine::suspender::SimpleSuspender;
         use crate::scheduler::SchedulableSuspender;
-        use libc::{c_void, size_t, sockaddr, socklen_t, ssize_t};
+        use libc::{c_void, epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 
         macro_rules! wrap_io_uring {
             ( $syscall: ident, $($arg: expr),* $(,)* ) => {
@@ -254,7 +254,23 @@ impl EventLoops {
 #[allow(unused_variables, clippy::not_unsafe_ptr_arg_deref)]
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoops {
+    pub fn epoll_ctl(
+        epfd: c_int,
+        op: c_int,
+        fd: c_int,
+        event: *mut epoll_event,
+    ) -> std::io::Result<c_int> {
+        wrap_io_uring!(epoll_ctl, epfd, op, fd, event)
+    }
+
     /// socket
+    pub fn socket(domain: c_int, ty: c_int, protocol: c_int) -> std::io::Result<c_int> {
+        wrap_io_uring!(socket, domain, ty, protocol)
+    }
+
+    pub fn accept(fd: c_int, addr: *mut sockaddr, len: *mut socklen_t) -> std::io::Result<c_int> {
+        wrap_io_uring!(accept, fd, addr, len)
+    }
 
     pub fn accept4(
         fd: c_int,
@@ -271,6 +287,14 @@ impl EventLoops {
         len: socklen_t,
     ) -> std::io::Result<c_int> {
         wrap_io_uring!(connect, socket, address, len)
+    }
+
+    pub fn shutdown(socket: c_int, how: c_int) -> std::io::Result<c_int> {
+        wrap_io_uring!(shutdown, socket, how)
+    }
+
+    pub fn close(fd: c_int) -> std::io::Result<c_int> {
+        wrap_io_uring!(close, fd)
     }
 
     /// read
@@ -291,5 +315,46 @@ impl EventLoops {
         flags: c_int,
     ) -> std::io::Result<ssize_t> {
         wrap_io_uring!(send, socket, buf, len, flags)
+    }
+
+    pub fn sendto(
+        socket: c_int,
+        buf: *const c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *const sockaddr,
+        addrlen: socklen_t,
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(sendto, socket, buf, len, flags, addr, addrlen)
+    }
+
+    pub fn write(fd: c_int, buf: *const c_void, count: size_t) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(write, fd, buf, count)
+    }
+
+    pub fn pwrite(
+        fd: c_int,
+        buf: *const c_void,
+        count: size_t,
+        offset: off_t,
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(pwrite, fd, buf, count, offset)
+    }
+
+    pub fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(writev, fd, iov, iovcnt)
+    }
+
+    pub fn pwritev(
+        fd: c_int,
+        iov: *const iovec,
+        iovcnt: c_int,
+        offset: off_t,
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(pwritev, fd, iov, iovcnt, offset)
+    }
+
+    pub fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(sendmsg, fd, msg, flags)
     }
 }

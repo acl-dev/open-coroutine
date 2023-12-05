@@ -1,4 +1,3 @@
-use crate::net::event_loop::EventLoops;
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
 use libc::epoll_event;
@@ -13,13 +12,28 @@ pub struct IoUringLinuxSyscall<I: UnixSyscall> {
     inner: I,
 }
 
+macro_rules! unsupported {
+    ( $invoker: expr, $syscall:ident, $fn_ptr:expr, $($arg: expr),* $(,)* ) => {{
+        $invoker.inner.$syscall($fn_ptr, $($arg, )*)
+    }};
+}
+
+macro_rules! impl_io_uring {
+    ( $invoker: expr, $syscall:ident, $fn_ptr:expr, $($arg: expr),* $(,)* ) => {{
+        if let Ok(result) = $crate::net::event_loop::EventLoops::$syscall($($arg, )*) {
+            return result;
+        }
+        unsupported!($invoker, $syscall, $fn_ptr, $($arg, )*)
+    }};
+}
+
 impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
     extern "C" fn sleep(
         &self,
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>,
         secs: c_uint,
     ) -> c_uint {
-        todo!()
+        unsupported!(self, sleep, fn_ptr, secs)
     }
 
     extern "C" fn usleep(
@@ -27,7 +41,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
         microseconds: c_uint,
     ) -> c_int {
-        todo!()
+        unsupported!(self, usleep, fn_ptr, microseconds)
     }
 
     extern "C" fn nanosleep(
@@ -36,7 +50,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         rqtp: *const timespec,
         rmtp: *mut timespec,
     ) -> c_int {
-        todo!()
+        unsupported!(self, nanosleep, fn_ptr, rqtp, rmtp)
     }
 
     extern "C" fn poll(
@@ -46,7 +60,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         nfds: nfds_t,
         timeout: c_int,
     ) -> c_int {
-        todo!()
+        unsupported!(self, poll, fn_ptr, fds, nfds, timeout)
     }
 
     extern "C" fn select(
@@ -60,7 +74,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         errorfds: *mut fd_set,
         timeout: *mut timeval,
     ) -> c_int {
-        todo!()
+        unsupported!(self, select, fn_ptr, nfds, readfds, writefds, errorfds, timeout)
     }
 
     extern "C" fn socket(
@@ -70,7 +84,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         ty: c_int,
         protocol: c_int,
     ) -> c_int {
-        todo!()
+        impl_io_uring!(self, socket, fn_ptr, domain, ty, protocol)
     }
 
     extern "C" fn listen(
@@ -79,7 +93,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         socket: c_int,
         backlog: c_int,
     ) -> c_int {
-        todo!()
+        unsupported!(self, listen, fn_ptr, socket, backlog)
     }
 
     extern "C" fn accept(
@@ -89,7 +103,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         address: *mut sockaddr,
         address_len: *mut socklen_t,
     ) -> c_int {
-        todo!()
+        impl_io_uring!(self, accept, fn_ptr, socket, address, address_len)
     }
 
     extern "C" fn connect(
@@ -99,10 +113,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         address: *const sockaddr,
         len: socklen_t,
     ) -> c_int {
-        if let Ok(r) = EventLoops::connect(socket, address, len) {
-            return r;
-        }
-        self.inner.connect(fn_ptr, socket, address, len)
+        impl_io_uring!(self, connect, fn_ptr, socket, address, len)
     }
 
     extern "C" fn shutdown(
@@ -111,11 +122,11 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         socket: c_int,
         how: c_int,
     ) -> c_int {
-        todo!()
+        impl_io_uring!(self, shutdown, fn_ptr, socket, how)
     }
 
     extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-        todo!()
+        impl_io_uring!(self, close, fn_ptr, fd)
     }
 
     extern "C" fn recv(
@@ -126,10 +137,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         len: size_t,
         flags: c_int,
     ) -> ssize_t {
-        if let Ok(r) = EventLoops::recv(socket, buf, len, flags) {
-            return r;
-        }
-        self.inner.recv(fn_ptr, socket, buf, len, flags)
+        impl_io_uring!(self, recv, fn_ptr, socket, buf, len, flags)
     }
 
     extern "C" fn recvfrom(
@@ -151,7 +159,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         addr: *mut sockaddr,
         addrlen: *mut socklen_t,
     ) -> ssize_t {
-        todo!()
+        unsupported!(self, recvfrom, fn_ptr, socket, buf, len, flags, addr, addrlen)
     }
 
     extern "C" fn read(
@@ -214,10 +222,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         len: size_t,
         flags: c_int,
     ) -> ssize_t {
-        if let Ok(r) = EventLoops::send(socket, buf, len, flags) {
-            return r;
-        }
-        self.inner.send(fn_ptr, socket, buf, len, flags)
+        impl_io_uring!(self, send, fn_ptr, socket, buf, len, flags)
     }
 
     extern "C" fn sendto(
@@ -239,7 +244,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         addr: *const sockaddr,
         addrlen: socklen_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, sendto, fn_ptr, socket, buf, len, flags, addr, addrlen)
     }
 
     extern "C" fn write(
@@ -249,7 +254,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         buf: *const c_void,
         count: size_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, write, fn_ptr, fd, buf, count)
     }
 
     extern "C" fn pwrite(
@@ -260,7 +265,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         count: size_t,
         offset: off_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, pwrite, fn_ptr, fd, buf, count, offset)
     }
 
     extern "C" fn writev(
@@ -270,7 +275,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         iov: *const iovec,
         iovcnt: c_int,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, writev, fn_ptr, fd, iov, iovcnt)
     }
 
     extern "C" fn pwritev(
@@ -281,7 +286,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         iovcnt: c_int,
         offset: off_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, pwritev, fn_ptr, fd, iov, iovcnt, offset)
     }
 
     extern "C" fn sendmsg(
@@ -291,7 +296,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         msg: *const msghdr,
         flags: c_int,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, sendmsg, fn_ptr, fd, msg, flags)
     }
 }
 
@@ -304,7 +309,7 @@ impl<I: LinuxSyscall> LinuxSyscall for IoUringLinuxSyscall<I> {
         fd: c_int,
         event: *mut epoll_event,
     ) -> c_int {
-        todo!()
+        impl_io_uring!(self, epoll_ctl, fn_ptr, epfd, op, fd, event)
     }
 
     extern "C" fn accept4(
@@ -315,6 +320,6 @@ impl<I: LinuxSyscall> LinuxSyscall for IoUringLinuxSyscall<I> {
         len: *mut socklen_t,
         flg: c_int,
     ) -> c_int {
-        todo!()
+        impl_io_uring!(self, accept4, fn_ptr, fd, addr, len, flg)
     }
 }
