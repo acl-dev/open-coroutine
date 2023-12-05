@@ -19,6 +19,25 @@ cfg_if::cfg_if! {
         use crate::coroutine::suspender::SimpleSuspender;
         use crate::scheduler::SchedulableSuspender;
         use libc::{c_void, size_t, sockaddr, socklen_t, ssize_t};
+
+        macro_rules! wrap_io_uring {
+            ( $syscall: ident, $($arg: expr),* $(,)* ) => {
+                EventLoops::next(false)
+                    .$syscall($($arg, )*)
+                    .map(|r| {
+                        if let Some(suspender) = SchedulableSuspender::current() {
+                            suspender.suspend();
+                            //回来的时候，系统调用已经执行完了
+                        }
+                        let (lock, cvar) = &*r;
+                        let syscall_result = cvar
+                            .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
+                            .unwrap()
+                            .unwrap();
+                        syscall_result as _
+                    })
+            };
+        }
     }
 }
 
@@ -236,100 +255,31 @@ impl EventLoops {
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoops {
     /// socket
-    #[must_use]
     pub fn connect(
-        fn_pointer: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
         socket: c_int,
         address: *const sockaddr,
         len: socklen_t,
-    ) -> c_int {
-        if open_coroutine_iouring::version::support_io_uring() {
-            let event_loop = Self::next(false);
-            let r = event_loop.connect(socket, address, len);
-            if r.is_err() {
-                return -1;
-            }
-            if let Some(suspender) = SchedulableSuspender::current() {
-                suspender.suspend();
-                //回来的时候，系统调用已经执行完了
-            }
-            let (lock, cvar) = &*r.unwrap();
-            let syscall_result = cvar
-                .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
-                .unwrap()
-                .unwrap();
-            return syscall_result as c_int;
-        }
-        if let Some(f) = fn_pointer {
-            (f)(socket, address, len)
-        } else {
-            unsafe { libc::connect(socket, address, len) }
-        }
+    ) -> std::io::Result<c_int> {
+        wrap_io_uring!(connect, socket, address, len)
     }
 
     /// read
-    #[must_use]
     pub fn recv(
-        fn_pointer: Option<&extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t>,
         socket: c_int,
         buf: *mut c_void,
         len: size_t,
         flags: c_int,
-    ) -> ssize_t {
-        if open_coroutine_iouring::version::support_io_uring() {
-            let event_loop = Self::next(false);
-            let r = event_loop.recv(socket, buf, len, flags);
-            if r.is_err() {
-                return -1;
-            }
-            if let Some(suspender) = SchedulableSuspender::current() {
-                suspender.suspend();
-                //回来的时候，系统调用已经执行完了
-            }
-            let (lock, cvar) = &*r.unwrap();
-            let syscall_result = cvar
-                .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
-                .unwrap()
-                .unwrap();
-            return syscall_result;
-        }
-        if let Some(f) = fn_pointer {
-            (f)(socket, buf, len, flags)
-        } else {
-            unsafe { libc::send(socket, buf, len, flags) }
-        }
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(recv, socket, buf, len, flags)
     }
 
     /// write
-    #[must_use]
     pub fn send(
-        fn_pointer: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
         socket: c_int,
         buf: *const c_void,
         len: size_t,
         flags: c_int,
-    ) -> ssize_t {
-        if open_coroutine_iouring::version::support_io_uring() {
-            let event_loop = Self::next(false);
-            let r = event_loop.send(socket, buf, len, flags);
-            if r.is_err() {
-                return -1;
-            }
-            if let Some(suspender) = SchedulableSuspender::current() {
-                suspender.suspend();
-                //回来的时候，系统调用已经执行完了
-            }
-            let (lock, cvar) = &*r.unwrap();
-            let syscall_result = cvar
-                .wait_while(lock.lock().unwrap(), |&mut pending| pending.is_none())
-                .unwrap()
-                .unwrap();
-            return syscall_result;
-        }
-        if let Some(f) = fn_pointer {
-            (f)(socket, buf, len, flags)
-        } else {
-            unsafe { libc::send(socket, buf, len, flags) }
-        }
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(send, socket, buf, len, flags)
     }
 }

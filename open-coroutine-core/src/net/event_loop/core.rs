@@ -18,11 +18,27 @@ use std::time::Duration;
 use uuid::Uuid;
 
 cfg_if::cfg_if! {
-    if #[cfg(target_os = "linux")] {
+    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use dashmap::DashMap;
         use once_cell::sync::Lazy;
         use std::sync::{Arc, Condvar, Mutex};
         use libc::{size_t, ssize_t, sockaddr, socklen_t};
+
+        macro_rules! io_uring_impl {
+            ( $invoker: expr , $syscall: ident, $($arg: expr),* $(,)* ) => {{
+                let token = EventLoop::token(true);
+                $invoker
+                    .$syscall(token, $($arg, )*)
+                    .map(|()| {
+                        let arc = Arc::new((Mutex::new(None), Condvar::new()));
+                        assert!(
+                            SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
+                            "The previous token was not retrieved in a timely manner"
+                        );
+                        arc
+                    })
+            }};
+        }
     }
 }
 
@@ -30,7 +46,7 @@ cfg_if::cfg_if! {
 #[derive(Debug)]
 pub struct EventLoop {
     cpu: u32,
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "io_uring"))]
     operator: open_coroutine_iouring::io_uring::IoUringOperator,
     selector: SelectorImpl,
     //是否正在执行select
@@ -48,7 +64,7 @@ impl PartialEq for EventLoop {
 }
 
 #[allow(clippy::type_complexity)]
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
 static SYSCALL_WAIT_TABLE: Lazy<DashMap<usize, Arc<(Mutex<Option<ssize_t>>, Condvar)>>> =
     Lazy::new(DashMap::new);
 
@@ -62,7 +78,7 @@ impl EventLoop {
     ) -> std::io::Result<Self> {
         let mut event_loop = EventLoop {
             cpu,
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "io_uring"))]
             operator: open_coroutine_iouring::io_uring::IoUringOperator::new(cpu)?,
             selector: SelectorImpl::new()?,
             waiting: AtomicBool::new(false),
@@ -172,7 +188,7 @@ impl EventLoop {
         {
             return Ok(());
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
         if open_coroutine_iouring::version::support_io_uring() {
             // use io_uring
             let mut result = self.operator.select(timeout).map_err(|e| {
@@ -239,7 +255,7 @@ impl HasSelector for EventLoop {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
 impl EventLoop {
     /// socket
     pub fn connect(
@@ -248,17 +264,7 @@ impl EventLoop {
         address: *const sockaddr,
         len: socklen_t,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
-        let token = EventLoop::token(true);
-        self.operator
-            .connect(token, socket, address, len)
-            .map(|()| {
-                let arc = Arc::new((Mutex::new(None), Condvar::new()));
-                assert!(
-                    SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
-                    "The previous token was not retrieved in a timely manner"
-                );
-                arc
-            })
+        io_uring_impl!(self.operator, connect, socket, address, len)
     }
 
     /// read
@@ -269,17 +275,7 @@ impl EventLoop {
         len: size_t,
         flags: c_int,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
-        let token = EventLoop::token(true);
-        self.operator
-            .recv(token, socket, buf, len, flags)
-            .map(|()| {
-                let arc = Arc::new((Mutex::new(None), Condvar::new()));
-                assert!(
-                    SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
-                    "The previous token was not retrieved in a timely manner"
-                );
-                arc
-            })
+        io_uring_impl!(self.operator, recv, socket, buf, len, flags)
     }
 
     /// write
@@ -291,17 +287,7 @@ impl EventLoop {
         len: size_t,
         flags: c_int,
     ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
-        let token = EventLoop::token(true);
-        self.operator
-            .send(token, socket, buf, len, flags)
-            .map(|()| {
-                let arc = Arc::new((Mutex::new(None), Condvar::new()));
-                assert!(
-                    SYSCALL_WAIT_TABLE.insert(token, arc.clone()).is_none(),
-                    "The previous token was not retrieved in a timely manner"
-                );
-                arc
-            })
+        io_uring_impl!(self.operator, send, socket, buf, len, flags)
     }
 }
 
