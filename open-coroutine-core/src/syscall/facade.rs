@@ -13,8 +13,16 @@ use libc::{
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint, c_void};
 
-static CHAIN: Lazy<StateLinuxSyscall<NioLinuxSyscall<RawLinuxSyscall>>> =
-    Lazy::new(StateLinuxSyscall::default);
+cfg_if::cfg_if! {
+    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+        use crate::syscall::io_uring::IoUringLinuxSyscall;
+        static CHAIN: Lazy<StateLinuxSyscall<IoUringLinuxSyscall<NioLinuxSyscall<RawLinuxSyscall>>>> =
+            Lazy::new(StateLinuxSyscall::default);
+    } else {
+        static CHAIN: Lazy<StateLinuxSyscall<NioLinuxSyscall<RawLinuxSyscall>>> =
+            Lazy::new(StateLinuxSyscall::default);
+    }
+}
 
 /// sleep
 
