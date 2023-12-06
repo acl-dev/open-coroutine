@@ -9,6 +9,7 @@ use crate::net::event_loop::EventLoops;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+use core_affinity::{set_for_current, CoreId};
 use nix::sys::pthread::pthread_kill;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 use once_cell::sync::Lazy;
@@ -80,9 +81,9 @@ impl Monitor {
             .name("open-coroutine-monitor".to_string())
             .spawn(|| {
                 // todo pin this thread to the CPU core closest to the network card
-                _ = core_affinity::set_for_current(core_affinity::CoreId {
-                    id: MONITOR_CPU,
-                });
+                if set_for_current(CoreId { id: MONITOR_CPU }) {
+                    crate::warn!("pin monitor thread to CPU core-{MONITOR_CPU} failed !");
+                }
                 let pool = CoroutinePoolImpl::new(
                     String::from("open-coroutine-monitor"),
                     MONITOR_CPU,
@@ -100,12 +101,7 @@ impl Monitor {
                         let tasks = &mut Monitor::global().tasks;
                         while let Some(node) = queue.pop() {
                             let timestamp = node.timestamp();
-                            if let Some(entry) = tasks.get_entry(&timestamp) {
-                                _ = entry.remove(&node);
-                                if entry.is_empty() {
-                                    _ = tasks.remove(&timestamp);
-                                }
-                            }
+                            _ = tasks.remove(&timestamp, &node);
                         }
                     }
                     if !monitor.tasks.is_empty() {
