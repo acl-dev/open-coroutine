@@ -9,6 +9,7 @@ use crate::net::event_loop::EventLoops;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+use core_affinity::{set_for_current, CoreId};
 use nix::sys::pthread::pthread_kill;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 use once_cell::sync::Lazy;
@@ -80,9 +81,9 @@ impl Monitor {
             .name("open-coroutine-monitor".to_string())
             .spawn(|| {
                 // todo pin this thread to the CPU core closest to the network card
-                _ = core_affinity::set_for_current(core_affinity::CoreId {
-                    id: MONITOR_CPU,
-                });
+                if set_for_current(CoreId { id: MONITOR_CPU }) {
+                    crate::warn!("pin monitor thread to CPU core-{MONITOR_CPU} failed !");
+                }
                 let pool = CoroutinePoolImpl::new(
                     String::from("open-coroutine-monitor"),
                     MONITOR_CPU,
@@ -94,46 +95,38 @@ impl Monitor {
                 );
                 let monitor = Monitor::global();
                 while monitor.started.load(Ordering::Acquire) || !monitor.tasks.is_empty() {
-                    {
-                        //清理过期节点
-                        let queue = &mut Monitor::global().clean_queue;
-                        let tasks = &mut Monitor::global().tasks;
-                        while let Some(node) = queue.pop() {
-                            let timestamp = node.timestamp();
-                            if let Some(entry) = tasks.get_entry(&timestamp) {
-                                _ = entry.remove(&node);
-                                if entry.is_empty() {
-                                    _ = tasks.remove(&timestamp);
-                                }
-                            }
+                    //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
+                    for (exec_time, entry) in monitor.tasks.iter() {
+                        if open_coroutine_timer::now() < *exec_time {
+                            break;
+                        }
+                        if entry.is_empty() {
+                            continue;
+                        }
+                        for node in entry.iter() {
+                            _ = pool.submit(
+                                None,
+                                |_, _| {
+                                    let coroutine = node.coroutine();
+                                    if CoroutineState::Running == (*coroutine).state() {
+                                        //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
+                                        //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
+                                        if pthread_kill(node.pthread(), Signal::SIGURG).is_err() {
+                                            crate::error!("Attempt to preempt scheduling for the coroutine:{} in thread:{} failed !",
+                                                        coroutine.get_name(), node.pthread());
+                                        }
+                                    }
+                                    None
+                                }, None);
+                            _ = pool.try_schedule_task();
                         }
                     }
-                    if !monitor.tasks.is_empty() {
-                        //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-                        for (exec_time, entry) in monitor.tasks.iter() {
-                            if open_coroutine_timer::now() < *exec_time {
-                                break;
-                            }
-                            if entry.is_empty() {
-                                continue;
-                            }
-                            for node in entry.iter() {
-                                _ = pool.submit(
-                                    None,
-                                    |_, _| {
-                                        let coroutine = node.coroutine();
-                                        if CoroutineState::Running == (*coroutine).state() {
-                                            //只对陷入重度计算的协程发送信号抢占，对陷入执行系统调用的协程
-                                            //不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
-                                            if pthread_kill(node.pthread(), Signal::SIGURG).is_err() {
-                                                crate::error!("Attempt to preempt scheduling for the coroutine:{} in thread:{} failed !",
-                                                        coroutine.get_name(), node.pthread());
-                                            }
-                                        }
-                                        None
-                                    }, None);
-                                _ = pool.try_schedule_task();
-                            }
+                    {
+                        //清理过期节点
+                        let tasks= &mut Monitor::global().tasks;
+                        while let Some(node) = monitor.clean_queue.pop() {
+                            let timestamp = node.timestamp();
+                            _ = tasks.remove(&timestamp, &node);
                         }
                     }
                     //monitor线程不执行协程计算任务，每次循环至少wait 1ms
