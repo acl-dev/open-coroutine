@@ -328,6 +328,53 @@ impl EventLoop {
         io_uring_impl!(self.operator, recv, socket, buf, len, flags)
     }
 
+    pub fn read(
+        &self,
+        fd: c_int,
+        buf: *mut c_void,
+        count: size_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, read, fd, buf, count)
+    }
+
+    pub fn pread(
+        &self,
+        fd: c_int,
+        buf: *mut c_void,
+        count: size_t,
+        offset: off_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, pread, fd, buf, count, offset)
+    }
+
+    pub fn readv(
+        &self,
+        fd: c_int,
+        iov: *const iovec,
+        iovcnt: c_int,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, readv, fd, iov, iovcnt)
+    }
+
+    pub fn preadv(
+        &self,
+        fd: c_int,
+        iov: *const iovec,
+        iovcnt: c_int,
+        offset: off_t,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, preadv, fd, iov, iovcnt, offset)
+    }
+
+    pub fn recvmsg(
+        &self,
+        fd: c_int,
+        msg: *mut msghdr,
+        flags: c_int,
+    ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+        io_uring_impl!(self.operator, recvmsg, fd, msg, flags)
+    }
+
     /// write
 
     pub fn send(

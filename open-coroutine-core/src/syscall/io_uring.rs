@@ -169,7 +169,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         buf: *mut c_void,
         count: size_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, read, fn_ptr, fd, buf, count)
     }
 
     extern "C" fn pread(
@@ -180,7 +180,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         count: size_t,
         offset: off_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, pread, fn_ptr, fd, buf, count, offset)
     }
 
     extern "C" fn readv(
@@ -190,7 +190,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         iov: *const iovec,
         iovcnt: c_int,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, readv, fn_ptr, fd, iov, iovcnt)
     }
 
     extern "C" fn preadv(
@@ -201,7 +201,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         iovcnt: c_int,
         offset: off_t,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, preadv, fn_ptr, fd, iov, iovcnt, offset)
     }
 
     extern "C" fn recvmsg(
@@ -211,7 +211,7 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         msg: *mut msghdr,
         flags: c_int,
     ) -> ssize_t {
-        todo!()
+        impl_io_uring!(self, recvmsg, fn_ptr, fd, msg, flags)
     }
 
     extern "C" fn send(

@@ -307,6 +307,36 @@ impl EventLoops {
         wrap_io_uring!(recv, socket, buf, len, flags)
     }
 
+    pub fn read(fd: c_int, buf: *mut c_void, count: size_t) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(read, fd, buf, count)
+    }
+
+    pub fn pread(
+        fd: c_int,
+        buf: *mut c_void,
+        count: size_t,
+        offset: off_t,
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(pread, fd, buf, count, offset)
+    }
+
+    pub fn readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(readv, fd, iov, iovcnt)
+    }
+
+    pub fn preadv(
+        fd: c_int,
+        iov: *const iovec,
+        iovcnt: c_int,
+        offset: off_t,
+    ) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(preadv, fd, iov, iovcnt, offset)
+    }
+
+    pub fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> std::io::Result<ssize_t> {
+        wrap_io_uring!(recvmsg, fd, msg, flags)
+    }
+
     /// write
     pub fn send(
         socket: c_int,
