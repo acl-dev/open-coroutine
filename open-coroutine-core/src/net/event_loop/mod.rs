@@ -5,7 +5,6 @@ use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
 use crate::net::selector::Selector;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
-use core_affinity::{set_for_current, CoreId};
 use once_cell::sync::{Lazy, OnceCell};
 use std::ffi::c_int;
 use std::fmt::Debug;
@@ -121,9 +120,9 @@ impl EventLoops {
                         std::thread::Builder::new()
                             .name(format!("open-coroutine-event-loop-{i}"))
                             .spawn(move || {
-                                if set_for_current(CoreId { id: i }) {
+                                if core_affinity::set_for_current(core_affinity::CoreId { id: i }) {
                                     crate::warn!(
-                                        "pin event-loop-{i} thread to CPU core-{i} failed !"
+                                        "pin event-loop-{i} thread to a single CPU core failed !"
                                     );
                                 }
                                 let event_loop = Self::next(true);

@@ -210,30 +210,22 @@ impl<T> TimerList<T> {
         self.len() == 0
     }
 
+    /// Provides a mutable reference to the entry at the given `timestamp`.
+    pub fn get_entry(&mut self, timestamp: &u64) -> Option<&mut TimerEntry<T>> {
+        self.0.get_mut(timestamp)
+    }
+
     /// Removes and returns the element at `timestamp` from the deque.
     /// Whichever end is closer to the removal point will be moved to make
     /// room, and all the affected elements will be moved to new positions.
     /// Returns `None` if `timestamp` is out of bounds.
-    pub fn remove_entry(&mut self, timestamp: &u64) -> Option<TimerEntry<T>> {
+    pub fn remove(&mut self, timestamp: &u64) -> Option<TimerEntry<T>> {
         self.0.remove(timestamp)
     }
 
-    /// Removes and returns the `t` from the deque.
-    /// Whichever end is closer to the removal point will be moved to make
-    /// room, and all the affected elements will be moved to new positions.
-    /// Returns `None` if `t` not found.
-    pub fn remove(&mut self, timestamp: &u64, t: &T) -> Option<T>
-    where
-        T: Ord,
-    {
-        if let Some(entry) = self.0.get_mut(timestamp) {
-            let val = entry.remove(t);
-            if entry.is_empty() {
-                _ = self.remove_entry(timestamp);
-            }
-            return val;
-        }
-        None
+    /// Returns a front-to-back iterator that returns mutable references.
+    pub fn iter_mut(&mut self) -> std::collections::btree_map::IterMut<'_, u64, TimerEntry<T>> {
+        self.0.iter_mut()
     }
 
     /// Returns a front-to-back iterator.
@@ -265,5 +257,7 @@ mod tests {
         let string = entry.pop_front().unwrap();
         assert_eq!(string, String::from("data is 1"));
         assert_eq!(entry.len(), 0);
+        assert!(list.get_entry(&2).is_some());
+        assert!(list.get_entry(&3).is_some());
     }
 }
