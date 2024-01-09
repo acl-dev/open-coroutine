@@ -79,6 +79,24 @@ pub struct TimerEntry<T> {
     inner: VecDeque<T>,
 }
 
+impl<'t, T> IntoIterator for &'t mut TimerEntry<T> {
+    type Item = &'t mut T;
+    type IntoIter = IterMut<'t, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+impl<'t, T> IntoIterator for &'t TimerEntry<T> {
+    type Item = &'t T;
+    type IntoIter = Iter<'t, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl<T> TimerEntry<T> {
     /// Creates an empty deque.
     #[must_use]
@@ -166,6 +184,15 @@ impl<T> Default for TimerList<T> {
             inner: BTreeMap::default(),
             total: AtomicUsize::new(0),
         }
+    }
+}
+
+impl<'t, T> IntoIterator for &'t TimerList<T> {
+    type Item = (&'t u64, &'t TimerEntry<T>);
+    type IntoIter = std::collections::btree_map::Iter<'t, u64, TimerEntry<T>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 

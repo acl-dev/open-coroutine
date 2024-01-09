@@ -29,7 +29,7 @@ static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
 pub(crate) struct Monitor {
     tasks: TimerList<TaskNode>,
     clean_queue: Vec<TaskNode>,
-    monitor: JoinHandle<()>,
+    thread: JoinHandle<()>,
     started: AtomicBool,
 }
 
@@ -41,7 +41,7 @@ impl Drop for Monitor {
                 "there are still timer tasks to be carried out !"
             );
             assert!(
-                self.monitor.is_finished(),
+                self.thread.is_finished(),
                 "the monitor thread not finished !"
             );
         }
@@ -77,7 +77,7 @@ impl Monitor {
     fn new() -> Self {
         Monitor::register_handler(sigurg_handler);
         //通过这种方式来初始化monitor线程
-        let monitor = std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name("open-coroutine-monitor".to_string())
             .spawn(|| {
                 // todo pin this thread to the CPU core closest to the network card
@@ -106,14 +106,14 @@ impl Monitor {
                     }
                     if !monitor.tasks.is_empty() {
                         //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-                        for (exec_time, entry) in monitor.tasks.iter() {
+                        for (exec_time, entry) in &monitor.tasks {
                             if open_coroutine_timer::now() < *exec_time {
                                 break;
                             }
                             if entry.is_empty() {
                                 continue;
                             }
-                            for node in entry.iter() {
+                            for node in entry {
                                 _ = pool.submit(
                                     None,
                                     |_, _| {
@@ -146,7 +146,7 @@ impl Monitor {
         Monitor {
             tasks: TimerList::default(),
             clean_queue: Vec::default(),
-            monitor,
+            thread,
             started: AtomicBool::new(true),
         }
     }
