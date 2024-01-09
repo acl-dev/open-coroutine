@@ -94,7 +94,7 @@ where
                     }
                     if let Some(co) = Self::current() {
                         let handler = co.inner.trap_handler();
-                        assert!(handler.stack_ptr_in_bounds(sp));
+                        assert!(handler.stack_ptr_in_bounds(sp), "coroutine {} stack overflow !", co.get_name());
                         let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
                         cfg_if::cfg_if! {
                             if #[cfg(all(
@@ -222,6 +222,7 @@ where
                     let handler = co.inner.trap_handler();
                     if !handler.stack_ptr_in_bounds(sp) {
                         // EXCEPTION_CONTINUE_SEARCH
+                        crate::error!("coroutine {} stack overflow !", co.get_name());
                         return 0;
                     }
                     let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
