@@ -1,6 +1,7 @@
 use crate::constants::{Syscall, SyscallState};
 use crate::scheduler::{SchedulableCoroutine, SchedulerImpl};
 use std::fmt::Debug;
+use std::panic::AssertUnwindSafe;
 
 /// A trait implemented for schedulers, mainly used for monitoring.
 pub trait Listener: Debug {
@@ -37,25 +38,57 @@ pub trait Listener: Debug {
 impl Listener for SchedulerImpl<'_> {
     fn on_create(&self, coroutine: &SchedulableCoroutine) {
         for listener in &self.listeners {
-            listener.on_create(coroutine);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_create(coroutine);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_create error:{}", listener, message);
+            }
         }
     }
 
     fn on_schedule(&self, timeout_time: u64) {
         for listener in &self.listeners {
-            listener.on_schedule(timeout_time);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_schedule(timeout_time);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_schedule error:{}", listener, message);
+            }
         }
     }
 
     fn on_resume(&self, timeout_time: u64, coroutine: &SchedulableCoroutine) {
         for listener in &self.listeners {
-            listener.on_resume(timeout_time, coroutine);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_resume(timeout_time, coroutine);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_resume error:{}", listener, message);
+            }
         }
     }
 
     fn on_suspend(&self, timeout_time: u64, coroutine: &SchedulableCoroutine) {
         for listener in &self.listeners {
-            listener.on_suspend(timeout_time, coroutine);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_suspend(timeout_time, coroutine);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_suspend error:{}", listener, message);
+            }
         }
     }
 
@@ -67,7 +100,15 @@ impl Listener for SchedulerImpl<'_> {
         state: SyscallState,
     ) {
         for listener in &self.listeners {
-            listener.on_syscall(timeout_time, coroutine, syscall, state);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_syscall(timeout_time, coroutine, syscall, state);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_syscall error:{}", listener, message);
+            }
         }
     }
 
@@ -78,13 +119,29 @@ impl Listener for SchedulerImpl<'_> {
         result: Option<usize>,
     ) {
         for listener in &self.listeners {
-            listener.on_complete(timeout_time, coroutine, result);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_complete(timeout_time, coroutine, result);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_complete error:{}", listener, message);
+            }
         }
     }
 
     fn on_error(&self, timeout_time: u64, coroutine: &SchedulableCoroutine, message: &str) {
         for listener in &self.listeners {
-            listener.on_error(timeout_time, coroutine, message);
+            if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                listener.on_error(timeout_time, coroutine, message);
+            })) {
+                #[cfg(feature = "logs")]
+                let message = *e
+                    .downcast_ref::<&'static str>()
+                    .unwrap_or(&"Listener failed without message");
+                crate::error!("{:?} on_error error:{}", listener, message);
+            }
         }
     }
 }
