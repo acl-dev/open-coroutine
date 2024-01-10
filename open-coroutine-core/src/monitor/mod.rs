@@ -87,7 +87,7 @@ impl Monitor {
                 let pool = CoroutinePoolImpl::new(
                     String::from("open-coroutine-monitor"),
                     MONITOR_CPU,
-                    crate::constants::DEFAULT_STACK_SIZE,
+                    crate::constants::DEFAULT_STACK_SIZE * 16,
                     1,
                     1,
                     0,
@@ -152,7 +152,7 @@ impl Monitor {
     }
 
     fn global() -> &'static mut Monitor {
-        unsafe { &mut GLOBAL }
+        unsafe { &mut *std::ptr::addr_of_mut!(GLOBAL) }
     }
 
     pub fn stop() {
