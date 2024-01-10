@@ -94,8 +94,17 @@ where
                     }
                     if let Some(co) = Self::current() {
                         let handler = co.inner.trap_handler();
-                        assert!(handler.stack_ptr_in_bounds(sp), "coroutine {} stack overflow !", co.get_name());
-                        let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
+                        // assert!(handler.stack_ptr_in_bounds(sp), "coroutine {} stack overflow !", co.get_name());
+                        // let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
+                        let stack_ptr_in_bounds = handler.stack_ptr_in_bounds(sp);
+                        // todo here we can grow stack in the future
+                        let regs = handler.setup_trap_handler(move || {
+                            Err(if stack_ptr_in_bounds {
+                                "invalid memory reference"
+                            } else {
+                                "stack overflow"
+                            })
+                        });
                         cfg_if::cfg_if! {
                             if #[cfg(all(
                                     any(target_os = "linux", target_os = "android"),
@@ -220,12 +229,21 @@ where
                     }
 
                     let handler = co.inner.trap_handler();
-                    if !handler.stack_ptr_in_bounds(sp) {
-                        // EXCEPTION_CONTINUE_SEARCH
-                        crate::error!("coroutine {} stack overflow !", co.get_name());
-                        return 0;
-                    }
-                    let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
+                    // if !handler.stack_ptr_in_bounds(sp) {
+                    //     // EXCEPTION_CONTINUE_SEARCH
+                    //     crate::error!("coroutine {} stack overflow !", co.get_name());
+                    //     return 0;
+                    // }
+                    // let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
+                    let stack_ptr_in_bounds = handler.stack_ptr_in_bounds(sp);
+                    // todo here we can grow stack in the future
+                    let regs = handler.setup_trap_handler(move || {
+                        Err(if stack_ptr_in_bounds {
+                            "invalid memory reference"
+                        } else {
+                            "stack overflow"
+                        })
+                    });
 
                     cfg_if::cfg_if! {
                         if #[cfg(target_arch = "x86_64")] {
