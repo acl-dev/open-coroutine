@@ -21,6 +21,8 @@ use std::time::Duration;
 
 mod node;
 
+mod current;
+
 pub(crate) mod creator;
 
 static mut GLOBAL: Lazy<Monitor> = Lazy::new(Monitor::new);
@@ -147,6 +149,7 @@ impl Monitor {
             thread: std::thread::Builder::new()
                 .name("open-coroutine-monitor".to_string())
                 .spawn(|| {
+                    Monitor::init_current(Monitor::global());
                     if let Err(e) =
                         std::panic::catch_unwind(AssertUnwindSafe(Monitor::monitor_thread_main))
                     {
@@ -158,6 +161,7 @@ impl Monitor {
                     } else {
                         crate::warn!("open-coroutine-monitor has exited");
                     }
+                    Monitor::clean_current();
                 })
                 .expect("failed to spawn monitor thread"),
             started: AtomicBool::new(true),
@@ -178,10 +182,6 @@ impl Monitor {
     }
 
     pub(crate) fn submit(time: u64, coroutine: &SchedulableCoroutine) {
-        if !Monitor::global().started.load(Ordering::Acquire) {
-            crate::warn!("the task cannot be submitted due to open-coroutine-monitor has exited");
-            return;
-        }
         Monitor::global()
             .tasks
             .insert(time, TaskNode::new(time, coroutine));
