@@ -34,7 +34,7 @@ pub trait Listener: Debug {
     fn on_error(&self, _: u64, _: &SchedulableCoroutine, _: &str) {}
 }
 
-#[allow(box_pointers)]
+#[allow(box_pointers, unused_variables)]
 impl Listener for SchedulerImpl<'_> {
     fn on_create(&self, coroutine: &SchedulableCoroutine) {
         for listener in &self.listeners {

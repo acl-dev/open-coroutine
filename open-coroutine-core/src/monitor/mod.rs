@@ -5,7 +5,9 @@ use crate::constants::{CoroutineState, MONITOR_CPU};
 use crate::coroutine::suspender::SimpleSuspender;
 use crate::coroutine::StateCoroutine;
 use crate::monitor::node::TaskNode;
+#[cfg(feature = "net")]
 use crate::net::event_loop::EventLoops;
+#[cfg(feature = "net")]
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
@@ -17,7 +19,6 @@ use open_coroutine_timer::TimerList;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 mod node;
 
@@ -130,12 +131,16 @@ impl Monitor {
                     }
                 }
             }
-            //monitor线程不执行协程计算任务，每次循环至少wait 1ms
-            let event_loop = EventLoops::monitor();
-            _ = event_loop.wait_just(Some(Duration::from_millis(1)));
-            //push tasks to other event-loop
-            while let Some(task) = event_loop.pop() {
-                EventLoops::submit_raw(task);
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "net")] {
+                    //monitor线程不执行协程计算任务，每次循环至少wait 1ms
+                    let event_loop = EventLoops::monitor();
+                    _ = event_loop.wait_just(Some(std::time::Duration::from_millis(1)));
+                    //push tasks to other event-loop
+                    while let Some(task) = event_loop.pop() {
+                        EventLoops::submit_raw(task);
+                    }
+                }
             }
         }
     }
@@ -150,13 +155,14 @@ impl Monitor {
                 .name("open-coroutine-monitor".to_string())
                 .spawn(|| {
                     Monitor::init_current(Monitor::global());
+                    #[allow(unused_variables)]
                     if let Err(e) =
                         std::panic::catch_unwind(AssertUnwindSafe(Monitor::monitor_thread_main))
                     {
                         #[cfg(feature = "logs")]
                         let message = *e
                             .downcast_ref::<&'static str>()
-                            .unwrap_or(&"Listener failed without message");
+                            .unwrap_or(&"Monitor failed without message");
                         crate::error!("open-coroutine-monitor exited with error:{}", message);
                     } else {
                         crate::warn!("open-coroutine-monitor has exited");
@@ -172,13 +178,18 @@ impl Monitor {
         unsafe { &mut *std::ptr::addr_of_mut!(GLOBAL) }
     }
 
+    #[allow(dead_code)]
     pub fn stop() {
         Monitor::global().started.store(false, Ordering::Release);
-        let pair = EventLoops::new_condition();
-        let (lock, cvar) = pair.as_ref();
-        let pending = lock.lock().unwrap();
-        _ = pending.fetch_add(1, Ordering::Release);
-        cvar.notify_one();
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "net")] {
+                let pair = EventLoops::new_condition();
+                let (lock, cvar) = pair.as_ref();
+                let pending = lock.lock().unwrap();
+                _ = pending.fetch_add(1, Ordering::Release);
+                cvar.notify_one();
+            }
+        }
     }
 
     pub(crate) fn submit(time: u64, coroutine: &SchedulableCoroutine) {

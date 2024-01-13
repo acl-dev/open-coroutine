@@ -33,12 +33,19 @@ preemptive-schedule = [
     "open-coroutine-hooks/preemptive-schedule"
 ]
 
+# Provide io_uring abstraction and implementation.
+# This feature only works in linux.
+io_uring = [
+    "open-coroutine-core/io_uring",
+    "open-coroutine-hooks/io_uring",
+]
+
 # Print some help log.
 # Enable for default.
 logs = ["open-coroutine-core/logs", "open-coroutine-hooks/logs"]
 
 # Enable all features
-full = ["preemptive-schedule", "logs"]
+full = ["preemptive-schedule", "io_uring", "logs"]
 
 [[bench]]
 name = "benchmark"
