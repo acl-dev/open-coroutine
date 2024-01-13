@@ -160,8 +160,8 @@ nanosleep hooked
 
 ### todo
 
-- [ ] refactor syscall state, distinguish between state and innerState
-- [ ] Support and compatibility for AF_XDP socket
+- [ ] support stack scalable stack
+- [ ] support and compatibility for AF_XDP socket
 - [ ] hook other syscall maybe interrupt by signal
   <details>
   <summary>syscalls</summary>
@@ -202,9 +202,12 @@ nanosleep hooked
     - [ ] msgsnd
 
   </details>
-- [ ] support muti low_level coroutine create (just support [boost.context](https://github.com/boostorg/context) for
-  now)
 - [ ] support `#[open_coroutine::join]` macro to wait coroutines
+
+### 0.5.x
+
+- [x] refactor syscall state, distinguish between state and innerState
+- [x] support io_uring
 
 ### 0.4.x
 
