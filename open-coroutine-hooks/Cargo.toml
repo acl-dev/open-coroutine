@@ -15,7 +15,8 @@ libc = "0.2.150"
 once_cell = "1.18.0"
 num_cpus = "1.16.0"
 cfg-if = "1.0.0"
-open-coroutine-core = { version = "0.5.0", path = "../open-coroutine-core" }
+open-coroutine-core = { version = "0.5.0", path = "../open-coroutine-core", features = [
+    "syscall"], default-features = false }
 log = { version = "0.4.20", optional = true }
 simplelog = { version = "0.12.1", optional = true }
 
@@ -40,9 +41,13 @@ default = ["full"]
 # Enable for default.
 preemptive-schedule = ["open-coroutine-core/preemptive-schedule"]
 
+# Provide io_uring abstraction and implementation.
+# This feature only works in linux.
+io_uring = ["open-coroutine-core/io_uring"]
+
 # Print some help log.
 # Enable for default.
 logs = ["log", "simplelog", "open-coroutine-core/logs"]
 
 # Enable all features
-full = ["preemptive-schedule", "logs"]
+full = ["preemptive-schedule", "io_uring", "logs"]

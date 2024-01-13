@@ -77,7 +77,7 @@ net = ["korosensei", "num_cpus", "crossbeam-utils", "polling"]
 io_uring = ["net", "open-coroutine-iouring"]
 
 # Provide syscall implementation.
-syscall = ["io_uring"]
+syscall = ["net"]
 
 # Enable all features
-full = ["syscall", "preemptive-schedule", "logs"]
+full = ["syscall", "preemptive-schedule", "io_uring", "logs"]
