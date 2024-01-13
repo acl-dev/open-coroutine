@@ -160,7 +160,7 @@ nanosleep hooked
 
 ### todo
 
-- [ ] support stack scalable stack
+- [ ] support scalable stack
 - [ ] support and compatibility for AF_XDP socket
 - [ ] hook other syscall maybe interrupt by signal
   <details>
