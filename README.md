@@ -207,7 +207,6 @@ nanosleep hooked
 ### 0.5.x
 
 - [x] refactor syscall state, distinguish between state and innerState
-- [x] support io_uring
 
 ### 0.4.x
 
