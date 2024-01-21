@@ -1,6 +1,6 @@
 [package]
 name = "open-coroutine-iouring"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 description = "The io_uring support for open-coroutine"

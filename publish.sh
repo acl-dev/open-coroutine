@@ -8,6 +8,10 @@ cd open-coroutine-queue
 cargo publish
 
 cd ..
+cd open-coroutine-iouring
+cargo publish
+
+cd ..
 cd open-coroutine-core
 cargo publish
 
