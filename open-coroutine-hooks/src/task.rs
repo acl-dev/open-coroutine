@@ -12,7 +12,7 @@ pub extern "C" fn task_crate(f: UserFunc, param: usize) -> TaskJoinHandleImpl {
         move |suspender, p| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]
             Some(f(
-                suspender as *const _ as *const SuspenderImpl<(), ()>,
+                std::ptr::from_ref(suspender) as *const SuspenderImpl<(), ()>,
                 p.unwrap_or(0),
             ))
         },

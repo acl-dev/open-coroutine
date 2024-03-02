@@ -3,7 +3,7 @@ use crate::scheduler::SchedulerImpl;
 use std::ffi::c_void;
 
 thread_local! {
-    static SCHEDULER: std::cell::RefCell<std::collections::VecDeque<*const c_void>> = std::cell::RefCell::new(std::collections::VecDeque::new());
+    static SCHEDULER: std::cell::RefCell<std::collections::VecDeque<*const c_void>> = const{std::cell::RefCell::new(std::collections::VecDeque::new())};
 }
 
 impl<'s> Current<'s> for SchedulerImpl<'s> {
@@ -14,7 +14,7 @@ impl<'s> Current<'s> for SchedulerImpl<'s> {
     {
         SCHEDULER.with(|s| {
             s.borrow_mut()
-                .push_front(current as *const _ as *const c_void);
+                .push_front(std::ptr::from_ref(current) as *const c_void);
         });
     }
 

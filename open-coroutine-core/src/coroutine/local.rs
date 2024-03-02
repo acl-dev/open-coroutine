@@ -13,7 +13,7 @@ impl CoroutineLocal {
         let k: &str = Box::leak(Box::from(key));
         let v = Box::leak(Box::new(val));
         self.0
-            .insert(k, v as *mut V as usize)
+            .insert(k, std::ptr::from_mut::<V>(v) as usize)
             .map(|ptr| unsafe { *Box::from_raw((ptr as *mut c_void).cast::<V>()) })
     }
 

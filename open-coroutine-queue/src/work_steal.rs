@@ -37,7 +37,7 @@ impl<T: Debug> WorkStealQueue<T> {
         let mut ret = INSTANCE.load(Ordering::Relaxed);
         if ret == 0 {
             let ptr: &'s mut WorkStealQueue<T> = Box::leak(Box::default());
-            ret = ptr as *mut WorkStealQueue<T> as usize;
+            ret = std::ptr::from_mut::<WorkStealQueue<T>>(ptr) as usize;
             INSTANCE.store(ret, Ordering::Relaxed);
         }
         unsafe { &*(ret as *mut WorkStealQueue<T>) }
