@@ -128,7 +128,7 @@ jobs:
           sudo bash -c "sudo -u runner RUSTUP_TOOLCHAIN=${{ matrix.rust }} RUST_BACKTRACE=1 /home/runner/.cargo/bin/cargo run --example socket_co --release --features io_uring"
 
   macos:
-    name: Test ${{ matrix.rust }} on macOS-latest
+    name: Test ${{ matrix.rust }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
