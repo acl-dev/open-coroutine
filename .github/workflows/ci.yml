@@ -129,13 +129,16 @@ jobs:
 
   macos:
     name: Test ${{ matrix.rust }} on macOS-latest
-    runs-on: macOS-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         rust:
           - stable
           - nightly
+        os:
+          - macos-latest
+          - macos-14
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
