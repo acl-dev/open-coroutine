@@ -21,7 +21,7 @@ pub extern "C" fn coroutine_crate(
         move |suspender, ()| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]
             Some(f(
-                suspender as *const _ as *const SuspenderImpl<(), ()>,
+                std::ptr::from_ref(suspender) as *const SuspenderImpl<(), ()>,
                 param,
             ))
         },

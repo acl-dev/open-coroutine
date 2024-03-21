@@ -3,7 +3,7 @@ use crate::pool::CoroutinePoolImpl;
 use std::ffi::c_void;
 
 thread_local! {
-    static COROUTINE_POOL: std::cell::RefCell<std::collections::VecDeque<*const c_void>> = std::cell::RefCell::new(std::collections::VecDeque::new());
+    static COROUTINE_POOL: std::cell::RefCell<std::collections::VecDeque<*const c_void>> = const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
 }
 
 impl<'p> Current<'p> for CoroutinePoolImpl<'p> {
@@ -14,7 +14,7 @@ impl<'p> Current<'p> for CoroutinePoolImpl<'p> {
     {
         COROUTINE_POOL.with(|s| {
             s.borrow_mut()
-                .push_front(current as *const _ as *const c_void);
+                .push_front(std::ptr::from_ref(current) as *const c_void);
         });
     }
 

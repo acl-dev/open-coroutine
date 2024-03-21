@@ -3,7 +3,7 @@ use crate::monitor::Monitor;
 use std::ffi::c_void;
 
 thread_local! {
-    static MONITOR: std::cell::RefCell<std::collections::VecDeque<*const c_void>> = std::cell::RefCell::new(std::collections::VecDeque::new());
+    static MONITOR: std::cell::RefCell<std::collections::VecDeque<*const c_void>> = const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
 }
 
 impl<'m> Current<'m> for Monitor {
@@ -14,7 +14,7 @@ impl<'m> Current<'m> for Monitor {
     {
         MONITOR.with(|s| {
             s.borrow_mut()
-                .push_front(current as *const _ as *const c_void);
+                .push_front(std::ptr::from_ref(current) as *const c_void);
         });
     }
 

@@ -31,14 +31,14 @@ where
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
             let data = std::ptr::read_unaligned(ptr);
             let result: &'static mut R = Box::leak(Box::new((data.0)(suspender, data.1)));
-            (result as *mut R).cast::<c_void>() as usize
+            std::ptr::from_mut::<R>(result).cast::<c_void>() as usize
         }
     }
     let inner = Box::leak(Box::new((f, param)));
     unsafe {
         task_crate(
             co_main::<F, P, R>,
-            (inner as *mut (F, P)).cast::<c_void>() as usize,
+            std::ptr::from_mut::<(F, P)>(inner).cast::<c_void>() as usize,
         )
     }
 }

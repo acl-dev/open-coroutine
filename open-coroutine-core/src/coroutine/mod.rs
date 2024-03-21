@@ -305,7 +305,7 @@ pub trait StateCoroutine<'c>: Coroutine<'c> {
 
 thread_local! {
     static COROUTINE: std::cell::RefCell<std::collections::VecDeque<
-        *const c_void>> = std::cell::RefCell::new(std::collections::VecDeque::new());
+        *const c_void>> = const {std::cell::RefCell::new(std::collections::VecDeque::new())};
 }
 
 impl<'c, Param, Yield, Return> Current<'c> for CoroutineImpl<'c, Param, Yield, Return>
@@ -318,7 +318,7 @@ where
     fn init_current(current: &CoroutineImpl<'c, Param, Yield, Return>) {
         COROUTINE.with(|s| {
             s.borrow_mut()
-                .push_front(current as *const _ as *const c_void);
+                .push_front(std::ptr::from_ref(current) as *const c_void);
         });
     }
 

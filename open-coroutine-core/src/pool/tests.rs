@@ -1,6 +1,5 @@
 use super::*;
 use crate::coroutine::suspender::SimpleDelaySuspender;
-use crate::scheduler::{SchedulableSuspender, Scheduler};
 
 #[test]
 fn test_simple() {

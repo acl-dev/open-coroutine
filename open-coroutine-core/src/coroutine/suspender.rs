@@ -18,7 +18,7 @@ pub trait Suspender<'s>: Current<'s> {
 }
 
 thread_local! {
-    static SUSPENDER: RefCell<VecDeque<*const c_void>> = RefCell::new(VecDeque::new());
+    static SUSPENDER: RefCell<VecDeque<*const c_void>> = const{RefCell::new(VecDeque::new())};
 }
 
 impl<'s, Param, Yield> Current<'s> for SuspenderImpl<'s, Param, Yield>
@@ -30,7 +30,7 @@ where
     fn init_current(current: &SuspenderImpl<'s, Param, Yield>) {
         SUSPENDER.with(|s| {
             s.borrow_mut()
-                .push_front(current as *const _ as *const c_void);
+                .push_front(std::ptr::from_ref(current) as *const c_void);
         });
     }
 
@@ -76,7 +76,7 @@ pub trait DelaySuspender<'s>: Suspender<'s> {
 }
 
 thread_local! {
-    static TIMESTAMP: RefCell<VecDeque<u64>> = RefCell::new(VecDeque::new());
+    static TIMESTAMP: RefCell<VecDeque<u64>> = const{RefCell::new(VecDeque::new())};
 }
 
 impl<'s, DelaySuspenderImpl: ?Sized + Suspender<'s>> DelaySuspender<'s> for DelaySuspenderImpl {
