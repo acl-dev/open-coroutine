@@ -27,10 +27,70 @@ pub fn page_size() -> usize {
     ret
 }
 
+/// Fast impl `Display` trait for `Debug` types.
+/// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
+#[macro_export]
+macro_rules! impl_display_by_debug {
+    ($struct_name:ident$(<$($generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?) => {
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? std::fmt::Display
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: std::fmt::Debug,
+        {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Debug::fmt(self, f)
+            }
+        }
+    };
+}
+
 /// Give the object a name.
 pub trait Named {
     /// Get the name of this object.
     fn get_name(&self) -> &str;
+}
+
+/// Fast impl common traits for `Named` types.
+/// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! impl_for_named {
+    ($struct_name:ident$(<$($generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?) => {
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Eq
+            for $struct_name$(<$($generic),+>)?
+        where $struct_name$(<$($generic),+>)?: $crate::common::Named {
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialEq<Self>
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+        {
+            fn eq(&self, other: &Self) -> bool {
+                self.get_name().eq(other.get_name())
+            }
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Ord
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+        {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                self.get_name().cmp(other.get_name())
+            }
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialOrd<Self>
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+        {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+    };
 }
 
 /// A trait implemented for which needs `current()`.
@@ -40,7 +100,7 @@ pub trait Current<'c> {
     where
         Self: Sized;
 
-    /// Get the current if has.
+    /// Get the current if it has.
     fn current() -> Option<&'c Self>
     where
         Self: Sized;

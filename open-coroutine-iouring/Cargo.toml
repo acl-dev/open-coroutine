@@ -7,7 +7,7 @@ description = "The io_uring support for open-coroutine"
 repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-iouring"
 keywords = ["open-coroutine", "iouring", "io_uring", "io-uring"]
 categories = ["concurrency", "asynchronous"]
-license = "LGPL-3.0 OR Apache-2.0"
+license = "Apache-2.0"
 readme = "../README.md"
 
 [target.'cfg(target_os = "linux")'.dependencies]

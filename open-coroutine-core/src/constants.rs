@@ -1,3 +1,4 @@
+use crate::impl_display_by_debug;
 use std::fmt::{Debug, Display, Formatter};
 
 /// min stack size for backtrace
@@ -65,11 +66,7 @@ pub enum Syscall {
     openat,
 }
 
-impl Display for Syscall {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(Syscall);
 
 thread_local! {
     static SYSCALL: std::cell::RefCell<std::collections::VecDeque<Syscall>> = const{std::cell::RefCell::new(std::collections::VecDeque::new())};
@@ -108,11 +105,7 @@ pub enum SyscallState {
     Finished,
 }
 
-impl Display for SyscallState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(SyscallState);
 
 /// Enums used to describe coroutine state
 #[repr(C)]
@@ -162,8 +155,4 @@ pub enum PoolState {
     Stopped,
 }
 
-impl Display for PoolState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(PoolState);
