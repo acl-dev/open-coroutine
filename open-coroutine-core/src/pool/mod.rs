@@ -2,6 +2,7 @@ use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::{SimpleSuspender, Suspender};
 use crate::coroutine::Coroutine;
+use crate::impl_current_for;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
@@ -24,8 +25,6 @@ pub mod task;
 /// Task join abstraction and impl.
 pub mod join;
 
-mod current;
-
 mod creator;
 
 /// Has coroutine pool abstraction.
@@ -36,7 +35,7 @@ mod tests;
 
 /// The `TaskPool` abstraction.
 pub trait TaskPool<'p, Join: JoinHandle<Self>>:
-    Debug + Default + RefUnwindSafe + Named + Current<'p> + StatePool + HasScheduler<'p>
+    Debug + Default + RefUnwindSafe + Named + Current + StatePool + HasScheduler<'p>
 {
     /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
     ///
@@ -168,7 +167,7 @@ pub trait AutoConsumableTaskPool<'p, Join: JoinHandle<Self>>: WaitableTaskPool<'
 
 /// The `CoroutinePool` abstraction.
 pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
-    Current<'p> + AutoConsumableTaskPool<'p, Join>
+    Current + AutoConsumableTaskPool<'p, Join>
 {
     /// Create a new `CoroutinePool` instance.
     fn new(
@@ -347,6 +346,8 @@ impl StatePool for CoroutinePoolImpl<'_> {
         self.state.replace(state)
     }
 }
+
+impl_current_for!(COROUTINE_POOL, CoroutinePoolImpl<'p>);
 
 impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
     fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {

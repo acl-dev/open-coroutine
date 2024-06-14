@@ -65,6 +65,8 @@ logs = ["log", "simplelog"]
 
 korosensei = ["corosensei", "nix/pthread"]
 
+boost = []
+
 # Provide preemptive scheduling implementation.
 # Enable for default.
 preemptive-schedule = ["korosensei"]

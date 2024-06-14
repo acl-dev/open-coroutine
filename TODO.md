@@ -1,9 +1,3 @@
-impl_for_named macro
-
-impl_current_for macro
-
-catch macro
-
 Listener in coroutine mod
 
 monitor depends on coroutine not scheduler

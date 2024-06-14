@@ -1,8 +1,9 @@
+use crate::catch;
 use crate::common::Named;
 use crate::coroutine::suspender::Suspender;
 use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
-use std::panic::{AssertUnwindSafe, UnwindSafe};
+use std::panic::UnwindSafe;
 
 /// Note: the param and the result is raw pointer.
 #[repr(C)]
@@ -72,14 +73,11 @@ impl<'t> Task<'t> {
         let paran = self.get_param();
         (
             self.name.clone(),
-            std::panic::catch_unwind(AssertUnwindSafe(|| (self.func)(suspender, paran))).map_err(
-                |e| {
-                    let message = *e
-                        .downcast_ref::<&'static str>()
-                        .unwrap_or(&"task failed without message");
-                    crate::error!("task:{} finish with error:{}", self.name, message);
-                    message
-                },
+            catch!(
+                || (self.func)(suspender, paran),
+                "task failed without message",
+                "task",
+                self.name
             ),
         )
     }

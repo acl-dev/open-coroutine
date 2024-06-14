@@ -20,7 +20,6 @@ macro_rules! syscall_state {
     ( $invoker: expr , $syscall: ident, $($arg: expr),* $(,)* ) => {{
         let syscall = $crate::constants::Syscall::$syscall;
         $crate::info!("{} hooked", syscall);
-        $crate::constants::Syscall::init_current($crate::constants::Syscall::$syscall);
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
             if co
                 .syscall((), syscall, $crate::constants::SyscallState::Executing)
@@ -35,7 +34,6 @@ macro_rules! syscall_state {
                 $crate::error!("{} change to running state failed !", co.get_name());
             }
         }
-        $crate::constants::Syscall::clean_current();
         return r;
     }};
 }

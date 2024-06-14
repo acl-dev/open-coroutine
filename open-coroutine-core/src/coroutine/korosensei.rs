@@ -1,3 +1,4 @@
+use crate::catch;
 use crate::common::{Current, Named};
 use crate::constants::CoroutineState;
 use crate::coroutine::local::{CoroutineLocal, HasCoroutineLocal};
@@ -9,7 +10,7 @@ use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::Cell;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
-use std::panic::{AssertUnwindSafe, UnwindSafe};
+use std::panic::UnwindSafe;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -24,8 +25,8 @@ cfg_if::cfg_if! {
 pub struct CoroutineImpl<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
 {
     name: String,
     inner: ScopedCoroutine<'c, Param, Yield, Result<Return, &'static str>, DefaultStack>,
@@ -36,8 +37,8 @@ where
 impl<'c, Param, Yield, Return> CoroutineImpl<'c, Param, Yield, Return>
 where
     Param: UnwindSafe + 'c,
-    Yield: Copy + Eq + PartialEq + UnwindSafe + 'c,
-    Return: Copy + Eq + PartialEq + UnwindSafe + 'c,
+    Yield: Copy + UnwindSafe + 'c,
+    Return: Copy + UnwindSafe + 'c,
 {
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
@@ -312,8 +313,8 @@ where
 impl<Param, Yield, Return> Drop for CoroutineImpl<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
 {
     fn drop(&mut self) {
         //for test_yield case
@@ -326,8 +327,8 @@ where
 impl<Param, Yield, Return> Named for CoroutineImpl<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
 {
     fn get_name(&self) -> &str {
         &self.name
@@ -337,8 +338,8 @@ where
 impl<Param, Yield, Return> HasCoroutineLocal for CoroutineImpl<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
 {
     fn local(&self) -> &CoroutineLocal {
         &self.local
@@ -372,13 +373,12 @@ where
             let suspender = SuspenderImpl(y);
             SuspenderImpl::<Param, Yield>::init_current(&suspender);
             #[allow(box_pointers)]
-            let r = std::panic::catch_unwind(AssertUnwindSafe(|| f(&suspender, p))).map_err(|e| {
-                let message = *e
-                    .downcast_ref::<&'static str>()
-                    .unwrap_or(&"coroutine failed without message");
-                crate::error!("coroutine:{} finish with error:{}", co_name, message);
-                message
-            });
+            let r = catch!(
+                || f(&suspender, p),
+                "coroutine failed without message",
+                "coroutine",
+                co_name
+            );
             SuspenderImpl::<Param, Yield>::clean_current();
             r
         });

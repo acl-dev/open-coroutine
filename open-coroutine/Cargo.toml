@@ -24,28 +24,32 @@ criterion = "0.5.1"
 glob = "0.3.1"
 
 [features]
-default = ["full"]
-
-# Provide preemptive scheduling implementation.
-# Enable for default.
-preemptive-schedule = [
-    "open-coroutine-core/preemptive-schedule",
-    "open-coroutine-hooks/preemptive-schedule"
-]
-
-# Provide io_uring abstraction and implementation.
-# This feature only works in linux.
-io_uring = [
-    "open-coroutine-core/io_uring",
-    "open-coroutine-hooks/io_uring",
-]
+default = ["open-coroutine-hooks/full", "open-coroutine-core/full"]
 
 # Print some help log.
 # Enable for default.
-logs = ["open-coroutine-core/logs", "open-coroutine-hooks/logs"]
+logs = ["open-coroutine-hooks/logs", "open-coroutine-core/logs"]
+
+korosensei = ["open-coroutine-hooks/korosensei", "open-coroutine-core/korosensei"]
+
+boost = ["open-coroutine-hooks/boost", "open-coroutine-core/boost"]
+
+# Provide preemptive scheduling implementation.
+# Enable for default.
+preemptive-schedule = ["open-coroutine-hooks/preemptive-schedule", "open-coroutine-core/preemptive-schedule"]
+
+# Provide net API abstraction and implementation.
+net = ["open-coroutine-hooks/net", "open-coroutine-core/net"]
+
+# Provide io_uring abstraction and implementation.
+# This feature only works in linux.
+io_uring = ["open-coroutine-hooks/io_uring", "open-coroutine-core/io_uring"]
+
+# Provide syscall implementation.
+syscall = ["open-coroutine-hooks/syscall", "open-coroutine-core/syscall"]
 
 # Enable all features
-full = ["preemptive-schedule", "io_uring", "logs"]
+full = ["open-coroutine-hooks/full", "open-coroutine-core/full"]
 
 [[bench]]
 name = "benchmark"
