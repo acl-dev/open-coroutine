@@ -7,7 +7,7 @@ description = "The syscall hook for open-coroutine"
 repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-hooks"
 keywords = ["open-coroutine", "hook", "syscall"]
 categories = ["os", "concurrency", "asynchronous"]
-license = "LGPL-3.0 OR Apache-2.0"
+license = "Apache-2.0"
 readme = "../README.md"
 
 [dependencies]
@@ -17,8 +17,6 @@ num_cpus = "1.16.0"
 cfg-if = "1.0.0"
 open-coroutine-core = { version = "0.5.0", path = "../open-coroutine-core", features = [
     "syscall"], default-features = false }
-log = { version = "0.4.20", optional = true }
-simplelog = { version = "0.12.1", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52.0", features = [
@@ -35,19 +33,29 @@ retour = { version = "0.3.1", features = ["static-detour"] }
 crate-type = ["cdylib"]
 
 [features]
-default = ["full"]
+default = ["open-coroutine-core/full"]
+
+# Print some help log.
+# Enable for default.
+logs = ["open-coroutine-core/logs"]
+
+korosensei = ["open-coroutine-core/korosensei"]
+
+boost = ["open-coroutine-core/boost"]
 
 # Provide preemptive scheduling implementation.
 # Enable for default.
 preemptive-schedule = ["open-coroutine-core/preemptive-schedule"]
 
+# Provide net API abstraction and implementation.
+net = ["open-coroutine-core/net"]
+
 # Provide io_uring abstraction and implementation.
 # This feature only works in linux.
 io_uring = ["open-coroutine-core/io_uring"]
 
-# Print some help log.
-# Enable for default.
-logs = ["log", "simplelog", "open-coroutine-core/logs"]
+# Provide syscall implementation.
+syscall = ["open-coroutine-core/syscall"]
 
 # Enable all features
-full = ["preemptive-schedule", "io_uring", "logs"]
+full = ["open-coroutine-core/full"]

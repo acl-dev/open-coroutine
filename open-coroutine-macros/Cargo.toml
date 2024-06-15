@@ -7,7 +7,7 @@ description = "The proc macros for open-coroutine"
 repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-macros"
 keywords = ["open-coroutine", "macro"]
 categories = ["concurrency", "asynchronous", "os", "network-programming", "wasm"]
-license = "LGPL-3.0 OR Apache-2.0"
+license = "Apache-2.0"
 readme = "../README.md"
 
 [dependencies]

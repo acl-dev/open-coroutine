@@ -1,4 +1,5 @@
-use std::fmt::{Debug, Display, Formatter};
+use crate::impl_display_by_debug;
+use std::fmt::Debug;
 
 /// min stack size for backtrace
 pub const DEFAULT_STACK_SIZE: usize = 64 * 1024;
@@ -65,32 +66,10 @@ pub enum Syscall {
     openat,
 }
 
-impl Display for Syscall {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(Syscall);
 
 thread_local! {
     static SYSCALL: std::cell::RefCell<std::collections::VecDeque<Syscall>> = const{std::cell::RefCell::new(std::collections::VecDeque::new())};
-}
-
-#[allow(missing_docs)]
-impl Syscall {
-    pub fn init_current(current: Self) {
-        SYSCALL.with(|s| {
-            s.borrow_mut().push_front(current);
-        });
-    }
-
-    #[must_use]
-    pub fn current() -> Option<Self> {
-        SYSCALL.with(|s| s.borrow().front().copied())
-    }
-
-    pub fn clean_current() {
-        SYSCALL.with(|s| _ = s.borrow_mut().pop_front());
-    }
 }
 
 /// Enums used to describe syscall state
@@ -108,20 +87,12 @@ pub enum SyscallState {
     Finished,
 }
 
-impl Display for SyscallState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(SyscallState);
 
 /// Enums used to describe coroutine state
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum CoroutineState<Y, R>
-where
-    Y: Copy + Eq + PartialEq,
-    R: Copy + Eq + PartialEq,
-{
+pub enum CoroutineState<Y, R> {
     ///The coroutine is created.
     Created,
     ///The coroutine is ready to run.
@@ -138,15 +109,7 @@ where
     Error(&'static str),
 }
 
-impl<Y, R> Display for CoroutineState<Y, R>
-where
-    Y: Copy + Eq + PartialEq + Debug,
-    R: Copy + Eq + PartialEq + Debug,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(CoroutineState<Y, R>);
 
 /// Enums used to describe pool state
 #[repr(C)]
@@ -162,8 +125,4 @@ pub enum PoolState {
     Stopped,
 }
 
-impl Display for PoolState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
+impl_display_by_debug!(PoolState);

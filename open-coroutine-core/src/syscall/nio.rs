@@ -104,7 +104,7 @@ macro_rules! impl_expected_batch_read_hook {
             $crate::syscall::common::set_non_blocking(socket);
         }
         let mut vec = std::collections::VecDeque::from(unsafe {
-            Vec::from_raw_parts($iov as *mut iovec, $length as usize, $length as usize)
+            Vec::from_raw_parts($iov.cast_mut(), $length as usize, $length as usize)
         });
         let mut length = 0;
         let mut pices = std::collections::VecDeque::new();
@@ -225,7 +225,7 @@ macro_rules! impl_expected_batch_write_hook {
             $crate::syscall::common::set_non_blocking(socket);
         }
         let mut vec = std::collections::VecDeque::from(unsafe {
-            Vec::from_raw_parts($iov as *mut iovec, $length as usize, $length as usize)
+            Vec::from_raw_parts($iov.cast_mut(), $length as usize, $length as usize)
         });
         let mut length = 0;
         let mut pices = std::collections::VecDeque::new();

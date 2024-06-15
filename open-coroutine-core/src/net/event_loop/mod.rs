@@ -5,6 +5,7 @@ use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
 use crate::net::selector::Selector;
 use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
+use crate::warn;
 use core_affinity::{set_for_current, CoreId};
 use once_cell::sync::{Lazy, OnceCell};
 use std::ffi::c_int;
@@ -59,6 +60,7 @@ static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
     let config = Config::get_instance();
+    warn!("open-coroutine inited with {config:#?}");
     (0..config.get_event_loop_size())
         .map(|i| {
             EventLoop::new(
@@ -122,9 +124,7 @@ impl EventLoops {
                             .name(format!("open-coroutine-event-loop-{i}"))
                             .spawn(move || {
                                 if set_for_current(CoreId { id: i }) {
-                                    crate::warn!(
-                                        "pin event-loop-{i} thread to CPU core-{i} failed !"
-                                    );
+                                    warn!("pin event-loop-{i} thread to CPU core-{i} failed !");
                                 }
                                 let event_loop = Self::next(true);
                                 while EVENT_LOOP_STARTED.load(Ordering::Acquire)
@@ -132,7 +132,7 @@ impl EventLoops {
                                 {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                 }
-                                crate::warn!("open-coroutine-event-loop-{i} has exited");
+                                warn!("open-coroutine-event-loop-{i} has exited");
                                 let pair = Self::new_condition();
                                 let (lock, cvar) = pair.as_ref();
                                 let pending = lock.lock().unwrap();
@@ -147,7 +147,7 @@ impl EventLoops {
     }
 
     pub fn stop() {
-        crate::warn!("open-coroutine is exiting...");
+        warn!("open-coroutine is exiting...");
         EVENT_LOOP_STARTED.store(false, Ordering::Release);
         // wait for the event-loops to stop
         let (lock, cvar) = EVENT_LOOP_STOP.as_ref();

@@ -27,21 +27,94 @@ pub fn page_size() -> usize {
     ret
 }
 
+/// Catch panic.
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! catch {
+    ($f:expr, $msg:expr, $arg1:expr, $arg2:expr) => {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe($f)).map_err(|e| {
+            let message = *e.downcast_ref::<&'static str>().unwrap_or(&$msg);
+            $crate::error!("{} {} error:{}", $arg1, $arg2, message);
+            message
+        })
+    };
+}
+
+/// Fast impl `Display` trait for `Debug` types.
+/// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
+#[macro_export]
+macro_rules! impl_display_by_debug {
+    ($struct_name:ident$(<$($generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?) => {
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? std::fmt::Display
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: std::fmt::Debug,
+        {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Debug::fmt(self, f)
+            }
+        }
+    };
+}
+
 /// Give the object a name.
 pub trait Named {
     /// Get the name of this object.
     fn get_name(&self) -> &str;
 }
 
+/// Fast impl common traits for `Named` types.
+/// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! impl_for_named {
+    ($struct_name:ident$(<$($generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?) => {
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Eq
+            for $struct_name$(<$($generic),+>)?
+        where $struct_name$(<$($generic),+>)?: $crate::common::Named {
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialEq<Self>
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+        {
+            fn eq(&self, other: &Self) -> bool {
+                self.get_name().eq(other.get_name())
+            }
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Ord
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+        {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                self.get_name().cmp(other.get_name())
+            }
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialOrd<Self>
+            for $struct_name$(<$($generic),+>)?
+        where
+            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+        {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+    };
+}
+
 /// A trait implemented for which needs `current()`.
-pub trait Current<'c> {
+pub trait Current {
     /// Init the current.
     fn init_current(current: &Self)
     where
         Self: Sized;
 
-    /// Get the current if has.
-    fn current() -> Option<&'c Self>
+    /// Get the current if it has.
+    fn current<'c>() -> Option<&'c Self>
     where
         Self: Sized;
 
@@ -49,6 +122,47 @@ pub trait Current<'c> {
     fn clean_current()
     where
         Self: Sized;
+}
+
+/// Fast impl `Current` for a type.
+/// This crate use `std` cause `#![no_std]` not support `thread_local!`.
+/// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
+#[macro_export]
+macro_rules! impl_current_for {
+    (
+        $name:ident,
+        $struct_name:ident
+            $(<
+                $(
+                    $generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?
+                ),+
+            >)?
+    ) => {
+        thread_local! {
+            static $name: std::cell::RefCell<std::collections::VecDeque<*const std::ffi::c_void>> = const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
+        }
+
+        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? $crate::common::Current for $struct_name$(<$($generic),+>)? {
+            fn init_current(current: &Self) {
+                $name.with(|s| {
+                    s.borrow_mut()
+                        .push_front(core::ptr::from_ref(current).cast::<std::ffi::c_void>());
+                });
+            }
+
+            fn current<'current>() -> Option<&'current Self> {
+                $name.with(|s| {
+                    s.borrow()
+                        .front()
+                        .map(|ptr| unsafe { &*(*ptr).cast::<Self>() })
+                })
+            }
+
+            fn clean_current() {
+                $name.with(|s| _ = s.borrow_mut().pop_front());
+            }
+        }
+    };
 }
 
 /// A trait for blocking current thread.

@@ -1,12 +1,11 @@
 use crate::common::Current;
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::ffi::c_void;
 use std::panic::UnwindSafe;
 use std::time::Duration;
 
 /// A trait implemented for suspend the execution of the coroutine.
-pub trait Suspender<'s>: Current<'s> {
+pub trait Suspender<'s>: Current {
     /// The type of value this coroutine accepts as a resume argument.
     type Resume: UnwindSafe;
 
@@ -17,35 +16,10 @@ pub trait Suspender<'s>: Current<'s> {
     fn suspend_with(&self, arg: Self::Yield) -> Self::Resume;
 }
 
-thread_local! {
-    static SUSPENDER: RefCell<VecDeque<*const c_void>> = const{RefCell::new(VecDeque::new())};
-}
-
-impl<'s, Param, Yield> Current<'s> for SuspenderImpl<'s, Param, Yield>
-where
-    Param: UnwindSafe,
-    Yield: UnwindSafe,
-{
-    #[allow(clippy::ptr_as_ptr)]
-    fn init_current(current: &SuspenderImpl<'s, Param, Yield>) {
-        SUSPENDER.with(|s| {
-            s.borrow_mut()
-                .push_front(std::ptr::from_ref(current) as *const c_void);
-        });
-    }
-
-    fn current() -> Option<&'s Self> {
-        SUSPENDER.with(|s| {
-            s.borrow()
-                .front()
-                .map(|ptr| unsafe { &*(*ptr).cast::<SuspenderImpl<'s, Param, Yield>>() })
-        })
-    }
-
-    fn clean_current() {
-        SUSPENDER.with(|s| _ = s.borrow_mut().pop_front());
-    }
-}
+impl_current_for!(
+    SUSPENDER,
+    SuspenderImpl<'s, Param: UnwindSafe, Yield: UnwindSafe>
+);
 
 /// A trait implemented for suspend the execution of the coroutine.
 pub trait SimpleSuspender<'s>: Suspender<'s, Yield = ()> {
@@ -113,8 +87,10 @@ impl<'s, SimpleDelaySuspenderImpl: ?Sized + DelaySuspender<'s, Yield = ()>> Simp
     }
 }
 
+use crate::impl_current_for;
 #[cfg(feature = "korosensei")]
 pub use korosensei::SuspenderImpl;
+
 #[allow(missing_docs, missing_debug_implementations)]
 #[cfg(feature = "korosensei")]
 mod korosensei {
@@ -146,6 +122,5 @@ mod korosensei {
     }
 }
 
-#[allow(missing_docs, missing_debug_implementations)]
 #[cfg(all(feature = "boost", not(feature = "corosensei")))]
 mod boost {}

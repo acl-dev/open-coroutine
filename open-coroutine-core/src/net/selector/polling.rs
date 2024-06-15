@@ -38,7 +38,8 @@ impl SelectorImpl {
     fn register(&self, fd: c_int, token: usize, interests: Event) -> std::io::Result<()> {
         cfg_if::cfg_if! {
             if #[cfg(windows)] {
-                let source = std::os::windows::io::RawSocket::from(fd as u32);
+                let source = std::os::windows::io::RawSocket::from(
+                    u32::try_from(fd).expect("parse fd failed"));
             } else {
                 let source = fd;
             }
@@ -53,7 +54,8 @@ impl SelectorImpl {
     fn reregister(&self, fd: c_int, token: usize, interests: Event) -> std::io::Result<()> {
         cfg_if::cfg_if! {
             if #[cfg(windows)] {
-                let source = std::os::windows::io::RawSocket::from(fd as u32);
+                let source = std::os::windows::io::RawSocket::from(
+                    u32::try_from(fd).expect("parse fd failed"));
             } else {
                 let source = fd;
             }
@@ -76,7 +78,8 @@ impl SelectorImpl {
     fn deregister(&self, fd: c_int, token: usize) -> std::io::Result<()> {
         cfg_if::cfg_if! {
             if #[cfg(windows)] {
-                let source = std::os::windows::io::RawSocket::from(fd as u32);
+                let source = std::os::windows::io::RawSocket::from(
+                    u32::try_from(fd).expect("parse fd failed"));
             } else {
                 let source = fd;
             }

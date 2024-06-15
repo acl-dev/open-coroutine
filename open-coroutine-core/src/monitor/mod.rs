@@ -4,6 +4,7 @@ use crate::common::Named;
 use crate::constants::{CoroutineState, MONITOR_CPU};
 use crate::coroutine::suspender::SimpleSuspender;
 use crate::coroutine::StateCoroutine;
+use crate::impl_current_for;
 use crate::monitor::node::TaskNode;
 #[cfg(feature = "net")]
 use crate::net::event_loop::EventLoops;
@@ -21,8 +22,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 mod node;
-
-mod current;
 
 pub(crate) mod creator;
 
@@ -51,6 +50,8 @@ impl Drop for Monitor {
         }
     }
 }
+
+impl_current_for!(MONITOR, Monitor);
 
 extern "C" fn sigurg_handler(_: libc::c_int) {
     if let Ok(mut set) = SigSet::thread_get_mask() {

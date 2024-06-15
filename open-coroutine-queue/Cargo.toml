@@ -7,7 +7,7 @@ description = "Concurrent work-stealing queue, implemented using st3 and crossbe
 repository = "https://github.com/acl-dev/open-coroutine/tree/dev/open-coroutine-queue"
 keywords = ["open-coroutine", "queue", "work-steal"]
 categories = ["data-structures", "concurrency"]
-license = "LGPL-3.0 OR Apache-2.0"
+license = "Apache-2.0"
 readme = "../README.md"
 
 [dependencies]

@@ -4,6 +4,7 @@ use crate::coroutine::suspender::{Suspender, SuspenderImpl};
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
+use crate::{impl_current_for, impl_for_named};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
@@ -26,8 +27,6 @@ pub mod listener;
 /// Join impl for scheduler.
 pub mod join;
 
-mod current;
-
 /// Has scheduler abstraction.
 pub mod has;
 
@@ -36,7 +35,7 @@ mod tests;
 
 /// A trait implemented for schedulers.
 pub trait Scheduler<'s, Join: JoinHandle<Self>>:
-    Debug + Default + Named + Current<'s> + Listener
+    Debug + Default + Named + Current + Listener
 {
     /// Get the default stack stack size for the coroutines in this scheduler.
     /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
@@ -166,6 +165,7 @@ impl<'s> SchedulerImpl<'s> {
         scheduler
     }
 
+    #[allow(clippy::unused_self)]
     fn init(&mut self) {
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         self.add_listener(crate::monitor::creator::MonitorTaskCreator::default());
@@ -245,19 +245,13 @@ impl Drop for SchedulerImpl<'_> {
     }
 }
 
-impl Eq for SchedulerImpl<'_> {}
-
-impl PartialEq for SchedulerImpl<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.get_name().eq(other.get_name())
-    }
-}
-
 impl Named for SchedulerImpl<'_> {
     fn get_name(&self) -> &str {
         &self.name
     }
 }
+
+impl_for_named!(SchedulerImpl<'s>);
 
 impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
     fn get_stack_size(&self) -> usize {
@@ -385,3 +379,5 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
         self.listeners.push_back(Box::new(listener));
     }
 }
+
+impl_current_for!(SCHEDULER, SchedulerImpl<'s>);

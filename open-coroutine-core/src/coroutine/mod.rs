@@ -2,8 +2,7 @@ use crate::common::{Current, Named};
 use crate::constants::{CoroutineState, Syscall, SyscallState};
 use crate::coroutine::local::HasCoroutineLocal;
 use crate::coroutine::suspender::Suspender;
-use std::cmp::Ordering;
-use std::ffi::c_void;
+use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
 use std::fmt::{Debug, Formatter};
 use std::io::{Error, ErrorKind};
 use std::panic::UnwindSafe;
@@ -40,6 +39,7 @@ macro_rules! co {
 
 #[cfg(feature = "korosensei")]
 pub use korosensei::CoroutineImpl;
+
 #[allow(missing_docs)]
 #[cfg(feature = "korosensei")]
 mod korosensei;
@@ -51,17 +51,15 @@ mod boost {}
 mod tests;
 
 /// A trait implemented for coroutines.
-pub trait Coroutine<'c>:
-    Debug + Eq + PartialEq + Ord + PartialOrd + Named + Current<'c> + HasCoroutineLocal
-{
+pub trait Coroutine<'c>: Debug + Named + Current + HasCoroutineLocal {
     /// The type of value this coroutine accepts as a resume argument.
     type Resume: UnwindSafe;
 
     /// The type of value this coroutine yields.
-    type Yield: Debug + Copy + Eq + PartialEq + UnwindSafe;
+    type Yield: Debug + Copy + UnwindSafe;
 
     /// The type of value this coroutine returns upon completion.
-    type Return: Debug + Copy + Eq + PartialEq + UnwindSafe;
+    type Return: Debug + Copy + UnwindSafe;
 
     /// Create a new coroutine.
     ///
@@ -107,7 +105,11 @@ impl<'c, SimpleCoroutineImpl: Coroutine<'c, Resume = ()>> SimpleCoroutine<'c>
 }
 
 /// A trait implemented for describing changes in the state of the coroutine.
-pub trait StateCoroutine<'c>: Coroutine<'c> {
+pub trait StateCoroutine<'c>: Coroutine<'c>
+where
+    Self::Yield: Eq + PartialEq,
+    Self::Return: Eq + PartialEq,
+{
     /// Returns the current state of this `StateCoroutine`.
     fn state(&self) -> CoroutineState<Self::Yield, Self::Return>;
 
@@ -303,37 +305,10 @@ pub trait StateCoroutine<'c>: Coroutine<'c> {
     }
 }
 
-thread_local! {
-    static COROUTINE: std::cell::RefCell<std::collections::VecDeque<
-        *const c_void>> = const {std::cell::RefCell::new(std::collections::VecDeque::new())};
-}
-
-impl<'c, Param, Yield, Return> Current<'c> for CoroutineImpl<'c, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
-{
-    #[allow(clippy::ptr_as_ptr)]
-    fn init_current(current: &CoroutineImpl<'c, Param, Yield, Return>) {
-        COROUTINE.with(|s| {
-            s.borrow_mut()
-                .push_front(std::ptr::from_ref(current) as *const c_void);
-        });
-    }
-
-    fn current() -> Option<&'c Self> {
-        COROUTINE.with(|s| {
-            s.borrow()
-                .front()
-                .map(|ptr| unsafe { &*(*ptr).cast::<CoroutineImpl<'c, Param, Yield, Return>>() })
-        })
-    }
-
-    fn clean_current() {
-        COROUTINE.with(|s| _ = s.borrow_mut().pop_front());
-    }
-}
+impl_current_for!(
+    COROUTINE,
+    CoroutineImpl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe>
+);
 
 impl<Param, Yield, Return> Debug for CoroutineImpl<'_, Param, Yield, Return>
 where
@@ -350,43 +325,10 @@ where
     }
 }
 
-impl<Param, Yield, Return> Eq for CoroutineImpl<'_, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
-{
-}
+impl_display_by_debug!(
+    CoroutineImpl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe>
+);
 
-impl<Param, Yield, Return> PartialEq<Self> for CoroutineImpl<'_, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.get_name().eq(other.get_name())
-    }
-}
-
-impl<Param, Yield, Return> Ord for CoroutineImpl<'_, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
-{
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.get_name().cmp(other.get_name())
-    }
-}
-
-impl<Param, Yield, Return> PartialOrd<Self> for CoroutineImpl<'_, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe,
-    Return: Copy + Eq + PartialEq + UnwindSafe,
-{
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
+impl_for_named!(
+    CoroutineImpl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe>
+);

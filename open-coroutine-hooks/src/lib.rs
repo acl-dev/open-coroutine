@@ -59,7 +59,6 @@ pub extern "C" fn init_config(config: Config) {
         .set_min_size(config.get_min_size())
         .set_max_size(config.get_max_size())
         .set_keep_alive_time(config.get_keep_alive_time());
-    open_coroutine_core::warn!("open-coroutine inited with {config:#?}");
 }
 
 #[no_mangle]

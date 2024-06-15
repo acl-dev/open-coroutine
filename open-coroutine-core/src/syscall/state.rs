@@ -1,5 +1,6 @@
 use crate::common::{Current, Named};
 use crate::coroutine::StateCoroutine;
+use crate::info;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
@@ -20,7 +21,6 @@ macro_rules! syscall_state {
     ( $invoker: expr , $syscall: ident, $($arg: expr),* $(,)* ) => {{
         let syscall = $crate::constants::Syscall::$syscall;
         $crate::info!("{} hooked", syscall);
-        $crate::constants::Syscall::init_current($crate::constants::Syscall::$syscall);
         if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
             if co
                 .syscall((), syscall, $crate::constants::SyscallState::Executing)
@@ -35,7 +35,6 @@ macro_rules! syscall_state {
                 $crate::error!("{} change to running state failed !", co.get_name());
             }
         }
-        $crate::constants::Syscall::clean_current();
         return r;
     }};
 }
@@ -46,7 +45,7 @@ impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>,
         secs: c_uint,
     ) -> c_uint {
-        crate::info!("sleep hooked");
+        info!("sleep hooked");
         self.inner.sleep(fn_ptr, secs)
     }
 
@@ -55,7 +54,7 @@ impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
         fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
         microseconds: c_uint,
     ) -> c_int {
-        crate::info!("usleep hooked");
+        info!("usleep hooked");
         self.inner.usleep(fn_ptr, microseconds)
     }
 
@@ -65,7 +64,7 @@ impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
         rqtp: *const timespec,
         rmtp: *mut timespec,
     ) -> c_int {
-        crate::info!("nanosleep hooked");
+        info!("nanosleep hooked");
         self.inner.nanosleep(fn_ptr, rqtp, rmtp)
     }
 

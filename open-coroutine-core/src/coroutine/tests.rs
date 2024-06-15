@@ -179,7 +179,7 @@ fn test_invalid_memory_reference() {
         println!("Before invalid memory reference");
         // 没有加--release运行，会收到SIGABRT信号，不好处理，直接禁用测试
         unsafe {
-            let co = &*((1usize as *mut c_void).cast::<CoroutineImpl<(), (), ()>>());
+            let co = &*((1usize as *mut std::ffi::c_void).cast::<CoroutineImpl<(), (), ()>>());
             println!("{}", co.state());
         }
         println!("After invalid memory reference");
