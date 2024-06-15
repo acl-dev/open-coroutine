@@ -75,5 +75,5 @@ pub mod net;
     clippy::unnecessary_cast,
     trivial_numeric_casts
 )]
-#[cfg(all(unix, feature = "syscall"))]
+#[cfg(feature = "syscall")]
 pub mod syscall;

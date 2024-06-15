@@ -221,7 +221,7 @@ where
                 if let Some(co) = Self::current() {
                     cfg_if::cfg_if! {
                         if #[cfg(target_arch = "x86_64")] {
-                            let sp = (*(*exception_info).ContextRecord).Rsp as usize;
+                            let sp = usize::try_from((*(*exception_info).ContextRecord).Rsp).expect("parse RSP failed");
                         } else if #[cfg(target_arch = "x86")] {
                             let sp = (*(*exception_info).ContextRecord).Esp as usize;
                         } else {
@@ -298,14 +298,11 @@ where
                 }
             }
             #[cfg(windows)]
-            unsafe {
-                if AddVectoredExceptionHandler(1, Some(Self::trap_handler)).is_null() {
-                    panic!(
-                        "failed to add exception handler: {}",
-                        Error::last_os_error()
-                    );
-                }
-            }
+            assert!(
+                !unsafe { AddVectoredExceptionHandler(1, Some(Self::trap_handler)).is_null() },
+                "failed to add exception handler: {}",
+                Error::last_os_error()
+            );
         }
     }
 }

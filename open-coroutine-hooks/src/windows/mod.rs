@@ -1,8 +1,6 @@
-use open_coroutine_core::net::event_loop::EventLoops;
 use retour::static_detour;
 use std::error::Error;
 use std::os::raw::c_void;
-use std::time::Duration;
 use std::{ffi::CString, iter, mem};
 use windows_sys::Win32::Foundation::BOOL;
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
@@ -21,7 +19,7 @@ pub unsafe extern "system" fn DllMain(
 
         // Preferably a thread should be created here instead, since as few
         // operations as possible should be performed within `DllMain`.
-        main().is_ok() as BOOL
+        BOOL::from(main().is_ok())
     } else {
         1
     }
@@ -59,11 +57,10 @@ fn get_module_symbol_address(module: &str, symbol: &str) -> Option<usize> {
     let symbol = CString::new(symbol).unwrap();
     unsafe {
         let handle = GetModuleHandleW(module.as_ptr());
-        GetProcAddress(handle, symbol.as_ptr() as _).map(|n| n as usize)
+        GetProcAddress(handle, symbol.as_ptr().cast()).map(|n| n as usize)
     }
 }
 
 fn sleep_detour(dw_milliseconds: u32) {
-    open_coroutine_core::info!("Sleep hooked");
-    _ = EventLoops::wait_event(Some(Duration::from_millis(u64::from(dw_milliseconds))));
+    open_coroutine_core::syscall::Sleep(Some(&SleepHook), dw_milliseconds);
 }

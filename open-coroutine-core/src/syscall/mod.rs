@@ -1,26 +1,35 @@
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
+#[cfg(unix)]
 use libc::{
     fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timespec,
     timeval,
 };
+#[cfg(unix)]
 use std::ffi::{c_int, c_uint, c_void};
 
+#[cfg(unix)]
 pub mod common;
 
+#[cfg(unix)]
 pub mod raw;
 
+#[cfg(unix)]
 pub mod nio;
 
 #[allow(unused_variables)]
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 pub mod io_uring;
 
+#[cfg(unix)]
 pub mod state;
 
+#[cfg(unix)]
 mod facade;
+#[cfg(unix)]
 pub use facade::*;
 
+#[cfg(unix)]
 pub trait UnixSyscall {
     /// sleep
 
@@ -278,3 +287,9 @@ pub trait LinuxSyscall: UnixSyscall {
         flg: c_int,
     ) -> c_int;
 }
+
+#[allow(non_snake_case)]
+#[cfg(windows)]
+mod Sleep;
+#[cfg(windows)]
+pub use Sleep::Sleep;
