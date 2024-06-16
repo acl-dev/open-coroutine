@@ -132,14 +132,14 @@ fn test_backtrace() {
 fn test_context() {
     let mut coroutine = co!(|_: &dyn Suspender<'_, Resume = (), Yield = ()>, ()| {
         let current = CoroutineImpl::<(), (), ()>::current().unwrap();
-        assert_eq!(2, *current.local().get("1").unwrap());
-        *current.local().get_mut("1").unwrap() = 3;
+        assert_eq!(2, *current.get("1").unwrap());
+        *current.get_mut("1").unwrap() = 3;
         ()
     });
-    assert!(coroutine.local().put("1", 1).is_none());
-    assert_eq!(Some(1), coroutine.local().put("1", 2));
+    assert!(coroutine.put("1", 1).is_none());
+    assert_eq!(Some(1), coroutine.put("1", 2));
     assert_eq!(CoroutineState::Complete(()), coroutine.resume().unwrap());
-    assert_eq!(Some(3), coroutine.local().remove("1"));
+    assert_eq!(Some(3), coroutine.remove("1"));
 }
 
 #[test]
