@@ -1,10 +1,10 @@
 use crate::common::{Current, Named};
 use crate::constants::{CoroutineState, Syscall, SyscallState};
-use crate::coroutine::local::HasCoroutineLocal;
 use crate::coroutine::suspender::Suspender;
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
 use std::fmt::{Debug, Formatter};
 use std::io::{Error, ErrorKind};
+use std::ops::Deref;
 use std::panic::UnwindSafe;
 
 /// Coroutine suspender abstraction.
@@ -37,6 +37,7 @@ macro_rules! co {
     };
 }
 
+use crate::coroutine::local::CoroutineLocal;
 #[cfg(feature = "korosensei")]
 pub use korosensei::CoroutineImpl;
 
@@ -51,7 +52,7 @@ mod boost {}
 mod tests;
 
 /// A trait implemented for coroutines.
-pub trait Coroutine<'c>: Debug + Named + Current + HasCoroutineLocal {
+pub trait Coroutine<'c>: Debug + Named + Current + Deref<Target = CoroutineLocal<'c>> {
     /// The type of value this coroutine accepts as a resume argument.
     type Resume: UnwindSafe;
 
@@ -320,7 +321,7 @@ where
         f.debug_struct("Coroutine")
             .field("name", &self.get_name())
             .field("status", &self.state())
-            .field("local", self.local())
+            .field("local", &self.local)
             .finish()
     }
 }

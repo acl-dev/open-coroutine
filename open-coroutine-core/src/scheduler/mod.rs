@@ -11,6 +11,7 @@ use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
@@ -26,9 +27,6 @@ pub mod listener;
 
 /// Join impl for scheduler.
 pub mod join;
-
-/// Has scheduler abstraction.
-pub mod has;
 
 #[cfg(test)]
 mod tests;
@@ -381,3 +379,9 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
 }
 
 impl_current_for!(SCHEDULER, SchedulerImpl<'s>);
+
+impl<'s, HasSchedulerImpl: Deref<Target = SchedulerImpl<'s>>> Named for HasSchedulerImpl {
+    fn get_name(&self) -> &str {
+        Box::leak(Box::from(self.deref().get_name()))
+    }
+}

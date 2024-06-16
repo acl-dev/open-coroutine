@@ -4,10 +4,10 @@ use std::ffi::c_void;
 /// A struct for coroutines handles local args.
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct CoroutineLocal(DashMap<&'static str, usize>);
+pub struct CoroutineLocal<'c>(DashMap<&'c str, usize>);
 
 #[allow(missing_docs, box_pointers)]
-impl CoroutineLocal {
+impl CoroutineLocal<'_> {
     #[must_use]
     pub fn put<V>(&self, key: &str, val: V) -> Option<V> {
         let k: &str = Box::leak(Box::from(key));
@@ -39,27 +39,6 @@ impl CoroutineLocal {
         self.0
             .remove(k)
             .map(|ptr| unsafe { *Box::from_raw((ptr.1 as *mut c_void).cast::<V>()) })
-    }
-}
-
-#[allow(missing_docs)]
-pub trait HasCoroutineLocal {
-    fn local(&self) -> &CoroutineLocal;
-
-    fn put<V>(&self, key: &str, val: V) -> Option<V> {
-        self.local().put(key, val)
-    }
-
-    fn get<V>(&self, key: &str) -> Option<&V> {
-        self.local().get(key)
-    }
-
-    fn get_mut<V>(&self, key: &str) -> Option<&mut V> {
-        self.local().get_mut(key)
-    }
-
-    fn remove<V>(&self, key: &str) -> Option<V> {
-        self.local().remove(key)
     }
 }
 

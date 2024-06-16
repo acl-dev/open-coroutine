@@ -6,13 +6,13 @@ use crate::impl_current_for;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
-use crate::scheduler::has::HasScheduler;
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler, SchedulerImpl};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
+use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -27,15 +27,12 @@ pub mod join;
 
 mod creator;
 
-/// Has coroutine pool abstraction.
-pub mod has;
-
 #[cfg(test)]
 mod tests;
 
 /// The `TaskPool` abstraction.
 pub trait TaskPool<'p, Join: JoinHandle<Self>>:
-    Debug + Default + RefUnwindSafe + Named + Current + StatePool + HasScheduler<'p>
+    Debug + Default + RefUnwindSafe + Named + Current + StatePool + DerefMut<Target = SchedulerImpl<'p>>
 {
     /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
     ///
@@ -296,12 +293,16 @@ impl CoroutinePoolImpl<'_> {
     }
 }
 
-impl<'p> HasScheduler<'p> for CoroutinePoolImpl<'p> {
-    fn scheduler(&self) -> &SchedulerImpl<'p> {
+impl<'p> Deref for CoroutinePoolImpl<'p> {
+    type Target = SchedulerImpl<'p>;
+
+    fn deref(&self) -> &Self::Target {
         &self.workers
     }
+}
 
-    fn scheduler_mut(&mut self) -> &mut SchedulerImpl<'p> {
+impl<'p> DerefMut for CoroutinePoolImpl<'p> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.workers
     }
 }
@@ -352,7 +353,7 @@ impl_current_for!(COROUTINE_POOL, CoroutinePoolImpl<'p>);
 impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
     fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
         Self::init_current(self);
-        let result = self.scheduler().submit_raw_co(coroutine);
+        let result = self.deref().submit_raw_co(coroutine);
         Self::clean_current();
         result
     }
