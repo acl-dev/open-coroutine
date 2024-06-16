@@ -1,5 +1,4 @@
 use crate::common::Current;
-use crate::coroutine::local::HasCoroutineLocal;
 use crate::monitor::Monitor;
 use crate::scheduler::listener::Listener;
 use crate::scheduler::SchedulableCoroutine;

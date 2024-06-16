@@ -4,8 +4,6 @@ use std::ffi::c_int;
 use std::fmt::Debug;
 use std::time::Duration;
 
-pub mod has;
-
 mod polling;
 
 pub use polling::{Events, SelectorImpl};

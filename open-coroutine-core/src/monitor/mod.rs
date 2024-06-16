@@ -8,8 +8,6 @@ use crate::impl_current_for;
 use crate::monitor::node::TaskNode;
 #[cfg(feature = "net")]
 use crate::net::event_loop::EventLoops;
-#[cfg(feature = "net")]
-use crate::pool::has::HasCoroutinePool;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use core_affinity::{set_for_current, CoreId};

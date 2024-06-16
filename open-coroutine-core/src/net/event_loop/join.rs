@@ -1,7 +1,7 @@
 use crate::common::JoinHandle;
 use crate::net::event_loop::core::EventLoop;
-use crate::pool::has::HasCoroutinePool;
-use crate::scheduler::has::HasScheduler;
+use crate::pool::WaitableTaskPool;
+use crate::scheduler::Scheduler;
 use std::ffi::{c_char, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;

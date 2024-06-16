@@ -3,15 +3,13 @@ use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender};
 use crate::coroutine::Coroutine;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
-use crate::net::selector::has::HasSelector;
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};
-use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
-use crate::pool::{CoroutinePool, CoroutinePoolImpl};
-use crate::scheduler::has::HasScheduler;
-use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler};
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::MaybeUninit;
+use std::ops::{Deref, DerefMut};
 use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -149,12 +147,24 @@ impl EventLoop {
         }
     }
 
-    pub fn add_read(&self, fd: c_int) -> std::io::Result<()> {
+    pub fn add_read_event(&self, fd: c_int) -> std::io::Result<()> {
         self.selector.add_read_event(fd, EventLoop::token(false))
     }
 
-    pub fn add_write(&self, fd: c_int) -> std::io::Result<()> {
+    pub fn add_write_event(&self, fd: c_int) -> std::io::Result<()> {
         self.selector.add_write_event(fd, EventLoop::token(false))
+    }
+
+    pub fn del_event(&self, fd: c_int) -> std::io::Result<()> {
+        self.selector.del_event(fd)
+    }
+
+    pub fn del_read_event(&self, fd: c_int) -> std::io::Result<()> {
+        self.selector.del_read_event(fd)
+    }
+
+    pub fn del_write_event(&self, fd: c_int) -> std::io::Result<()> {
+        self.selector.del_write_event(fd)
     }
 
     pub fn wait_event(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
@@ -239,19 +249,17 @@ impl EventLoop {
     }
 }
 
-impl HasCoroutinePool<'static> for EventLoop {
-    fn pool(&self) -> &CoroutinePoolImpl<'static> {
-        unsafe { self.pool.assume_init_ref() }
-    }
+impl Deref for EventLoop {
+    type Target = CoroutinePoolImpl<'static>;
 
-    fn pool_mut(&mut self) -> &mut CoroutinePoolImpl<'static> {
-        unsafe { self.pool.assume_init_mut() }
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.pool.assume_init_ref() }
     }
 }
 
-impl HasSelector for EventLoop {
-    fn selector(&self) -> &SelectorImpl {
-        &self.selector
+impl DerefMut for EventLoop {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.pool.assume_init_mut() }
     }
 }
 

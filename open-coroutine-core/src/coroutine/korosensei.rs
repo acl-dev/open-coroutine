@@ -1,7 +1,7 @@
 use crate::catch;
 use crate::common::{Current, Named};
 use crate::constants::CoroutineState;
-use crate::coroutine::local::{CoroutineLocal, HasCoroutineLocal};
+use crate::coroutine::local::CoroutineLocal;
 use crate::coroutine::suspender::{DelaySuspender, Suspender, SuspenderImpl};
 use crate::coroutine::{Coroutine, StateCoroutine};
 use corosensei::stack::DefaultStack;
@@ -10,6 +10,7 @@ use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::Cell;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
+use std::ops::Deref;
 use std::panic::UnwindSafe;
 
 cfg_if::cfg_if! {
@@ -31,7 +32,7 @@ where
     name: String,
     inner: ScopedCoroutine<'c, Param, Yield, Result<Return, &'static str>, DefaultStack>,
     state: Cell<CoroutineState<Yield, Return>>,
-    local: CoroutineLocal,
+    pub(crate) local: CoroutineLocal<'c>,
 }
 
 impl<'c, Param, Yield, Return> CoroutineImpl<'c, Param, Yield, Return>
@@ -332,13 +333,12 @@ where
     }
 }
 
-impl<Param, Yield, Return> HasCoroutineLocal for CoroutineImpl<'_, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+impl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe> Deref
+    for CoroutineImpl<'c, Param, Yield, Return>
 {
-    fn local(&self) -> &CoroutineLocal {
+    type Target = CoroutineLocal<'c>;
+
+    fn deref(&self) -> &Self::Target {
         &self.local
     }
 }
