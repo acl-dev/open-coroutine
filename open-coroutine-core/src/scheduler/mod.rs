@@ -1,6 +1,6 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::constants::{CoroutineState, SyscallState};
-use crate::coroutine::suspender::{Suspender, SuspenderImpl};
+use crate::coroutine::suspender::Suspender;
 use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
@@ -20,7 +20,7 @@ use uuid::Uuid;
 pub type SchedulableCoroutine<'s> = CoroutineImpl<'s, (), (), Option<usize>>;
 
 /// A type for Scheduler.
-pub type SchedulableSuspender<'s> = SuspenderImpl<'s, (), ()>;
+pub type SchedulableSuspender<'s> = Suspender<'s, (), ()>;
 
 /// Listener abstraction and impl.
 pub mod listener;
@@ -52,9 +52,7 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     /// if create coroutine fails.
     fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<Join> {
         let coroutine = SchedulableCoroutine::new(

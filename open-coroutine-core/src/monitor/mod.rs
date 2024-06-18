@@ -2,7 +2,6 @@ use crate::common::Current;
 #[cfg(feature = "logs")]
 use crate::common::Named;
 use crate::constants::{CoroutineState, MONITOR_CPU};
-use crate::coroutine::suspender::SimpleSuspender;
 use crate::coroutine::StateCoroutine;
 use crate::impl_current_for;
 use crate::monitor::node::TaskNode;

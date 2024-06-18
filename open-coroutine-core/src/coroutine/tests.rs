@@ -2,24 +2,16 @@ use super::*;
 
 #[test]
 fn test_return() {
-    let mut coroutine = co!(|_: &dyn Suspender<'_, Yield = (), Resume = i32>, param| {
-        assert_eq!(0, param);
-        1
-    });
-    assert_eq!(
-        CoroutineState::Complete(1),
-        coroutine.resume_with(0).unwrap()
-    );
+    let mut coroutine = co!(|_: &Suspender<'_, (), i32>, _| { 1 });
+    assert_eq!(CoroutineState::Complete(1), coroutine.resume().unwrap());
 }
 
 #[test]
 fn test_yield_once() {
-    let mut coroutine = co!(
-        |suspender: &dyn Suspender<'_, Resume = i32, Yield = i32>, param| {
-            assert_eq!(1, param);
-            _ = suspender.suspend_with(2);
-        }
-    );
+    let mut coroutine = co!(|suspender: &Suspender<'_, i32, i32>, param| {
+        assert_eq!(1, param);
+        _ = suspender.suspend_with(2);
+    });
     assert_eq!(
         CoroutineState::Suspend(2, 0),
         coroutine.resume_with(1).unwrap()
@@ -54,7 +46,7 @@ fn test_current() {
     let parent_name = "parent";
     let mut parent = co!(
         String::from(parent_name),
-        |_: &dyn Suspender<'_, Resume = i32, Yield = i32>, input| {
+        |_: &Suspender<'_, i32, i32>, input| {
             assert_eq!(0, input);
             assert_eq!(
                 parent_name,
@@ -72,7 +64,7 @@ fn test_current() {
             let child_name = "child";
             let mut child = co!(
                 String::from(child_name),
-                |_: &dyn Suspender<'_, Resume = i32, Yield = i32>, input| {
+                |_: &Suspender<'_, i32, i32>, input| {
                     assert_eq!(0, input);
                     assert_eq!(
                         child_name,
@@ -130,7 +122,7 @@ fn test_backtrace() {
 
 #[test]
 fn test_context() {
-    let mut coroutine = co!(|_: &dyn Suspender<'_, Resume = (), Yield = ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
         let current = CoroutineImpl::<(), (), ()>::current().unwrap();
         assert_eq!(2, *current.get("1").unwrap());
         *current.get_mut("1").unwrap() = 3;
@@ -144,7 +136,7 @@ fn test_context() {
 
 #[test]
 fn test_panic() {
-    let mut coroutine = co!(|_: &dyn Suspender<'_, Yield = (), Resume = ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
         panic!("test panic, just ignore it");
     });
     let result = coroutine.resume();
@@ -158,7 +150,7 @@ fn test_panic() {
 
 #[test]
 fn test_trap() {
-    let mut coroutine = co!(|_: &dyn Suspender<'_, Yield = (), Resume = ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
         println!("Before trap");
         unsafe { std::ptr::write_volatile(1 as *mut u8, 0) };
         println!("After trap");
@@ -175,7 +167,7 @@ fn test_trap() {
 #[cfg(not(debug_assertions))]
 #[test]
 fn test_invalid_memory_reference() {
-    let mut coroutine = co!(|_: &dyn Suspender<'_, Yield = (), Resume = ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
         println!("Before invalid memory reference");
         // 没有加--release运行，会收到SIGABRT信号，不好处理，直接禁用测试
         unsafe {

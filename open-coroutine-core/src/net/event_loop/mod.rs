@@ -1,4 +1,4 @@
-use crate::coroutine::suspender::{Suspender, SuspenderImpl};
+use crate::coroutine::suspender::Suspender;
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
@@ -49,7 +49,7 @@ mod blocker;
 pub mod core;
 
 /// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
+pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -168,9 +168,7 @@ impl EventLoops {
     }
 
     pub fn submit_co(
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<CoJoinHandleImpl> {
         Self::start();
@@ -178,9 +176,7 @@ impl EventLoops {
     }
 
     pub fn submit(
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'static,
         param: Option<usize>,
     ) -> TaskJoinHandleImpl {
         Self::start();

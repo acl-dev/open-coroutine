@@ -1,6 +1,6 @@
 use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
-use crate::coroutine::suspender::{SimpleSuspender, Suspender};
+use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
 use crate::impl_current_for;
 use crate::pool::creator::CoroutineCreator;
@@ -43,9 +43,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
     /// if create coroutine fails.
     fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<Join> {
         let coroutine = SchedulableCoroutine::new(
@@ -72,9 +70,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
     fn submit(
         &self,
         name: Option<String>,
-        func: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 'p,
+        func: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'p,
         param: Option<usize>,
     ) -> Join {
         let name = name.unwrap_or(format!("{}|{}", self.get_name(), Uuid::new_v4()));
@@ -92,7 +88,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
     fn pop(&self) -> Option<Task<'p>>;
 
     /// Attempt to run a task in current coroutine or thread.
-    fn try_run(&self, suspender: &dyn Suspender<Resume = (), Yield = ()>) -> Option<()>;
+    fn try_run(&self, suspender: &Suspender<(), ()>) -> Option<()>;
 
     /// Returns `true` if the task queue is empty.
     fn has_task(&self) -> bool {
@@ -116,9 +112,7 @@ pub trait WaitableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p, Join> {
     fn submit_and_wait(
         &self,
         name: Option<String>,
-        func: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 'p,
+        func: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'p,
         param: Option<usize>,
         wait_time: Duration,
     ) -> std::io::Result<Option<(String, Result<Option<usize>, &str>)>> {
@@ -376,7 +370,7 @@ impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
         }
     }
 
-    fn try_run(&self, suspender: &dyn Suspender<Resume = (), Yield = ()>) -> Option<()> {
+    fn try_run(&self, suspender: &Suspender<(), ()>) -> Option<()> {
         self.pop().map(|task| {
             let (task_name, result) = task.run(suspender);
             assert!(

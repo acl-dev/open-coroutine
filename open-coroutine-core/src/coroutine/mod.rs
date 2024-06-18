@@ -68,10 +68,7 @@ pub trait Coroutine<'c>: Debug + Named + Current + Deref<Target = CoroutineLocal
     /// if stack allocate failed.
     fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
     where
-        F: FnOnce(
-            &dyn Suspender<Resume = Self::Resume, Yield = Self::Yield>,
-            Self::Resume,
-        ) -> Self::Return,
+        F: FnOnce(&Suspender<Self::Resume, Self::Yield>, Self::Resume) -> Self::Return,
         F: UnwindSafe,
         F: 'c,
         Self: Sized;
