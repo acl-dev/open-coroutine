@@ -1,5 +1,6 @@
 use crate::common::Named;
 use crate::constants::{CoroutineState, Syscall, SyscallState};
+use crate::coroutine::listener::Listener;
 use crate::coroutine::Coroutine;
 use crate::info;
 use std::fmt::Debug;
@@ -14,8 +15,13 @@ where
 {
     /// Returns the previous state of this `StateCoroutine`.
     /// Note: user should not use this method.
-    fn change_state(&self, state: CoroutineState<Yield, Return>) -> CoroutineState<Yield, Return> {
-        self.state.replace(state)
+    fn change_state(
+        &self,
+        new_state: CoroutineState<Yield, Return>,
+    ) -> CoroutineState<Yield, Return> {
+        let old_state = self.state.replace(new_state);
+        self.on_state_changed(self, old_state, new_state);
+        old_state
     }
 
     /// created -> ready
@@ -23,16 +29,20 @@ where
     ///
     /// # Errors
     /// if change state fails.
-    pub fn ready(&self) -> std::io::Result<()> {
+    pub(crate) fn ready(&self) -> std::io::Result<()> {
         let current = self.state();
         match current {
             CoroutineState::Created => {
-                _ = self.change_state(CoroutineState::Ready);
+                let new_state = CoroutineState::Ready;
+                let old_state = self.change_state(new_state);
+                self.on_ready(self, old_state);
                 return Ok(());
             }
             CoroutineState::Suspend(_, timestamp) => {
                 if timestamp <= open_coroutine_timer::now() {
-                    _ = self.change_state(CoroutineState::Ready);
+                    let new_state = CoroutineState::Ready;
+                    let old_state = self.change_state(new_state);
+                    self.on_ready(self, old_state);
                     return Ok(());
                 }
             }
@@ -63,17 +73,23 @@ where
             CoroutineState::Running => return Ok(()),
             #[cfg(test)]
             CoroutineState::Created => {
-                _ = self.change_state(CoroutineState::Running);
+                let new_state = CoroutineState::Running;
+                let old_state = self.change_state(new_state);
+                self.on_running(self, old_state);
                 return Ok(());
             }
             CoroutineState::Ready => {
-                _ = self.change_state(CoroutineState::Running);
+                let new_state = CoroutineState::Running;
+                let old_state = self.change_state(new_state);
+                self.on_running(self, old_state);
                 return Ok(());
             }
             // #[cfg(test)] preemptive.rs use this
             CoroutineState::Suspend(_, timestamp) => {
                 if timestamp <= open_coroutine_timer::now() {
-                    _ = self.change_state(CoroutineState::Running);
+                    let new_state = CoroutineState::Running;
+                    let old_state = self.change_state(new_state);
+                    self.on_running(self, old_state);
                     return Ok(());
                 }
             }
@@ -82,9 +98,10 @@ where
                 _,
                 SyscallState::Executing | SyscallState::Finished | SyscallState::Timeout,
             ) => {
-                let state = CoroutineState::Running;
-                _ = self.change_state(state);
-                info!("{} {:?}->{:?}", self.get_name(), current, state);
+                let new_state = CoroutineState::Running;
+                let old_state = self.change_state(new_state);
+                self.on_running(self, old_state);
+                info!("{} {:?}->{:?}", self.get_name(), current, new_state);
                 return Ok(());
             }
             _ => {}
@@ -103,10 +120,12 @@ where
     ///
     /// # Errors
     /// if change state fails.
-    pub fn suspend(&self, val: Yield, timestamp: u64) -> std::io::Result<()> {
+    pub(super) fn suspend(&self, val: Yield, timestamp: u64) -> std::io::Result<()> {
         let current = self.state();
         if CoroutineState::Running == current {
-            _ = self.change_state(CoroutineState::Suspend(val, timestamp));
+            let new_state = CoroutineState::Suspend(val, timestamp);
+            let old_state = self.change_state(new_state);
+            self.on_suspend(self, old_state);
             return Ok(());
         }
         Err(Error::new(
@@ -133,16 +152,18 @@ where
         let current = self.state();
         match current {
             CoroutineState::Running => {
-                let state = CoroutineState::SystemCall(val, syscall, syscall_state);
-                _ = self.change_state(state);
-                info!("{} {:?}->{:?}", self.get_name(), current, state);
+                let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
+                let old_state = self.change_state(new_state);
+                self.on_syscall(self, old_state);
+                info!("{} {:?}->{:?}", self.get_name(), current, new_state);
                 return Ok(());
             }
             CoroutineState::SystemCall(_, original_syscall, _) => {
                 if original_syscall == syscall {
-                    let state = CoroutineState::SystemCall(val, syscall, syscall_state);
-                    _ = self.change_state(state);
-                    info!("{} {:?}->{:?}", self.get_name(), current, state);
+                    let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
+                    let old_state = self.change_state(new_state);
+                    self.on_syscall(self, old_state);
+                    info!("{} {:?}->{:?}", self.get_name(), current, new_state);
                     return Ok(());
                 }
             }
@@ -162,10 +183,12 @@ where
     ///
     /// # Errors
     /// if change state fails.
-    pub fn complete(&self, val: Return) -> std::io::Result<()> {
+    pub(super) fn complete(&self, val: Return) -> std::io::Result<()> {
         let current = self.state();
         if CoroutineState::Running == current {
-            _ = self.change_state(CoroutineState::Complete(val));
+            let new_state = CoroutineState::Complete(val);
+            let old_state = self.change_state(new_state);
+            self.on_complete(self, old_state, val);
             return Ok(());
         }
         Err(Error::new(
@@ -182,10 +205,12 @@ where
     ///
     /// # Errors
     /// if change state fails.
-    pub fn error(&self, val: &'static str) -> std::io::Result<()> {
+    pub(super) fn error(&self, msg: &'static str) -> std::io::Result<()> {
         let current = self.state();
         if CoroutineState::Running == current {
-            _ = self.change_state(CoroutineState::Error(val));
+            let new_state = CoroutineState::Error(msg);
+            let old_state = self.change_state(new_state);
+            self.on_error(self, old_state, msg);
             return Ok(());
         }
         Err(Error::new(
@@ -193,7 +218,7 @@ where
             format!(
                 "{} unexpected {current}->{:?}",
                 self.get_name(),
-                CoroutineState::<Yield, Return>::Error(val)
+                CoroutineState::<Yield, Return>::Error(msg)
             ),
         ))
     }

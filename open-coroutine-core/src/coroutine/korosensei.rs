@@ -1,12 +1,14 @@
 use crate::catch;
 use crate::common::{Current, Named};
 use crate::constants::CoroutineState;
+use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::coroutine::suspender::Suspender;
 use corosensei::stack::DefaultStack;
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::Cell;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 use std::panic::UnwindSafe;
@@ -25,20 +27,21 @@ cfg_if::cfg_if! {
 pub struct Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
 {
     pub(crate) name: String,
     inner: ScopedCoroutine<'c, Param, Yield, Result<Return, &'static str>, DefaultStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
+    pub(crate) listeners: VecDeque<&'c dyn Listener<Param, Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
 }
 
-impl<Param, Yield, Return> Coroutine<'_, Param, Yield, Return>
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
 {
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
@@ -305,13 +308,17 @@ where
             );
         }
     }
+
+    pub(crate) fn add_raw_listener(&mut self, listener: &'c dyn Listener<Param, Yield, Return>) {
+        self.listeners.push_back(listener);
+    }
 }
 
 impl<Param, Yield, Return> Drop for Coroutine<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
 {
     fn drop(&mut self) {
         //for test_yield case
@@ -354,12 +361,18 @@ where
             Suspender::<Param, Yield>::clean_current();
             r
         });
-        Ok(Coroutine {
+        #[allow(unused_mut)]
+        let mut co = Coroutine {
             name,
             inner,
             state: Cell::new(CoroutineState::Created),
+            listeners: VecDeque::default(),
             local: CoroutineLocal::default(),
-        })
+        };
+        #[cfg(all(unix, feature = "preemptive-schedule"))]
+        co.add_listener(crate::monitor::creator::MonitorListener::default());
+        co.on_create(&co, stack_size);
+        Ok(co)
     }
 
     pub(crate) fn raw_resume(

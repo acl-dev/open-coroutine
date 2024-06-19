@@ -162,10 +162,7 @@ impl<'s> SchedulerImpl<'s> {
     }
 
     #[allow(clippy::unused_self)]
-    fn init(&mut self) {
-        #[cfg(all(unix, feature = "preemptive-schedule"))]
-        self.add_listener(crate::monitor::creator::MonitorTaskCreator::default());
-    }
+    fn init(&mut self) {}
 
     fn check_ready(&self) -> std::io::Result<()> {
         unsafe {

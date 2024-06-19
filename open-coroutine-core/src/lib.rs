@@ -55,12 +55,12 @@ pub mod common;
 
 pub mod coroutine;
 
+#[cfg(all(unix, feature = "preemptive-schedule"))]
+mod monitor;
+
 pub mod scheduler;
 
 pub mod pool;
-
-#[cfg(all(unix, feature = "preemptive-schedule"))]
-mod monitor;
 
 #[cfg(feature = "net")]
 pub mod net;

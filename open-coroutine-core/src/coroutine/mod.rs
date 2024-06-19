@@ -12,8 +12,11 @@ pub mod suspender;
 /// Coroutine local abstraction.
 pub mod local;
 
+/// Coroutine listener abstraction and impl.
+pub mod listener;
+
 /// Coroutine state abstraction and impl.
-pub mod state;
+mod state;
 
 /// Create a new coroutine.
 #[macro_export]
@@ -39,6 +42,7 @@ macro_rules! co {
     };
 }
 
+use crate::coroutine::listener::Listener;
 #[cfg(feature = "korosensei")]
 pub use korosensei::Coroutine;
 
@@ -51,15 +55,20 @@ mod boost {}
 #[cfg(test)]
 mod tests;
 
-impl<Param, Yield, Return> Coroutine<'_, Param, Yield, Return>
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
 {
     /// Returns the current state of this `StateCoroutine`.
     pub fn state(&self) -> CoroutineState<Yield, Return> {
         self.state.get()
+    }
+
+    /// Add a listener to this coroutine.
+    pub fn add_listener(&mut self, listener: impl Listener<Param, Yield, Return> + 'c) {
+        self.add_raw_listener(Box::leak(Box::new(listener)));
     }
 }
 
@@ -105,8 +114,8 @@ where
 impl<Param, Yield, Return> Debug for Coroutine<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe + Debug,
-    Return: Copy + UnwindSafe + Debug,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
@@ -120,8 +129,8 @@ where
 impl<'c, Param, Yield, Return> Deref for Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
 {
     type Target = CoroutineLocal<'c>;
 
@@ -145,16 +154,16 @@ impl_for_named!(
     Coroutine<'c, Param, Yield, Return>
     where
         Param: UnwindSafe,
-        Yield: Copy + UnwindSafe,
-        Return: Copy + UnwindSafe
+        Yield: Debug+Copy + UnwindSafe,
+        Return: Debug+Copy + UnwindSafe
 );
 
 impl_display_by_debug!(
     Coroutine<'c, Param, Yield, Return>
     where
         Param: UnwindSafe,
-        Yield: Copy + UnwindSafe,
-        Return: Copy + UnwindSafe
+        Yield: Debug+Copy + UnwindSafe,
+        Return: Debug+Copy + UnwindSafe
 );
 
 impl_current_for!(
@@ -162,6 +171,6 @@ impl_current_for!(
     Coroutine<'c, Param, Yield, Return>
     where
         Param: UnwindSafe,
-        Yield: Copy + UnwindSafe,
-        Return: Copy + UnwindSafe
+        Yield: Debug+Copy + UnwindSafe,
+        Return: Debug+Copy + UnwindSafe
 );
