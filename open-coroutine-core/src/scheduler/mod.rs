@@ -1,7 +1,7 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::constants::{CoroutineState, SyscallState};
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
+use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine};
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
 use crate::{impl_current_for, impl_for_named};

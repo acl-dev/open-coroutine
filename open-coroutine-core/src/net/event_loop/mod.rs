@@ -17,7 +17,6 @@ use std::time::Duration;
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use crate::common::Current;
-        use crate::coroutine::suspender::SimpleSuspender;
         use crate::scheduler::SchedulableSuspender;
         use libc::{c_void, epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 
