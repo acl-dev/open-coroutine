@@ -1,5 +1,5 @@
 use crate::common::{Current, JoinHandle, Named};
-use crate::coroutine::suspender::{SimpleDelaySuspender, Suspender};
+use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
@@ -97,9 +97,7 @@ impl EventLoop {
 
     pub fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<CoJoinHandleImpl> {
         let coroutine = SchedulableCoroutine::new(
@@ -114,9 +112,7 @@ impl EventLoop {
 
     pub fn submit(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'static,
         param: Option<usize>,
     ) -> TaskJoinHandleImpl {
         let name = format!("{}|{}", self.get_name(), Uuid::new_v4());

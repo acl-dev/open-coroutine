@@ -1,126 +1,83 @@
-use crate::common::Current;
+use crate::impl_current_for;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::panic::UnwindSafe;
 use std::time::Duration;
 
-/// A trait implemented for suspend the execution of the coroutine.
-pub trait Suspender<'s>: Current {
-    /// The type of value this coroutine accepts as a resume argument.
-    type Resume: UnwindSafe;
-
-    /// The type of value the coroutine yields.
-    type Yield: UnwindSafe;
-
-    /// Suspend the execution of the coroutine.
-    fn suspend_with(&self, arg: Self::Yield) -> Self::Resume;
-}
-
-impl_current_for!(
-    SUSPENDER,
-    SuspenderImpl<'s, Param: UnwindSafe, Yield: UnwindSafe>
-);
-
-/// A trait implemented for suspend the execution of the coroutine.
-pub trait SimpleSuspender<'s>: Suspender<'s, Yield = ()> {
-    /// Suspend the execution of the coroutine.
-    fn suspend(&self) -> Self::Resume;
-}
-
-impl<'s, SimpleSuspenderImpl: ?Sized + Suspender<'s, Yield = ()>> SimpleSuspender<'s>
-    for SimpleSuspenderImpl
-{
-    fn suspend(&self) -> Self::Resume {
-        self.suspend_with(())
-    }
-}
-
-/// A trait implemented for suspend the execution of the coroutine.
-pub trait DelaySuspender<'s>: Suspender<'s> {
-    /// Delay the execution of the coroutine.
-    fn delay_with(&self, arg: Self::Yield, delay: Duration) -> Self::Resume {
-        self.until_with(arg, open_coroutine_timer::get_timeout_time(delay))
-    }
-
-    /// Delay the execution of the coroutine.
-    fn until_with(&self, arg: Self::Yield, timestamp: u64) -> Self::Resume;
-
-    /// When can a coroutine be resumed.
-    fn timestamp() -> u64;
-}
-
 thread_local! {
-    static TIMESTAMP: RefCell<VecDeque<u64>> = const{RefCell::new(VecDeque::new())};
+    static TIMESTAMP: RefCell<VecDeque<u64>> = const { RefCell::new(VecDeque::new()) };
 }
 
-impl<'s, DelaySuspenderImpl: ?Sized + Suspender<'s>> DelaySuspender<'s> for DelaySuspenderImpl {
-    fn until_with(&self, arg: Self::Yield, timestamp: u64) -> Self::Resume {
+impl<'s, Param: UnwindSafe, Yield: UnwindSafe> Suspender<'s, Param, Yield> {
+    /// Delay the execution of the coroutine with an arg after `Duration`.
+    pub fn delay_with(&self, arg: Yield, delay: Duration) -> Param {
+        self.until_with(arg, get_timeout_time(delay))
+    }
+
+    /// Delay the execution of the coroutine with an arg until `timestamp`.
+    pub fn until_with(&self, arg: Yield, timestamp: u64) -> Param {
         TIMESTAMP.with(|s| {
             s.borrow_mut().push_front(timestamp);
         });
         self.suspend_with(arg)
     }
 
-    fn timestamp() -> u64 {
+    pub(crate) fn timestamp() -> u64 {
         TIMESTAMP.with(|s| s.borrow_mut().pop_front()).unwrap_or(0)
     }
 }
 
-/// A trait implemented for suspend the execution of the coroutine.
-pub trait SimpleDelaySuspender<'s>: DelaySuspender<'s, Yield = ()> {
-    /// Delay the execution of the coroutine.
-    fn delay(&self, delay: Duration) -> Self::Resume;
+#[allow(clippy::must_use_candidate)]
+impl<'s, Param: UnwindSafe> Suspender<'s, Param, ()> {
+    /// see the `suspend_with` documents.
+    pub fn suspend(&self) -> Param {
+        self.suspend_with(())
+    }
 
-    /// Delay the execution of the coroutine.
-    fn until(&self, timestamp: u64) -> Self::Resume;
-}
-
-impl<'s, SimpleDelaySuspenderImpl: ?Sized + DelaySuspender<'s, Yield = ()>> SimpleDelaySuspender<'s>
-    for SimpleDelaySuspenderImpl
-{
-    fn delay(&self, delay: Duration) -> Self::Resume {
+    /// see the `delay_with` documents.
+    pub fn delay(&self, delay: Duration) -> Param {
         self.delay_with((), delay)
     }
 
-    fn until(&self, timestamp: u64) -> Self::Resume {
+    /// see the `until_with` documents.
+    pub fn until(&self, timestamp: u64) -> Param {
         self.until_with((), timestamp)
     }
 }
 
-use crate::impl_current_for;
-#[cfg(feature = "korosensei")]
-pub use korosensei::SuspenderImpl;
+impl_current_for!(
+    SUSPENDER,
+    Suspender<'s, Param: UnwindSafe, Yield: UnwindSafe>
+);
 
-#[allow(missing_docs, missing_debug_implementations)]
+#[cfg(feature = "korosensei")]
+pub use korosensei::Suspender;
+use open_coroutine_timer::get_timeout_time;
+
 #[cfg(feature = "korosensei")]
 mod korosensei {
     use crate::common::Current;
-    use crate::coroutine::suspender::Suspender;
     use corosensei::Yielder;
     use std::panic::UnwindSafe;
 
+    /// Ths suspender implemented for coroutine.
     #[repr(C)]
-    pub struct SuspenderImpl<'s, Param, Yield>(pub(crate) &'s Yielder<Param, Yield>)
-    where
-        Param: UnwindSafe,
-        Yield: UnwindSafe;
+    #[allow(missing_debug_implementations)]
+    pub struct Suspender<'s, Param: UnwindSafe, Yield: UnwindSafe> {
+        inner: &'s Yielder<Param, Yield>,
+    }
 
-    impl<'s, Param, Yield> Suspender<'s> for SuspenderImpl<'s, Param, Yield>
-    where
-        Param: UnwindSafe,
-        Yield: UnwindSafe,
-    {
-        type Resume = Param;
-        type Yield = Yield;
+    impl<'s, Param: UnwindSafe, Yield: UnwindSafe> Suspender<'s, Param, Yield> {
+        pub(crate) fn new(inner: &'s Yielder<Param, Yield>) -> Self {
+            Self { inner }
+        }
 
-        fn suspend_with(&self, arg: Self::Yield) -> Self::Resume {
+        /// Suspend the execution of current coroutine with an arg.
+        pub fn suspend_with(&self, arg: Yield) -> Param {
             Self::clean_current();
-            let param = self.0.suspend(arg);
+            let param = self.inner.suspend(arg);
             Self::init_current(self);
             param
         }
     }
 }
-
-#[cfg(all(feature = "boost", not(feature = "corosensei")))]
-mod boost {}

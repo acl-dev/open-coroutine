@@ -2,8 +2,8 @@ use crate::catch;
 use crate::common::{Current, Named};
 use crate::constants::CoroutineState;
 use crate::coroutine::local::CoroutineLocal;
-use crate::coroutine::suspender::{DelaySuspender, Suspender, SuspenderImpl};
-use crate::coroutine::{Coroutine, StateCoroutine};
+use crate::coroutine::suspender::Suspender;
+use crate::coroutine::Coroutine;
 use corosensei::stack::DefaultStack;
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::{CoroutineResult, ScopedCoroutine};
@@ -31,7 +31,7 @@ where
 {
     name: String,
     inner: ScopedCoroutine<'c, Param, Yield, Result<Return, &'static str>, DefaultStack>,
-    state: Cell<CoroutineState<Yield, Return>>,
+    pub(crate) state: Cell<CoroutineState<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
 }
 
@@ -306,6 +306,11 @@ where
             );
         }
     }
+
+    /// Returns the current state of this `StateCoroutine`.
+    pub fn state(&self) -> CoroutineState<Yield, Return> {
+        self.state.get()
+    }
 }
 
 impl<Param, Yield, Return> Drop for CoroutineImpl<'_, Param, Yield, Return>
@@ -355,10 +360,7 @@ where
 
     fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
     where
-        F: FnOnce(
-            &dyn Suspender<Resume = Self::Resume, Yield = Self::Yield>,
-            Self::Resume,
-        ) -> Self::Return,
+        F: FnOnce(&Suspender<Self::Resume, Self::Yield>, Self::Resume) -> Self::Return,
         F: UnwindSafe,
         F: 'c,
         Self: Sized,
@@ -367,8 +369,8 @@ where
         #[cfg(feature = "logs")]
         let co_name = name.clone().leak();
         let inner = ScopedCoroutine::with_stack(stack, move |y, p| {
-            let suspender = SuspenderImpl(y);
-            SuspenderImpl::<Param, Yield>::init_current(&suspender);
+            let suspender = Suspender::new(y);
+            Suspender::<Param, Yield>::init_current(&suspender);
             #[allow(box_pointers)]
             let r = catch!(
                 || f(&suspender, p),
@@ -376,7 +378,7 @@ where
                 "coroutine",
                 co_name
             );
-            SuspenderImpl::<Param, Yield>::clean_current();
+            Suspender::<Param, Yield>::clean_current();
             r
         });
         Ok(CoroutineImpl {
@@ -403,7 +405,7 @@ where
                         let current = self.state();
                         match current {
                             CoroutineState::Running => {
-                                let timestamp = SuspenderImpl::<Yield, Param>::timestamp();
+                                let timestamp = Suspender::<Yield, Param>::timestamp();
                                 let new_state = CoroutineState::Suspend(y, timestamp);
                                 self.suspend(y, timestamp)?;
                                 new_state
@@ -434,23 +436,5 @@ where
                 Ok(r)
             }
         }
-    }
-}
-
-impl<'c, Param, Yield, Return> StateCoroutine<'c> for CoroutineImpl<'c, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe + Debug,
-    Return: Copy + Eq + PartialEq + UnwindSafe + Debug,
-{
-    fn state(&self) -> CoroutineState<Self::Yield, Self::Return> {
-        self.state.get()
-    }
-
-    fn change_state(
-        &self,
-        state: CoroutineState<Self::Yield, Self::Return>,
-    ) -> CoroutineState<Self::Yield, Self::Return> {
-        self.state.replace(state)
     }
 }

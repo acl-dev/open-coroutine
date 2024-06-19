@@ -1,4 +1,4 @@
-use open_coroutine_core::coroutine::suspender::SuspenderImpl;
+use open_coroutine_core::coroutine::suspender::Suspender;
 use open_coroutine_core::net::event_loop::core::EventLoop;
 use open_coroutine_core::net::event_loop::UserFunc;
 use std::cmp::Ordering;
@@ -18,14 +18,14 @@ extern "C" {
 #[allow(dead_code)]
 pub fn task<F, P: 'static, R: 'static>(f: F, param: P) -> JoinHandle
 where
-    F: FnOnce(*const SuspenderImpl<(), ()>, P) -> R + Copy,
+    F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
 {
     extern "C" fn co_main<F, P: 'static, R: 'static>(
-        suspender: *const SuspenderImpl<(), ()>,
+        suspender: *const Suspender<(), ()>,
         input: usize,
     ) -> usize
     where
-        F: FnOnce(*const SuspenderImpl<(), ()>, P) -> R + Copy,
+        F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
     {
         unsafe {
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
