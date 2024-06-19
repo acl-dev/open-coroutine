@@ -1,5 +1,4 @@
 use super::*;
-use crate::coroutine::suspender::SimpleDelaySuspender;
 
 #[test]
 fn test_simple() {

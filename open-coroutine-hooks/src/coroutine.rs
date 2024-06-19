@@ -1,5 +1,4 @@
 use open_coroutine_core::common::JoinHandle;
-use open_coroutine_core::coroutine::suspender::SuspenderImpl;
 use open_coroutine_core::net::event_loop::join::CoJoinHandleImpl;
 use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
 use std::ffi::{c_long, c_void};
@@ -20,10 +19,7 @@ pub extern "C" fn coroutine_crate(
     EventLoops::submit_co(
         move |suspender, ()| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]
-            Some(f(
-                std::ptr::from_ref(suspender) as *const SuspenderImpl<(), ()>,
-                param,
-            ))
+            Some(f(std::ptr::from_ref(suspender), param))
         },
         stack_size,
     )

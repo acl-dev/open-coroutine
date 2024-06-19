@@ -1,5 +1,4 @@
 use open_coroutine_core::common::JoinHandle;
-use open_coroutine_core::coroutine::suspender::SuspenderImpl;
 use open_coroutine_core::net::event_loop::join::TaskJoinHandleImpl;
 use open_coroutine_core::net::event_loop::{EventLoops, UserFunc};
 use std::ffi::{c_long, c_void};
@@ -11,10 +10,7 @@ pub extern "C" fn task_crate(f: UserFunc, param: usize) -> TaskJoinHandleImpl {
     EventLoops::submit(
         move |suspender, p| {
             #[allow(clippy::cast_ptr_alignment, clippy::ptr_as_ptr)]
-            Some(f(
-                std::ptr::from_ref(suspender) as *const SuspenderImpl<(), ()>,
-                p.unwrap_or(0),
-            ))
+            Some(f(std::ptr::from_ref(suspender), p.unwrap_or(0)))
         },
         Some(param),
     )

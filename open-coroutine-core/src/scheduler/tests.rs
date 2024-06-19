@@ -1,6 +1,5 @@
 use super::*;
 use crate::constants::Syscall;
-use crate::coroutine::suspender::{SimpleDelaySuspender, SimpleSuspender};
 use std::time::Duration;
 
 #[test]
