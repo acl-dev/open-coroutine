@@ -1,10 +1,9 @@
-use crate::coroutine::suspender::{Suspender, SuspenderImpl};
+use crate::coroutine::suspender::Suspender;
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
-use crate::net::selector::Selector;
-use crate::pool::has::HasCoroutinePool;
 use crate::pool::task::Task;
+use crate::pool::TaskPool;
 use crate::warn;
 use core_affinity::{set_for_current, CoreId};
 use once_cell::sync::{Lazy, OnceCell};
@@ -18,7 +17,6 @@ use std::time::Duration;
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use crate::common::Current;
-        use crate::coroutine::suspender::SimpleSuspender;
         use crate::scheduler::SchedulableSuspender;
         use libc::{c_void, epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 
@@ -50,13 +48,13 @@ mod blocker;
 pub mod core;
 
 /// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(*const SuspenderImpl<(), ()>, usize) -> usize;
+pub type UserFunc = extern "C" fn(*const Suspender<(), ()>, usize) -> usize;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct EventLoops {}
 
-static mut INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+static INDEX: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 static mut EVENT_LOOPS: Lazy<Box<[EventLoop]>> = Lazy::new(|| {
     let config = Config::get_instance();
@@ -169,9 +167,7 @@ impl EventLoops {
     }
 
     pub fn submit_co(
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<CoJoinHandleImpl> {
         Self::start();
@@ -179,9 +175,7 @@ impl EventLoops {
     }
 
     pub fn submit(
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'static,
         param: Option<usize>,
     ) -> TaskJoinHandleImpl {
         Self::start();
@@ -215,7 +209,7 @@ impl EventLoops {
 
     pub fn wait_read_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = Self::next(false);
-        event_loop.add_read(fd)?;
+        event_loop.add_read_event(fd)?;
         if Self::monitor() == event_loop {
             // wait only happens in non-monitor for non-monitor thread
             return Self::wait_event(timeout);
@@ -225,7 +219,7 @@ impl EventLoops {
 
     pub fn wait_write_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = Self::next(false);
-        event_loop.add_write(fd)?;
+        event_loop.add_write_event(fd)?;
         if Self::monitor() == event_loop {
             // wait only happens in non-monitor for non-monitor thread
             return Self::wait_event(timeout);

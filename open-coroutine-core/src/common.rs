@@ -1,5 +1,4 @@
 use crate::constants::PoolState;
-use crate::coroutine::suspender::SimpleDelaySuspender;
 use crate::scheduler::SchedulableSuspender;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};

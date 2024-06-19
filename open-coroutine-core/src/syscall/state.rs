@@ -1,5 +1,4 @@
 use crate::common::{Current, Named};
-use crate::coroutine::StateCoroutine;
 use crate::info;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;

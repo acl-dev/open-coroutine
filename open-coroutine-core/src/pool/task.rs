@@ -10,11 +10,7 @@ use std::panic::UnwindSafe;
 #[allow(clippy::type_complexity, box_pointers)]
 pub struct Task<'t> {
     name: String,
-    func: Box<
-        dyn FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 't,
-    >,
+    func: Box<dyn FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 't>,
     param: Cell<Option<usize>>,
 }
 
@@ -39,9 +35,7 @@ impl Named for Task<'_> {
 impl<'t> Task<'t> {
     pub fn new(
         name: String,
-        func: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, Option<usize>) -> Option<usize>
-            + UnwindSafe
-            + 't,
+        func: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 't,
         param: Option<usize>,
     ) -> Self {
         Task {
@@ -68,7 +62,7 @@ impl<'t> Task<'t> {
     #[allow(box_pointers)]
     pub fn run<'e>(
         self,
-        suspender: &dyn Suspender<Resume = (), Yield = ()>,
+        suspender: &Suspender<(), ()>,
     ) -> (String, Result<Option<usize>, &'e str>) {
         let paran = self.get_param();
         (

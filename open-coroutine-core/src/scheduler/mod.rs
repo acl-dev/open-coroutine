@@ -1,7 +1,7 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::constants::{CoroutineState, SyscallState};
-use crate::coroutine::suspender::{Suspender, SuspenderImpl};
-use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine, StateCoroutine};
+use crate::coroutine::suspender::Suspender;
+use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine};
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
 use crate::{impl_current_for, impl_for_named};
@@ -11,6 +11,7 @@ use open_coroutine_queue::LocalQueue;
 use open_coroutine_timer::TimerList;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
@@ -19,16 +20,13 @@ use uuid::Uuid;
 pub type SchedulableCoroutine<'s> = CoroutineImpl<'s, (), (), Option<usize>>;
 
 /// A type for Scheduler.
-pub type SchedulableSuspender<'s> = SuspenderImpl<'s, (), ()>;
+pub type SchedulableSuspender<'s> = Suspender<'s, (), ()>;
 
 /// Listener abstraction and impl.
 pub mod listener;
 
 /// Join impl for scheduler.
 pub mod join;
-
-/// Has scheduler abstraction.
-pub mod has;
 
 #[cfg(test)]
 mod tests;
@@ -54,9 +52,7 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     /// if create coroutine fails.
     fn submit_co(
         &self,
-        f: impl FnOnce(&dyn Suspender<Resume = (), Yield = ()>, ()) -> Option<usize>
-            + UnwindSafe
-            + 'static,
+        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
     ) -> std::io::Result<Join> {
         let coroutine = SchedulableCoroutine::new(
@@ -381,3 +377,9 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
 }
 
 impl_current_for!(SCHEDULER, SchedulerImpl<'s>);
+
+impl<'s, HasSchedulerImpl: Deref<Target = SchedulerImpl<'s>>> Named for HasSchedulerImpl {
+    fn get_name(&self) -> &str {
+        Box::leak(Box::from(self.deref().get_name()))
+    }
+}
