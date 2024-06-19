@@ -1,4 +1,5 @@
 use super::*;
+use crate::coroutine::suspender::Suspender;
 
 #[test]
 fn test_return() {
@@ -42,7 +43,7 @@ fn test_yield() {
 
 #[test]
 fn test_current() {
-    assert!(CoroutineImpl::<i32, i32, i32>::current().is_none());
+    assert!(Coroutine::<i32, i32, i32>::current().is_none());
     let parent_name = "parent";
     let mut parent = co!(
         String::from(parent_name),
@@ -50,15 +51,11 @@ fn test_current() {
             assert_eq!(0, input);
             assert_eq!(
                 parent_name,
-                CoroutineImpl::<i32, i32, i32>::current()
-                    .unwrap()
-                    .get_name()
+                Coroutine::<i32, i32, i32>::current().unwrap().get_name()
             );
             assert_eq!(
                 parent_name,
-                CoroutineImpl::<i32, i32, i32>::current()
-                    .unwrap()
-                    .get_name()
+                Coroutine::<i32, i32, i32>::current().unwrap().get_name()
             );
 
             let child_name = "child";
@@ -68,15 +65,11 @@ fn test_current() {
                     assert_eq!(0, input);
                     assert_eq!(
                         child_name,
-                        CoroutineImpl::<i32, i32, i32>::current()
-                            .unwrap()
-                            .get_name()
+                        Coroutine::<i32, i32, i32>::current().unwrap().get_name()
                     );
                     assert_eq!(
                         child_name,
-                        CoroutineImpl::<i32, i32, i32>::current()
-                            .unwrap()
-                            .get_name()
+                        Coroutine::<i32, i32, i32>::current().unwrap().get_name()
                     );
                     1
                 }
@@ -85,15 +78,11 @@ fn test_current() {
 
             assert_eq!(
                 parent_name,
-                CoroutineImpl::<i32, i32, i32>::current()
-                    .unwrap()
-                    .get_name()
+                Coroutine::<i32, i32, i32>::current().unwrap().get_name()
             );
             assert_eq!(
                 parent_name,
-                CoroutineImpl::<i32, i32, i32>::current()
-                    .unwrap()
-                    .get_name()
+                Coroutine::<i32, i32, i32>::current().unwrap().get_name()
             );
             1
         }
@@ -123,7 +112,7 @@ fn test_backtrace() {
 #[test]
 fn test_context() {
     let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
-        let current = CoroutineImpl::<(), (), ()>::current().unwrap();
+        let current = Coroutine::<(), (), ()>::current().unwrap();
         assert_eq!(2, *current.get("1").unwrap());
         *current.get_mut("1").unwrap() = 3;
         ()
@@ -171,7 +160,7 @@ fn test_invalid_memory_reference() {
         println!("Before invalid memory reference");
         // 没有加--release运行，会收到SIGABRT信号，不好处理，直接禁用测试
         unsafe {
-            let co = &*((1usize as *mut std::ffi::c_void).cast::<CoroutineImpl<(), (), ()>>());
+            let co = &*((1usize as *mut std::ffi::c_void).cast::<Coroutine<(), (), ()>>());
             println!("{}", co.state());
         }
         println!("After invalid memory reference");

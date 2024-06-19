@@ -1,7 +1,7 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::constants::{CoroutineState, SyscallState};
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::{Coroutine, CoroutineImpl, SimpleCoroutine};
+use crate::coroutine::Coroutine;
 use crate::scheduler::join::JoinHandleImpl;
 use crate::scheduler::listener::Listener;
 use crate::{impl_current_for, impl_for_named};
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 /// A type for Scheduler.
-pub type SchedulableCoroutine<'s> = CoroutineImpl<'s, (), (), Option<usize>>;
+pub type SchedulableCoroutine<'s> = Coroutine<'s, (), (), Option<usize>>;
 
 /// A type for Scheduler.
 pub type SchedulableSuspender<'s> = Suspender<'s, (), ()>;

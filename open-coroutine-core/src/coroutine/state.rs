@@ -1,12 +1,12 @@
 use crate::common::Named;
 use crate::constants::{CoroutineState, Syscall, SyscallState};
-use crate::coroutine::CoroutineImpl;
+use crate::coroutine::Coroutine;
 use crate::info;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 use std::panic::UnwindSafe;
 
-impl<'c, Param, Yield, Return> CoroutineImpl<'c, Param, Yield, Return>
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
     Yield: Copy + Eq + PartialEq + UnwindSafe + Debug,

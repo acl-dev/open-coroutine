@@ -1,7 +1,6 @@
 use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::Coroutine;
 use crate::impl_current_for;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;

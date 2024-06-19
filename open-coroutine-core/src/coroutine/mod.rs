@@ -1,6 +1,6 @@
 use crate::common::{Current, Named};
 use crate::constants::CoroutineState;
-use crate::coroutine::suspender::Suspender;
+use crate::coroutine::local::CoroutineLocal;
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
@@ -19,11 +19,11 @@ pub mod state;
 #[macro_export]
 macro_rules! co {
     ($f:expr, $size:literal $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(uuid::Uuid::new_v4().to_string(), $f, $size)
+        $crate::coroutine::Coroutine::new(uuid::Uuid::new_v4().to_string(), $f, $size)
             .expect("create coroutine failed !")
     };
     ($f:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new(
+        $crate::coroutine::Coroutine::new(
             uuid::Uuid::new_v4().to_string(),
             $f,
             $crate::constants::DEFAULT_STACK_SIZE,
@@ -31,19 +31,17 @@ macro_rules! co {
         .expect("create coroutine failed !")
     };
     ($name:expr, $f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new($name, $f, $size).expect("create coroutine failed !")
+        $crate::coroutine::Coroutine::new($name, $f, $size).expect("create coroutine failed !")
     };
     ($name:expr, $f:expr $(,)?) => {
-        $crate::coroutine::CoroutineImpl::new($name, $f, $crate::constants::DEFAULT_STACK_SIZE)
+        $crate::coroutine::Coroutine::new($name, $f, $crate::constants::DEFAULT_STACK_SIZE)
             .expect("create coroutine failed !")
     };
 }
 
-use crate::coroutine::local::CoroutineLocal;
 #[cfg(feature = "korosensei")]
-pub use korosensei::CoroutineImpl;
+pub use korosensei::Coroutine;
 
-#[allow(missing_docs)]
 #[cfg(feature = "korosensei")]
 mod korosensei;
 
@@ -53,63 +51,58 @@ mod boost {}
 #[cfg(test)]
 mod tests;
 
-/// A trait implemented for coroutines.
-pub trait Coroutine<'c>: Debug + Named + Current + Deref<Target = CoroutineLocal<'c>> {
-    /// The type of value this coroutine accepts as a resume argument.
-    type Resume: UnwindSafe;
+impl<Param, Yield, Return> Coroutine<'_, Param, Yield, Return>
+where
+    Param: UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
+{
+    /// Returns the current state of this `StateCoroutine`.
+    pub fn state(&self) -> CoroutineState<Yield, Return> {
+        self.state.get()
+    }
+}
 
-    /// The type of value this coroutine yields.
-    type Yield: Debug + Copy + UnwindSafe;
+impl<Yield, Return> Coroutine<'_, (), Yield, Return>
+where
+    Yield: Debug + Copy + UnwindSafe + Eq + PartialEq,
+    Return: Debug + Copy + UnwindSafe + Eq + PartialEq,
+{
+    /// A simpler version of [`Coroutine::resume_with`].
+    pub fn resume(&mut self) -> std::io::Result<CoroutineState<Yield, Return>> {
+        self.resume_with(())
+    }
+}
 
-    /// The type of value this coroutine returns upon completion.
-    type Return: Debug + Copy + UnwindSafe;
-
-    /// Create a new coroutine.
-    ///
-    ///# Errors
-    /// if stack allocate failed.
-    fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
-    where
-        F: FnOnce(&Suspender<Self::Resume, Self::Yield>, Self::Resume) -> Self::Return,
-        F: UnwindSafe,
-        F: 'c,
-        Self: Sized;
-
+impl<Param, Yield, Return> Coroutine<'_, Param, Yield, Return>
+where
+    Param: UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe + Eq + PartialEq,
+    Return: Debug + Copy + UnwindSafe + Eq + PartialEq,
+{
     /// Resumes the execution of this coroutine.
     ///
     /// The argument will be passed into the coroutine as a resume argument.
     ///
     /// # Errors
     /// if current coroutine state is unexpected.
-    fn resume_with(
-        &mut self,
-        arg: Self::Resume,
-    ) -> std::io::Result<CoroutineState<Self::Yield, Self::Return>>;
-}
-
-/// A trait implemented for coroutines when Resume is ().
-pub trait SimpleCoroutine<'c>: Coroutine<'c, Resume = ()> {
-    /// Resumes the execution of this coroutine.
-    ///
-    /// # Errors
-    /// see `resume_with`
-    fn resume(&mut self) -> std::io::Result<CoroutineState<Self::Yield, Self::Return>>;
-}
-
-impl<'c, SimpleCoroutineImpl: Coroutine<'c, Resume = ()>> SimpleCoroutine<'c>
-    for SimpleCoroutineImpl
-{
-    fn resume(&mut self) -> std::io::Result<CoroutineState<Self::Yield, Self::Return>> {
-        self.resume_with(())
+    pub fn resume_with(&mut self, arg: Param) -> std::io::Result<CoroutineState<Yield, Return>> {
+        let current = self.state();
+        if let CoroutineState::Complete(r) = current {
+            return Ok(CoroutineState::Complete(r));
+        }
+        if let CoroutineState::Error(e) = current {
+            return Ok(CoroutineState::Error(e));
+        }
+        Self::init_current(self);
+        self.running()?;
+        let r = self.raw_resume(arg);
+        Self::clean_current();
+        r
     }
 }
 
-impl_current_for!(
-    COROUTINE,
-    CoroutineImpl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe>
-);
-
-impl<Param, Yield, Return> Debug for CoroutineImpl<'_, Param, Yield, Return>
+impl<Param, Yield, Return> Debug for Coroutine<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
     Yield: Copy + UnwindSafe + Debug,
@@ -124,10 +117,51 @@ where
     }
 }
 
-impl_display_by_debug!(
-    CoroutineImpl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe>
-);
+impl<'c, Param, Yield, Return> Deref for Coroutine<'c, Param, Yield, Return>
+where
+    Param: UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
+{
+    type Target = CoroutineLocal<'c>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.local
+    }
+}
+
+impl<Param, Yield, Return> Named for Coroutine<'_, Param, Yield, Return>
+where
+    Param: UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
+{
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+}
 
 impl_for_named!(
-    CoroutineImpl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe>
+    Coroutine<'c, Param, Yield, Return>
+    where
+        Param: UnwindSafe,
+        Yield: Copy + UnwindSafe,
+        Return: Copy + UnwindSafe
+);
+
+impl_display_by_debug!(
+    Coroutine<'c, Param, Yield, Return>
+    where
+        Param: UnwindSafe,
+        Yield: Copy + UnwindSafe,
+        Return: Copy + UnwindSafe
+);
+
+impl_current_for!(
+    COROUTINE,
+    Coroutine<'c, Param, Yield, Return>
+    where
+        Param: UnwindSafe,
+        Yield: Copy + UnwindSafe,
+        Return: Copy + UnwindSafe
 );

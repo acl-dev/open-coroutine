@@ -3,14 +3,12 @@ use crate::common::{Current, Named};
 use crate::constants::CoroutineState;
 use crate::coroutine::local::CoroutineLocal;
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::Coroutine;
 use corosensei::stack::DefaultStack;
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::{CoroutineResult, ScopedCoroutine};
 use std::cell::Cell;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
-use std::ops::Deref;
 use std::panic::UnwindSafe;
 
 cfg_if::cfg_if! {
@@ -22,24 +20,25 @@ cfg_if::cfg_if! {
     }
 }
 
+/// Use `corosensei` as the low-level coroutine.
 #[repr(C)]
-pub struct CoroutineImpl<'c, Param, Yield, Return>
+pub struct Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
     Yield: Copy + UnwindSafe,
     Return: Copy + UnwindSafe,
 {
-    name: String,
+    pub(crate) name: String,
     inner: ScopedCoroutine<'c, Param, Yield, Result<Return, &'static str>, DefaultStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
 }
 
-impl<'c, Param, Yield, Return> CoroutineImpl<'c, Param, Yield, Return>
+impl<Param, Yield, Return> Coroutine<'_, Param, Yield, Return>
 where
-    Param: UnwindSafe + 'c,
-    Yield: Copy + UnwindSafe + 'c,
-    Return: Copy + UnwindSafe + 'c,
+    Param: UnwindSafe,
+    Yield: Copy + UnwindSafe,
+    Return: Copy + UnwindSafe,
 {
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
@@ -306,14 +305,9 @@ where
             );
         }
     }
-
-    /// Returns the current state of this `StateCoroutine`.
-    pub fn state(&self) -> CoroutineState<Yield, Return> {
-        self.state.get()
-    }
 }
 
-impl<Param, Yield, Return> Drop for CoroutineImpl<'_, Param, Yield, Return>
+impl<Param, Yield, Return> Drop for Coroutine<'_, Param, Yield, Return>
 where
     Param: UnwindSafe,
     Yield: Copy + UnwindSafe,
@@ -327,45 +321,24 @@ where
     }
 }
 
-impl<Param, Yield, Return> Named for CoroutineImpl<'_, Param, Yield, Return>
+impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return>
 where
     Param: UnwindSafe,
-    Yield: Copy + UnwindSafe,
-    Return: Copy + UnwindSafe,
+    Yield: Debug + Copy + Eq + PartialEq + UnwindSafe,
+    Return: Debug + Copy + Eq + PartialEq + UnwindSafe,
 {
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl<'c, Param: UnwindSafe, Yield: Copy + UnwindSafe, Return: Copy + UnwindSafe> Deref
-    for CoroutineImpl<'c, Param, Yield, Return>
-{
-    type Target = CoroutineLocal<'c>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.local
-    }
-}
-
-impl<'c, Param, Yield, Return> Coroutine<'c> for CoroutineImpl<'c, Param, Yield, Return>
-where
-    Param: UnwindSafe,
-    Yield: Copy + Eq + PartialEq + UnwindSafe + Debug,
-    Return: Copy + Eq + PartialEq + UnwindSafe + Debug,
-{
-    type Resume = Param;
-    type Yield = Yield;
-    type Return = Return;
-
-    fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
+    /// Create a new coroutine.
+    ///
+    ///# Errors
+    /// if stack allocate failed.
+    pub fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
     where
-        F: FnOnce(&Suspender<Self::Resume, Self::Yield>, Self::Resume) -> Self::Return,
+        F: FnOnce(&Suspender<Param, Yield>, Param) -> Return,
         F: UnwindSafe,
         F: 'c,
-        Self: Sized,
     {
-        let stack = DefaultStack::new(stack_size.max(crate::common::page_size()))?;
+        let stack_size = stack_size.max(crate::common::page_size());
+        let stack = DefaultStack::new(stack_size)?;
         #[cfg(feature = "logs")]
         let co_name = name.clone().leak();
         let inner = ScopedCoroutine::with_stack(stack, move |y, p| {
@@ -381,7 +354,7 @@ where
             Suspender::<Param, Yield>::clean_current();
             r
         });
-        Ok(CoroutineImpl {
+        Ok(Coroutine {
             name,
             inner,
             state: Cell::new(CoroutineState::Created),
@@ -389,51 +362,38 @@ where
         })
     }
 
-    fn resume_with(
+    pub(crate) fn raw_resume(
         &mut self,
-        arg: Self::Resume,
-    ) -> std::io::Result<CoroutineState<Self::Yield, Self::Return>> {
-        match self.state() {
-            CoroutineState::Complete(r) => Ok(CoroutineState::Complete(r)),
-            CoroutineState::Error(e) => Ok(CoroutineState::Error(e)),
-            _ => {
-                Self::setup_trap_handler();
-                self.running()?;
-                Self::init_current(self);
-                let r = match self.inner.resume(arg) {
-                    CoroutineResult::Yield(y) => {
-                        let current = self.state();
-                        match current {
-                            CoroutineState::Running => {
-                                let timestamp = Suspender::<Yield, Param>::timestamp();
-                                let new_state = CoroutineState::Suspend(y, timestamp);
-                                self.suspend(y, timestamp)?;
-                                new_state
-                            }
-                            CoroutineState::SystemCall(y, syscall, state) => {
-                                CoroutineState::SystemCall(y, syscall, state)
-                            }
-                            _ => {
-                                return Err(Error::new(
-                                    ErrorKind::Other,
-                                    format!("{} unexpected state {current}", self.get_name()),
-                                ))
-                            }
-                        }
+        arg: Param,
+    ) -> std::io::Result<CoroutineState<Yield, Return>> {
+        Self::setup_trap_handler();
+        match self.inner.resume(arg) {
+            CoroutineResult::Yield(y) => {
+                let current = self.state();
+                match current {
+                    CoroutineState::Running => {
+                        let timestamp = Suspender::<Yield, Param>::timestamp();
+                        self.suspend(y, timestamp)?;
+                        Ok(CoroutineState::Suspend(y, timestamp))
                     }
-                    CoroutineResult::Return(result) => {
-                        if let Ok(returns) = result {
-                            self.complete(returns)?;
-                            CoroutineState::Complete(returns)
-                        } else {
-                            let message = result.unwrap_err();
-                            self.error(message)?;
-                            CoroutineState::Error(message)
-                        }
+                    CoroutineState::SystemCall(y, syscall, state) => {
+                        Ok(CoroutineState::SystemCall(y, syscall, state))
                     }
-                };
-                Self::clean_current();
-                Ok(r)
+                    _ => Err(Error::new(
+                        ErrorKind::Other,
+                        format!("{} unexpected state {current}", self.get_name()),
+                    )),
+                }
+            }
+            CoroutineResult::Return(result) => {
+                if let Ok(returns) = result {
+                    self.complete(returns)?;
+                    Ok(CoroutineState::Complete(returns))
+                } else {
+                    let message = result.unwrap_err();
+                    self.error(message)?;
+                    Ok(CoroutineState::Error(message))
+                }
             }
         }
     }

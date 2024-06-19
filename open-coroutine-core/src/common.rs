@@ -43,11 +43,16 @@ macro_rules! catch {
 /// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
 #[macro_export]
 macro_rules! impl_display_by_debug {
-    ($struct_name:ident$(<$($generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?) => {
-        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? std::fmt::Display
-            for $struct_name$(<$($generic),+>)?
+    ($struct_name:ident$(<$($generic1:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?
+        $(where $(
+            $generic2:tt $( : $trait_tt3: tt $( + $trait_tt4: tt)*)?
+        ),+)?
+    ) => {
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? std::fmt::Display
+            for $struct_name$(<$($generic1),+>)?
         where
-            $struct_name$(<$($generic),+>)?: std::fmt::Debug,
+            $($($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+,)?
+            $struct_name$(<$($generic1),+>)?: std::fmt::Debug,
         {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 std::fmt::Debug::fmt(self, f)
@@ -67,36 +72,46 @@ pub trait Named {
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! impl_for_named {
-    ($struct_name:ident$(<$($generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?) => {
-        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Eq
-            for $struct_name$(<$($generic),+>)?
-        where $struct_name$(<$($generic),+>)?: $crate::common::Named {
+    ($struct_name:ident$(<$($generic1:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?
+        $(where $(
+            $generic2:tt $( : $trait_tt3: tt $( + $trait_tt4: tt)*)?
+        ),+)?
+    ) => {
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Eq
+            for $struct_name$(<$($generic1),+>)?
+        where
+            $($($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+,)?
+            $struct_name$(<$($generic1),+>)?: $crate::common::Named,
+        {
         }
 
-        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialEq<Self>
-            for $struct_name$(<$($generic),+>)?
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialEq<Self>
+            for $struct_name$(<$($generic1),+>)?
         where
-            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+            $($($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+,)?
+            $struct_name$(<$($generic1),+>)?: $crate::common::Named,
         {
             fn eq(&self, other: &Self) -> bool {
                 self.get_name().eq(other.get_name())
             }
         }
 
-        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Ord
-            for $struct_name$(<$($generic),+>)?
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? Ord
+            for $struct_name$(<$($generic1),+>)?
         where
-            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+            $($($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+,)?
+            $struct_name$(<$($generic1),+>)?: $crate::common::Named,
         {
             fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                 self.get_name().cmp(other.get_name())
             }
         }
 
-        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialOrd<Self>
-            for $struct_name$(<$($generic),+>)?
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? PartialOrd<Self>
+            for $struct_name$(<$($generic1),+>)?
         where
-            $struct_name$(<$($generic),+>)?: $crate::common::Named,
+            $($($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+,)?
+            $struct_name$(<$($generic1),+>)?: $crate::common::Named,
         {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.cmp(other))
@@ -130,18 +145,18 @@ pub trait Current {
 macro_rules! impl_current_for {
     (
         $name:ident,
-        $struct_name:ident
-            $(<
-                $(
-                    $generic:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?
-                ),+
-            >)?
+        $struct_name:ident$(<$($generic1:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?
+        $(where $(
+            $generic2:tt $( : $trait_tt3: tt $( + $trait_tt4: tt)*)?
+        ),+)?
     ) => {
         thread_local! {
             static $name: std::cell::RefCell<std::collections::VecDeque<*const std::ffi::c_void>> = const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
         }
 
-        impl$(<$($generic $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? $crate::common::Current for $struct_name$(<$($generic),+>)? {
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? $crate::common::Current for $struct_name$(<$($generic1),+>)?
+            $(where $($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+)?
+        {
             fn init_current(current: &Self) {
                 $name.with(|s| {
                     s.borrow_mut()
