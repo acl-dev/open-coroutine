@@ -1,6 +1,5 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::coroutine::suspender::Suspender;
-use crate::coroutine::Coroutine;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};

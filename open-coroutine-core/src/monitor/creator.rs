@@ -1,50 +1,50 @@
 use crate::common::Current;
+use crate::constants::CoroutineState;
+use crate::coroutine::listener::Listener;
+use crate::coroutine::Coroutine;
 use crate::monitor::Monitor;
-use crate::scheduler::listener::Listener;
-use crate::scheduler::SchedulableCoroutine;
+use open_coroutine_timer::get_timeout_time;
+use std::fmt::Debug;
+use std::panic::UnwindSafe;
 use std::time::Duration;
 
 #[repr(C)]
 #[derive(Debug, Default)]
-pub(crate) struct MonitorTaskCreator {}
+pub(crate) struct MonitorListener {}
 
-const MONITOR_TIMESTAMP: &str = "MONITOR_TIMESTAMP";
+const NOTIFY_NODE: &str = "MONITOR_NODE";
 
-impl Listener for MonitorTaskCreator {
-    fn on_resume(&self, timeout_time: u64, coroutine: &SchedulableCoroutine) {
+impl<Param, Yield, Return> Listener<Param, Yield, Return> for MonitorListener
+where
+    Param: UnwindSafe,
+    Yield: Debug + Copy + UnwindSafe,
+    Return: Debug + Copy + UnwindSafe,
+{
+    fn on_state_changed(
+        &self,
+        co: &Coroutine<Param, Yield, Return>,
+        _: CoroutineState<Yield, Return>,
+        new_state: CoroutineState<Yield, Return>,
+    ) {
         if Monitor::current().is_some() {
             return;
         }
-        let timestamp =
-            open_coroutine_timer::get_timeout_time(Duration::from_millis(10)).min(timeout_time);
-        _ = coroutine.put(MONITOR_TIMESTAMP, timestamp);
-        Monitor::submit(timestamp, coroutine);
-    }
-
-    fn on_suspend(&self, _: u64, coroutine: &SchedulableCoroutine) {
-        if Monitor::current().is_some() {
-            return;
-        }
-        if let Some(timestamp) = coroutine.get(MONITOR_TIMESTAMP) {
-            Monitor::remove(*timestamp, coroutine);
-        }
-    }
-
-    fn on_complete(&self, _: u64, coroutine: &SchedulableCoroutine, _: Option<usize>) {
-        if Monitor::current().is_some() {
-            return;
-        }
-        if let Some(timestamp) = coroutine.get(MONITOR_TIMESTAMP) {
-            Monitor::remove(*timestamp, coroutine);
-        }
-    }
-
-    fn on_error(&self, _: u64, coroutine: &SchedulableCoroutine, _: &str) {
-        if Monitor::current().is_some() {
-            return;
-        }
-        if let Some(timestamp) = coroutine.get(MONITOR_TIMESTAMP) {
-            Monitor::remove(*timestamp, coroutine);
+        match new_state {
+            CoroutineState::Created | CoroutineState::Ready => {}
+            CoroutineState::Running => {
+                let timestamp = get_timeout_time(Duration::from_millis(10));
+                if let Ok(node) = Monitor::submit(timestamp) {
+                    _ = co.put(NOTIFY_NODE, node);
+                }
+            }
+            CoroutineState::Suspend(_, _)
+            | CoroutineState::SystemCall(_, _, _)
+            | CoroutineState::Complete(_)
+            | CoroutineState::Error(_) => {
+                if let Some(node) = co.get(NOTIFY_NODE) {
+                    _ = Monitor::remove(node);
+                }
+            }
         }
     }
 }

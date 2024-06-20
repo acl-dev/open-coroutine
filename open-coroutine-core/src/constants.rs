@@ -68,10 +68,6 @@ pub enum Syscall {
 
 impl_display_by_debug!(Syscall);
 
-thread_local! {
-    static SYSCALL: std::cell::RefCell<std::collections::VecDeque<Syscall>> = const{std::cell::RefCell::new(std::collections::VecDeque::new())};
-}
-
 /// Enums used to describe syscall state
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -126,3 +122,19 @@ pub enum PoolState {
 }
 
 impl_display_by_debug!(PoolState);
+
+/// Enums used to describe monitor state
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum MonitorState {
+    /// The monitor is created.
+    Created,
+    /// The monitor is running.
+    Running,
+    /// The monitor is stopping.
+    Stopping,
+    /// The monitor is stopped.
+    Stopped,
+}
+
+impl_display_by_debug!(MonitorState);

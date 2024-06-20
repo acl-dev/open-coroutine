@@ -82,7 +82,6 @@ mod tests {
     use super::*;
     use crate::co;
     use crate::constants::CoroutineState;
-    use crate::coroutine::{Coroutine, SimpleCoroutine};
 
     #[test]
     fn test() -> std::io::Result<()> {

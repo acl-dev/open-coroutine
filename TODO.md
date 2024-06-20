@@ -1,6 +1,4 @@
-Listener in coroutine mod
-
-monitor depends on coroutine not scheduler
+remove Listener in scheduler mod
 
 syscall mod is split into more modules based on system call names
 
