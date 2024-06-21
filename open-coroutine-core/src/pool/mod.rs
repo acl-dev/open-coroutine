@@ -1,11 +1,11 @@
 use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::Suspender;
-use crate::impl_current_for;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandleImpl;
 use crate::pool::task::Task;
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler, SchedulerImpl};
+use crate::{error, impl_current_for};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
 use std::cell::{Cell, RefCell};
@@ -176,7 +176,7 @@ pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
     ///
     /// # Errors
     /// if create failed.
-    fn grow(&self, should_grow: bool) -> std::io::Result<()>;
+    fn try_grow(&self) -> std::io::Result<()>;
 
     /// Schedule the tasks.
     ///
@@ -491,66 +491,83 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
         pool
     }
 
-    fn grow(&self, should_grow: bool) -> std::io::Result<()> {
-        if !should_grow || !self.has_task() || self.get_running_size() >= self.get_max_size() {
+    fn try_grow(&self) -> std::io::Result<()> {
+        if !self.has_task() || self.get_running_size() >= self.get_max_size() {
             return Ok(());
         }
         let create_time = open_coroutine_timer::now();
         self.submit_co(
             move |suspender, ()| {
                 loop {
-                    let pool = Self::current().expect("current pool not found");
-                    if pool.try_run(suspender).is_some() {
-                        pool.pop_fail_times.store(0, Ordering::Release);
-                        continue;
-                    }
-                    let recycle = match pool.state() {
-                        PoolState::Created | PoolState::Running(_) => false,
-                        PoolState::Stopping(_) | PoolState::Stopped => true,
-                    };
-                    let running = pool.get_running_size();
-                    if open_coroutine_timer::now().saturating_sub(create_time)
-                        >= pool.get_keep_alive_time()
-                        && running > pool.get_min_size()
-                        || recycle
-                    {
-                        return None;
-                    }
-                    _ = pool.pop_fail_times.fetch_add(1, Ordering::Release);
-                    match pool.pop_fail_times.load(Ordering::Acquire).cmp(&running) {
-                        //让出CPU给下一个协程
-                        std::cmp::Ordering::Less => suspender.suspend(),
-                        //减少CPU在N个无任务的协程中空轮询
-                        std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
-                            loop {
-                                if let Ok(blocker) = pool.blocker.try_borrow() {
-                                    blocker.block(Duration::from_millis(1));
-                                    break;
-                                }
-                            }
+                    if let Some(pool) = Self::current() {
+                        if pool.try_run(suspender).is_some() {
                             pool.pop_fail_times.store(0, Ordering::Release);
+                            continue;
                         }
+                        let recycle = match pool.state() {
+                            PoolState::Created | PoolState::Running(_) => false,
+                            PoolState::Stopping(_) | PoolState::Stopped => true,
+                        };
+                        let running = pool.get_running_size();
+                        if open_coroutine_timer::now().saturating_sub(create_time)
+                            >= pool.get_keep_alive_time()
+                            && running > pool.get_min_size()
+                            || recycle
+                        {
+                            return None;
+                        }
+                        _ = pool.pop_fail_times.fetch_add(1, Ordering::Release);
+                        match pool.pop_fail_times.load(Ordering::Acquire).cmp(&running) {
+                            //让出CPU给下一个协程
+                            std::cmp::Ordering::Less => suspender.suspend(),
+                            //减少CPU在N个无任务的协程中空轮询
+                            std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
+                                loop {
+                                    if let Ok(blocker) = pool.blocker.try_borrow() {
+                                        blocker.block(Duration::from_millis(1));
+                                        break;
+                                    }
+                                }
+                                pool.pop_fail_times.store(0, Ordering::Release);
+                            }
+                        }
+                    } else {
+                        error!("current pool not found");
+                        return None;
                     }
                 }
             },
             None,
         )
-        .map(|_| ())
+        .map(|_| {
+            _ = self.running.fetch_add(1, Ordering::Release);
+        })
     }
 
     fn try_timeout_schedule_task(&self, timeout_time: u64) -> std::io::Result<u64> {
         if self
             .scheduling
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
+            .is_err()
         {
-            self.running(true)?;
-            Self::init_current(self);
-            let result = self.try_timeout_schedule(timeout_time);
-            Self::clean_current();
-            self.scheduling.store(false, Ordering::Release);
-            return result;
+            return Ok(timeout_time.saturating_sub(open_coroutine_timer::now()));
         }
-        Ok(timeout_time.saturating_sub(open_coroutine_timer::now()))
+        self.running(true)?;
+        Self::init_current(self);
+        match self.state() {
+            PoolState::Created | PoolState::Running(_) | PoolState::Stopping(_) => {
+                self.try_grow()?;
+            }
+            PoolState::Stopped => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    "The coroutine pool is stopped !",
+                ))
+            }
+        };
+        let result = self.try_timeout_schedule(timeout_time);
+        Self::clean_current();
+        self.scheduling.store(false, Ordering::Release);
+        result
     }
 }

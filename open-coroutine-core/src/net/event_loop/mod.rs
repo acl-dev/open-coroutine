@@ -121,6 +121,7 @@ impl EventLoops {
                         std::thread::Builder::new()
                             .name(format!("open-coroutine-event-loop-{i}"))
                             .spawn(move || {
+                                warn!("open-coroutine-event-loop-{i} has started");
                                 if set_for_current(CoreId { id: i }) {
                                     warn!("pin event-loop-{i} thread to CPU core-{i} failed !");
                                 }
@@ -130,12 +131,12 @@ impl EventLoops {
                                 {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                 }
-                                warn!("open-coroutine-event-loop-{i} has exited");
                                 let pair = Self::new_condition();
                                 let (lock, cvar) = pair.as_ref();
                                 let pending = lock.lock().unwrap();
                                 _ = pending.fetch_add(1, Ordering::Release);
                                 cvar.notify_one();
+                                warn!("open-coroutine-event-loop-{i} has exited");
                             })
                             .expect("failed to spawn event-loop thread")
                     })

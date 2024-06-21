@@ -2,7 +2,7 @@ use crate::common::Named;
 use crate::constants::{CoroutineState, Syscall, SyscallState};
 use crate::coroutine::listener::Listener;
 use crate::coroutine::Coroutine;
-use crate::info;
+use crate::{error, info};
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 use std::panic::UnwindSafe;
@@ -21,6 +21,11 @@ where
     ) -> CoroutineState<Yield, Return> {
         let old_state = self.state.replace(new_state);
         self.on_state_changed(self, old_state, new_state);
+        if let CoroutineState::Error(_) = new_state {
+            error!("{} {:?}->{:?}", self.get_name(), old_state, new_state);
+        } else {
+            info!("{} {:?}->{:?}", self.get_name(), old_state, new_state);
+        }
         old_state
     }
 
@@ -101,7 +106,6 @@ where
                 let new_state = CoroutineState::Running;
                 let old_state = self.change_state(new_state);
                 self.on_running(self, old_state);
-                info!("{} {:?}->{:?}", self.get_name(), current, new_state);
                 return Ok(());
             }
             _ => {}
@@ -155,7 +159,6 @@ where
                 let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
                 let old_state = self.change_state(new_state);
                 self.on_syscall(self, old_state);
-                info!("{} {:?}->{:?}", self.get_name(), current, new_state);
                 return Ok(());
             }
             CoroutineState::SystemCall(_, original_syscall, _) => {
@@ -163,7 +166,6 @@ where
                     let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
                     let old_state = self.change_state(new_state);
                     self.on_syscall(self, old_state);
-                    info!("{} {:?}->{:?}", self.get_name(), current, new_state);
                     return Ok(());
                 }
             }

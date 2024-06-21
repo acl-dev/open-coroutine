@@ -1,9 +1,9 @@
 use crate::common::{Current, JoinHandle, Named};
 use crate::constants::{CoroutineState, SyscallState};
+use crate::coroutine::listener::Listener;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
 use crate::scheduler::join::JoinHandleImpl;
-use crate::scheduler::listener::Listener;
 use crate::{impl_current_for, impl_for_named};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
@@ -17,13 +17,16 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 /// A type for Scheduler.
+pub type SchedulableCoroutineState = CoroutineState<(), Option<usize>>;
+
+/// A type for Scheduler.
 pub type SchedulableCoroutine<'s> = Coroutine<'s, (), (), Option<usize>>;
 
 /// A type for Scheduler.
 pub type SchedulableSuspender<'s> = Suspender<'s, (), ()>;
 
-/// Listener abstraction and impl.
-pub mod listener;
+/// A type for Scheduler.
+pub trait SchedulableListener: Listener<(), (), Option<usize>> {}
 
 /// Join impl for scheduler.
 pub mod join;
@@ -32,14 +35,12 @@ pub mod join;
 mod tests;
 
 /// A trait implemented for schedulers.
-pub trait Scheduler<'s, Join: JoinHandle<Self>>:
-    Debug + Default + Named + Current + Listener
-{
-    /// Get the default stack stack size for the coroutines in this scheduler.
+pub trait Scheduler<'s, Join: JoinHandle<Self>>: Debug + Default + Named + Current {
+    /// Get the default stack size for the coroutines in this scheduler.
     /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
     fn get_stack_size(&self) -> usize;
 
-    /// Set the default stack stack size for the coroutines in this scheduler.
+    /// Set the default stack size for the coroutines in this scheduler.
     /// If it has not been set, it will be `crate::constant::DEFAULT_STACK_SIZE`.
     fn set_stack_size(&self, stack_size: usize);
 
@@ -126,7 +127,7 @@ pub trait Scheduler<'s, Join: JoinHandle<Self>>:
     fn size(&self) -> usize;
 
     /// Add a listener to this scheduler.
-    fn add_listener(&mut self, listener: impl Listener + 's);
+    fn add_listener(&mut self, listener: impl SchedulableListener + 's);
 }
 
 static mut SUSPEND_TABLE: Lazy<TimerList<SchedulableCoroutine>> = Lazy::new(TimerList::default);
@@ -143,26 +144,21 @@ pub struct SchedulerImpl<'s> {
     stack_size: AtomicUsize,
     ready: LocalQueue<'s, SchedulableCoroutine<'static>>,
     results: DashMap<&'s str, Result<Option<usize>, &'s str>>,
-    listeners: VecDeque<Box<dyn Listener + 's>>,
+    listeners: VecDeque<&'s dyn SchedulableListener>,
 }
 
 impl<'s> SchedulerImpl<'s> {
     #[must_use]
     pub fn new(name: String, stack_size: usize) -> Self {
-        let mut scheduler = SchedulerImpl {
+        SchedulerImpl {
             name,
             scheduling: AtomicBool::new(false),
             stack_size: AtomicUsize::new(stack_size),
             ready: LocalQueue::default(),
             results: DashMap::default(),
             listeners: VecDeque::default(),
-        };
-        scheduler.init();
-        scheduler
+        }
     }
-
-    #[allow(clippy::unused_self)]
-    fn init(&mut self) {}
 
     fn check_ready(&self) -> std::io::Result<()> {
         unsafe {
@@ -255,9 +251,12 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
         self.stack_size.store(stack_size, Ordering::Release);
     }
 
-    fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
+    fn submit_raw_co(&self, mut coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
         coroutine.ready()?;
-        self.on_create(&coroutine);
+        for listener in &self.listeners {
+            #[allow(clippy::transmute_ptr_to_ptr)]
+            coroutine.add_raw_listener(unsafe { std::mem::transmute::<&dyn SchedulableListener, &dyn Listener<(), (), Option<usize>>>(*listener) });
+        }
         self.ready.push_back(coroutine);
         Ok(())
     }
@@ -281,7 +280,6 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
             return Ok(timeout_time.saturating_sub(open_coroutine_timer::now()));
         }
         Self::init_current(self);
-        self.on_schedule(timeout_time);
         loop {
             let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
             if left_time == 0 {
@@ -296,11 +294,9 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
             }
             // schedule coroutines
             if let Some(mut coroutine) = self.ready.pop_front() {
-                self.on_resume(timeout_time, &coroutine);
                 match coroutine.resume() {
                     Ok(state) => match state {
-                        CoroutineState::SystemCall((), syscall, state) => {
-                            self.on_syscall(timeout_time, &coroutine, syscall, state);
+                        CoroutineState::SystemCall((), _, state) => {
                             //挂起协程到系统调用表
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
@@ -312,7 +308,6 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
                             }
                         }
                         CoroutineState::Suspend((), timestamp) => {
-                            self.on_suspend(timeout_time, &coroutine);
                             if timestamp > open_coroutine_timer::now() {
                                 //挂起协程到时间轮
                                 unsafe { SUSPEND_TABLE.insert(timestamp, coroutine) };
@@ -322,7 +317,6 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
                             }
                         }
                         CoroutineState::Complete(result) => {
-                            self.on_complete(timeout_time, &coroutine, result);
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             assert!(
                                 self.results.insert(co_name, Ok(result)).is_none(),
@@ -330,7 +324,6 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
                             );
                         }
                         CoroutineState::Error(message) => {
-                            self.on_error(timeout_time, &coroutine, message);
                             let co_name = Box::leak(Box::from(coroutine.get_name()));
                             assert!(
                                 self.results.insert(co_name, Err(message)).is_none(),
@@ -368,8 +361,8 @@ impl<'s> Scheduler<'s, JoinHandleImpl<'s>> for SchedulerImpl<'s> {
         self.ready.len() + unsafe { SUSPEND_TABLE.len() + SYSTEM_CALL_TABLE.len() }
     }
 
-    fn add_listener(&mut self, listener: impl Listener + 's) {
-        self.listeners.push_back(Box::new(listener));
+    fn add_listener(&mut self, listener: impl SchedulableListener + 's) {
+        self.listeners.push_back(Box::leak(Box::new(listener)));
     }
 }
 
