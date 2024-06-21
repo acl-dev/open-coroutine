@@ -154,16 +154,16 @@ impl_for_named!(
     Coroutine<'c, Param, Yield, Return>
     where
         Param: UnwindSafe,
-        Yield: Debug+Copy + UnwindSafe,
-        Return: Debug+Copy + UnwindSafe
+        Yield: Debug + Copy + UnwindSafe,
+        Return: Debug + Copy + UnwindSafe
 );
 
 impl_display_by_debug!(
     Coroutine<'c, Param, Yield, Return>
     where
         Param: UnwindSafe,
-        Yield: Debug+Copy + UnwindSafe,
-        Return: Debug+Copy + UnwindSafe
+        Yield: Debug + Copy + UnwindSafe,
+        Return: Debug + Copy + UnwindSafe
 );
 
 impl_current_for!(
@@ -171,6 +171,6 @@ impl_current_for!(
     Coroutine<'c, Param, Yield, Return>
     where
         Param: UnwindSafe,
-        Yield: Debug+Copy + UnwindSafe,
-        Return: Debug+Copy + UnwindSafe
+        Yield: Debug + Copy + UnwindSafe,
+        Return: Debug + Copy + UnwindSafe
 );
