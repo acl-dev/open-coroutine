@@ -226,7 +226,7 @@ impl Blocker for DelayBlocker {
 }
 
 /// Join abstraction.
-pub trait JoinHandle<T> {
+pub trait JoinHandler<T> {
     /// create `JoinHandle` instance.
     #[must_use]
     fn err() -> Self

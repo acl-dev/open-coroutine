@@ -4,7 +4,7 @@ use std::time::Duration;
 
 #[test]
 fn test_simple() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |_, _| {
             println!("1");
@@ -24,7 +24,7 @@ fn test_simple() -> std::io::Result<()> {
 
 #[test]
 fn test_backtrace() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(|_, _| None, None)?;
     _ = scheduler.submit_co(
         |_, _| {
@@ -38,7 +38,7 @@ fn test_backtrace() -> std::io::Result<()> {
 
 #[test]
 fn with_suspend() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |suspender, _| {
             println!("[coroutine1] suspend");
@@ -62,7 +62,7 @@ fn with_suspend() -> std::io::Result<()> {
 
 #[test]
 fn with_delay() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |suspender, _| {
             println!("[coroutine] delay");
@@ -79,7 +79,7 @@ fn with_delay() -> std::io::Result<()> {
 
 #[test]
 fn test_state() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |_, _| {
             if let Some(coroutine) = SchedulableCoroutine::current() {
@@ -118,7 +118,7 @@ fn test_state() -> std::io::Result<()> {
 )))]
 #[test]
 fn test_trap() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |_, _| {
             println!("Before trap");
@@ -141,7 +141,7 @@ fn test_trap() -> std::io::Result<()> {
 #[cfg(not(debug_assertions))]
 #[test]
 fn test_invalid_memory_reference() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |_, _| {
             println!("Before invalid memory reference");

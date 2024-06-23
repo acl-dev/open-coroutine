@@ -1,11 +1,11 @@
-use crate::common::{Current, JoinHandle, Named};
+use crate::common::{Current, JoinHandler, Named};
 use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
-use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
+use crate::net::event_loop::join::{CoJoinHandle, TaskJoinHandle};
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};
 use crate::pool::task::Task;
 use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
-use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler};
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
@@ -98,7 +98,7 @@ impl EventLoop {
         &self,
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
-    ) -> std::io::Result<CoJoinHandleImpl> {
+    ) -> std::io::Result<CoJoinHandle> {
         let coroutine = SchedulableCoroutine::new(
             format!("{}|{}", self.get_name(), Uuid::new_v4()),
             f,
@@ -106,17 +106,17 @@ impl EventLoop {
         )?;
         let co_name = Box::leak(Box::from(coroutine.get_name()));
         self.submit_raw_co(coroutine)?;
-        Ok(CoJoinHandleImpl::new(self, co_name))
+        Ok(CoJoinHandle::new(self, co_name))
     }
 
     pub fn submit(
         &self,
         f: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'static,
         param: Option<usize>,
-    ) -> TaskJoinHandleImpl {
+    ) -> TaskJoinHandle {
         let name = format!("{}|{}", self.get_name(), Uuid::new_v4());
         self.submit_raw_task(Task::new(name.clone(), f, param));
-        TaskJoinHandleImpl::new(self, &name)
+        TaskJoinHandle::new(self, &name)
     }
 
     fn token(use_thread_id: bool) -> usize {

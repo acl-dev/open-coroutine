@@ -1,7 +1,7 @@
 use crate::coroutine::suspender::Suspender;
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
-use crate::net::event_loop::join::{CoJoinHandleImpl, TaskJoinHandleImpl};
+use crate::net::event_loop::join::{CoJoinHandle, TaskJoinHandle};
 use crate::pool::task::Task;
 use crate::pool::TaskPool;
 use crate::warn;
@@ -170,7 +170,7 @@ impl EventLoops {
     pub fn submit_co(
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
         stack_size: Option<usize>,
-    ) -> std::io::Result<CoJoinHandleImpl> {
+    ) -> std::io::Result<CoJoinHandle> {
         Self::start();
         Self::next(true).submit_co(f, stack_size)
     }
@@ -178,7 +178,7 @@ impl EventLoops {
     pub fn submit(
         f: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'static,
         param: Option<usize>,
-    ) -> TaskJoinHandleImpl {
+    ) -> TaskJoinHandle {
         Self::start();
         Self::next(true).submit(f, param)
     }

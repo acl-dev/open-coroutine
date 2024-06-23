@@ -1,22 +1,21 @@
-use crate::common::JoinHandle;
+use crate::common::JoinHandler;
 use crate::net::event_loop::core::EventLoop;
 use crate::pool::WaitableTaskPool;
-use crate::scheduler::Scheduler;
 use std::ffi::{c_char, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct CoJoinHandleImpl(*const EventLoop, *const c_char);
+pub struct CoJoinHandle(*const EventLoop, *const c_char);
 
-impl JoinHandle<EventLoop> for CoJoinHandleImpl {
+impl JoinHandler<EventLoop> for CoJoinHandle {
     fn new(event_loop: *const EventLoop, name: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(
             CString::new(name).expect("init JoinHandle failed!"),
         ));
         let cstr: &'static CStr = boxed.as_c_str();
-        CoJoinHandleImpl(event_loop, cstr.as_ptr())
+        CoJoinHandle(event_loop, cstr.as_ptr())
     }
 
     fn get_name(&self) -> std::io::Result<&str> {
@@ -49,15 +48,15 @@ impl JoinHandle<EventLoop> for CoJoinHandleImpl {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct TaskJoinHandleImpl(*const EventLoop, *const c_char);
+pub struct TaskJoinHandle(*const EventLoop, *const c_char);
 
-impl JoinHandle<EventLoop> for TaskJoinHandleImpl {
+impl JoinHandler<EventLoop> for TaskJoinHandle {
     fn new(event_loop: *const EventLoop, name: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(
             CString::new(name).expect("init JoinHandle failed!"),
         ));
         let cstr: &'static CStr = boxed.as_c_str();
-        TaskJoinHandleImpl(event_loop, cstr.as_ptr())
+        TaskJoinHandle(event_loop, cstr.as_ptr())
     }
 
     fn get_name(&self) -> std::io::Result<&str> {

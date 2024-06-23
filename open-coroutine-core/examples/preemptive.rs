@@ -1,7 +1,7 @@
 fn main() -> std::io::Result<()> {
     cfg_if::cfg_if! {
         if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-            use open_coroutine_core::scheduler::{Scheduler, SchedulerImpl};
+            use open_coroutine_core::scheduler::Scheduler;
             use std::sync::{Arc, Condvar, Mutex};
             use std::time::Duration;
 
@@ -12,7 +12,7 @@ fn main() -> std::io::Result<()> {
             let handler = std::thread::Builder::new()
                 .name("preemptive".to_string())
                 .spawn(move || {
-                    let scheduler = SchedulerImpl::default();
+                    let scheduler = Scheduler::default();
                     _ = scheduler.submit_co(
                         |_, _| {
                             println!("coroutine1 launched");
