@@ -1,21 +1,21 @@
-use crate::common::JoinHandle;
-use crate::scheduler::{Scheduler, SchedulerImpl};
+use crate::common::JoinHandler;
+use crate::scheduler::Scheduler;
 use std::ffi::{c_char, CStr, CString};
 use std::io::{Error, ErrorKind};
 
 #[allow(missing_docs)]
 #[repr(C)]
 #[derive(Debug)]
-pub struct JoinHandleImpl<'j>(*const SchedulerImpl<'j>, *const c_char);
+pub struct JoinHandle<'j>(*const Scheduler<'j>, *const c_char);
 
-impl<'j> JoinHandle<SchedulerImpl<'j>> for JoinHandleImpl<'j> {
+impl<'j> JoinHandler<Scheduler<'j>> for JoinHandle<'j> {
     #[allow(box_pointers)]
-    fn new(pool: *const SchedulerImpl<'j>, name: &str) -> Self {
+    fn new(pool: *const Scheduler<'j>, name: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(
             CString::new(name).expect("init JoinHandle failed!"),
         ));
         let cstr: &'static CStr = boxed.as_c_str();
-        JoinHandleImpl(pool, cstr.as_ptr())
+        JoinHandle(pool, cstr.as_ptr())
     }
 
     fn get_name(&self) -> std::io::Result<&str> {
@@ -58,7 +58,7 @@ mod tests {
         let handler = std::thread::Builder::new()
             .name("test_join".to_string())
             .spawn(move || {
-                let pool = SchedulerImpl::default();
+                let pool = Scheduler::default();
                 let handle1 = pool
                     .submit_co(
                         |_, _| {
@@ -112,7 +112,7 @@ mod tests {
         let handler = std::thread::Builder::new()
             .name("test_timed_join".to_string())
             .spawn(move || {
-                let pool = SchedulerImpl::default();
+                let pool = Scheduler::default();
                 let handle = pool
                     .submit_co(
                         |_, _| {

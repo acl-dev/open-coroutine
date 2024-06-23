@@ -94,7 +94,7 @@ fn test_wait() {
 
 #[test]
 fn test_co_simple() -> std::io::Result<()> {
-    let scheduler = SchedulerImpl::default();
+    let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |_, _| {
             let task_name = "test_co_simple";

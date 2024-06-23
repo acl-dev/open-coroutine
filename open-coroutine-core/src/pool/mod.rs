@@ -1,10 +1,10 @@
-use crate::common::{Blocker, Current, JoinHandle, Named, Pool, StatePool};
+use crate::common::{Blocker, Current, JoinHandler, Named, Pool, StatePool};
 use crate::constants::PoolState;
 use crate::coroutine::suspender::Suspender;
 use crate::pool::creator::CoroutineCreator;
-use crate::pool::join::JoinHandleImpl;
+use crate::pool::join::JoinHandle;
 use crate::pool::task::Task;
-use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler, SchedulerImpl};
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler};
 use crate::{error, impl_current_for};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
@@ -30,8 +30,8 @@ mod creator;
 mod tests;
 
 /// The `TaskPool` abstraction.
-pub trait TaskPool<'p, Join: JoinHandle<Self>>:
-    Debug + Default + RefUnwindSafe + Named + Current + StatePool + DerefMut<Target = SchedulerImpl<'p>>
+pub trait TaskPool<'p, Join: JoinHandler<Self>>:
+    Debug + Default + RefUnwindSafe + Named + Current + StatePool + DerefMut<Target = Scheduler<'p>>
 {
     /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
     ///
@@ -102,7 +102,7 @@ pub trait TaskPool<'p, Join: JoinHandle<Self>>:
 }
 
 /// The `WaitableTaskPool` abstraction.
-pub trait WaitableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p, Join> {
+pub trait WaitableTaskPool<'p, Join: JoinHandler<Self>>: TaskPool<'p, Join> {
     /// Submit a new task to this pool and wait for the task to complete.
     ///
     /// # Errors
@@ -139,7 +139,7 @@ pub trait WaitableTaskPool<'p, Join: JoinHandle<Self>>: TaskPool<'p, Join> {
 }
 
 /// The `AutoConsumableTaskPool` abstraction.
-pub trait AutoConsumableTaskPool<'p, Join: JoinHandle<Self>>: WaitableTaskPool<'p, Join> {
+pub trait AutoConsumableTaskPool<'p, Join: JoinHandler<Self>>: WaitableTaskPool<'p, Join> {
     /// Start an additional thread to consume tasks.
     ///
     /// # Errors
@@ -156,7 +156,7 @@ pub trait AutoConsumableTaskPool<'p, Join: JoinHandle<Self>>: WaitableTaskPool<'
 }
 
 /// The `CoroutinePool` abstraction.
-pub trait CoroutinePool<'p, Join: JoinHandle<Self>>:
+pub trait CoroutinePool<'p, Join: JoinHandler<Self>>:
     Current + AutoConsumableTaskPool<'p, Join>
 {
     /// Create a new `CoroutinePool` instance.
@@ -224,7 +224,7 @@ pub struct CoroutinePoolImpl<'p> {
     //任务队列
     task_queue: Injector<Task<'p>>,
     //工作协程组
-    workers: SchedulerImpl<'p>,
+    workers: Scheduler<'p>,
     //是否正在调度，不允许多线程并行调度
     scheduling: AtomicBool,
     //当前协程数
@@ -287,7 +287,7 @@ impl CoroutinePoolImpl<'_> {
 }
 
 impl<'p> Deref for CoroutinePoolImpl<'p> {
-    type Target = SchedulerImpl<'p>;
+    type Target = Scheduler<'p>;
 
     fn deref(&self) -> &Self::Target {
         &self.workers
@@ -343,7 +343,7 @@ impl StatePool for CoroutinePoolImpl<'_> {
 
 impl_current_for!(COROUTINE_POOL, CoroutinePoolImpl<'p>);
 
-impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+impl<'p> TaskPool<'p, JoinHandle<'p>> for CoroutinePoolImpl<'p> {
     fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
         Self::init_current(self);
         let result = self.deref().submit_raw_co(coroutine);
@@ -395,7 +395,7 @@ impl<'p> TaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
     }
 }
 
-impl<'p> WaitableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+impl<'p> WaitableTaskPool<'p, JoinHandle<'p>> for CoroutinePoolImpl<'p> {
     fn try_get_task_result(
         &self,
         task_name: &str,
@@ -444,7 +444,7 @@ impl<'p> WaitableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
     }
 }
 
-impl<'p> AutoConsumableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+impl<'p> AutoConsumableTaskPool<'p, JoinHandle<'p>> for CoroutinePoolImpl<'p> {
     fn start(self) -> std::io::Result<Arc<Self>>
     where
         'p: 'static,
@@ -459,7 +459,7 @@ impl<'p> AutoConsumableTaskPool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p
     }
 }
 
-impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
+impl<'p> CoroutinePool<'p, JoinHandle<'p>> for CoroutinePoolImpl<'p> {
     fn new(
         name: String,
         cpu: usize,
@@ -475,7 +475,7 @@ impl<'p> CoroutinePool<'p, JoinHandleImpl<'p>> for CoroutinePoolImpl<'p> {
         let mut pool = CoroutinePoolImpl {
             cpu,
             state: Cell::new(PoolState::Created),
-            workers: SchedulerImpl::new(name, stack_size),
+            workers: Scheduler::new(name, stack_size),
             scheduling: AtomicBool::new(false),
             running: AtomicUsize::new(0),
             pop_fail_times: AtomicUsize::new(0),
