@@ -2,7 +2,7 @@ use crate::common::{Current, JoinHandler, Named};
 use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandle, TaskJoinHandle};
-use crate::net::selector::{Event, Events, Selector, SelectorImpl};
+use crate::net::selector::{Event, Events, Poller, Selector};
 use crate::pool::task::Task;
 use crate::pool::CoroutinePool;
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
@@ -45,7 +45,7 @@ pub struct EventLoop {
     cpu: u32,
     #[cfg(all(target_os = "linux", feature = "io_uring"))]
     operator: open_coroutine_iouring::io_uring::IoUringOperator,
-    selector: SelectorImpl,
+    selector: Poller,
     //是否正在执行select
     waiting: AtomicBool,
     //协程池
@@ -77,7 +77,7 @@ impl EventLoop {
             cpu,
             #[cfg(all(target_os = "linux", feature = "io_uring"))]
             operator: open_coroutine_iouring::io_uring::IoUringOperator::new(cpu)?,
-            selector: SelectorImpl::new()?,
+            selector: Poller::new()?,
             waiting: AtomicBool::new(false),
             pool: MaybeUninit::uninit(),
         };
