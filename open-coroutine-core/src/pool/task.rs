@@ -14,8 +14,6 @@ pub struct Task<'t> {
     param: Cell<Option<usize>>,
 }
 
-impl UnwindSafe for Task<'_> {}
-
 impl Debug for Task<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Task")
@@ -31,7 +29,6 @@ impl Named for Task<'_> {
     }
 }
 
-#[allow(dead_code)]
 impl<'t> Task<'t> {
     pub fn new(
         name: String,

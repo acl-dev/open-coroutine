@@ -1,6 +1,5 @@
 use crate::common::JoinHandler;
 use crate::net::event_loop::core::EventLoop;
-use crate::pool::WaitableTaskPool;
 use std::ffi::{c_char, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
@@ -80,7 +79,7 @@ impl JoinHandler<EventLoop> for TaskJoinHandle {
                 return Err(Error::new(ErrorKind::TimedOut, "timeout"));
             }
             event_loop.wait_event(Some(Duration::from_nanos(left_time)))?;
-            if let Some((_, r)) = event_loop.try_get_task_result(name) {
+            if let Some(r) = event_loop.try_get_task_result(name) {
                 return Ok(r);
             }
         }

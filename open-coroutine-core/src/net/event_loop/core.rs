@@ -4,7 +4,7 @@ use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandle, TaskJoinHandle};
 use crate::net::selector::{Event, Events, Selector, SelectorImpl};
 use crate::pool::task::Task;
-use crate::pool::{CoroutinePool, CoroutinePoolImpl, TaskPool};
+use crate::pool::CoroutinePool;
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::MaybeUninit;
@@ -49,7 +49,7 @@ pub struct EventLoop {
     //是否正在执行select
     waiting: AtomicBool,
     //协程池
-    pool: MaybeUninit<CoroutinePoolImpl<'static>>,
+    pool: MaybeUninit<CoroutinePool<'static>>,
 }
 
 impl Eq for EventLoop {}
@@ -81,7 +81,7 @@ impl EventLoop {
             waiting: AtomicBool::new(false),
             pool: MaybeUninit::uninit(),
         };
-        let pool = CoroutinePoolImpl::new(
+        let pool = CoroutinePool::new(
             format!("open-coroutine-event-loop-{cpu}"),
             cpu as usize,
             stack_size,
@@ -245,7 +245,7 @@ impl EventLoop {
 }
 
 impl Deref for EventLoop {
-    type Target = CoroutinePoolImpl<'static>;
+    type Target = CoroutinePool<'static>;
 
     fn deref(&self) -> &Self::Target {
         unsafe { self.pool.assume_init_ref() }

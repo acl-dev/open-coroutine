@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_simple() {
     let task_name = "test_simple";
-    let pool = CoroutinePoolImpl::default();
+    let pool = CoroutinePool::default();
     pool.set_max_size(1);
     assert!(!pool.has_task());
     _ = pool.submit(
@@ -23,21 +23,15 @@ fn test_simple() {
     assert_eq!(task_name, name.get_name().unwrap());
     _ = pool.try_schedule_task();
     assert_eq!(
-        Some((
-            String::from("test_panic"),
-            Err("test panic, just ignore it")
-        )),
+        Some(Err("test panic, just ignore it")),
         pool.try_get_task_result("test_panic")
     );
-    assert_eq!(
-        Some((String::from(task_name), Ok(Some(2)))),
-        pool.try_get_task_result(task_name)
-    );
+    assert_eq!(Some(Ok(Some(2))), pool.try_get_task_result(task_name));
 }
 
 #[test]
 fn test_suspend() -> std::io::Result<()> {
-    let pool = CoroutinePoolImpl::default();
+    let pool = CoroutinePool::default();
     pool.set_max_size(2);
     _ = pool.submit(
         None,
@@ -67,7 +61,7 @@ fn test_suspend() -> std::io::Result<()> {
 #[test]
 fn test_wait() {
     let task_name = "test_wait";
-    let pool = CoroutinePoolImpl::default();
+    let pool = CoroutinePool::default();
     pool.set_max_size(1);
     assert!(!pool.has_task());
     let name = pool.submit(
@@ -87,7 +81,7 @@ fn test_wait() {
     assert_eq!(None, pool.try_get_task_result(task_name));
     _ = pool.try_schedule_task();
     match pool.wait_result(task_name, Duration::from_secs(100)) {
-        Ok(v) => assert_eq!(Some((String::from(task_name), Ok(Some(2)))), v),
+        Ok(v) => assert_eq!(Some(Ok(Some(2))), v),
         Err(e) => panic!("{e}"),
     }
 }
@@ -98,7 +92,7 @@ fn test_co_simple() -> std::io::Result<()> {
     _ = scheduler.submit_co(
         |_, _| {
             let task_name = "test_co_simple";
-            let pool = CoroutinePoolImpl::default();
+            let pool = CoroutinePool::default();
             pool.set_max_size(1);
             let result = pool.submit_and_wait(
                 Some(String::from(task_name)),
@@ -106,10 +100,7 @@ fn test_co_simple() -> std::io::Result<()> {
                 None,
                 Duration::from_secs(1),
             );
-            assert_eq!(
-                Some((String::from(task_name), Ok(Some(1)))),
-                result.unwrap()
-            );
+            assert_eq!(Some(Ok(Some(1))), result.unwrap());
             None
         },
         None,
@@ -119,7 +110,7 @@ fn test_co_simple() -> std::io::Result<()> {
 
 #[test]
 fn test_nest() {
-    let pool = Arc::new(CoroutinePoolImpl::default());
+    let pool = Arc::new(CoroutinePool::default());
     pool.set_max_size(1);
     let arc = pool.clone();
     _ = pool.submit_and_wait(

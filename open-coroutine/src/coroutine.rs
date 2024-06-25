@@ -15,7 +15,6 @@ extern "C" {
     fn coroutine_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long;
 }
 
-#[allow(dead_code)]
 pub fn co<F, P: 'static, R: 'static>(f: F, param: P, stack_size: usize) -> JoinHandle
 where
     F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,

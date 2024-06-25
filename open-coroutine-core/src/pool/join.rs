@@ -1,5 +1,5 @@
 use crate::common::JoinHandler;
-use crate::pool::{CoroutinePoolImpl, WaitableTaskPool};
+use crate::pool::CoroutinePool;
 use std::ffi::{c_char, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
@@ -7,11 +7,11 @@ use std::time::Duration;
 #[allow(missing_docs)]
 #[repr(C)]
 #[derive(Debug)]
-pub struct JoinHandle<'j>(*const CoroutinePoolImpl<'j>, *const c_char);
+pub struct JoinHandle<'j>(*const CoroutinePool<'j>, *const c_char);
 
-impl<'j> JoinHandler<CoroutinePoolImpl<'j>> for JoinHandle<'j> {
+impl<'j> JoinHandler<CoroutinePool<'j>> for JoinHandle<'j> {
     #[allow(box_pointers)]
-    fn new(pool: *const CoroutinePoolImpl<'j>, name: &str) -> Self {
+    fn new(pool: *const CoroutinePool<'j>, name: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(
             CString::new(name).expect("init JoinHandle failed!"),
         ));
@@ -35,7 +35,7 @@ impl<'j> JoinHandler<CoroutinePoolImpl<'j>> for JoinHandle<'j> {
             name,
             Duration::from_nanos(timeout_time.saturating_sub(open_coroutine_timer::now())),
         )
-        .map(|r| r.expect("result is None !").1)
+        .map(|r| r.expect("result is None !"))
     }
 }
 
@@ -43,7 +43,6 @@ impl<'j> JoinHandler<CoroutinePoolImpl<'j>> for JoinHandle<'j> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pool::{CoroutinePool, TaskPool};
     use std::sync::{Arc, Condvar, Mutex};
 
     #[test]
@@ -53,7 +52,7 @@ mod tests {
         let handler = std::thread::Builder::new()
             .name("test_join".to_string())
             .spawn(move || {
-                let pool = CoroutinePoolImpl::default();
+                let pool = CoroutinePool::default();
                 let handle1 = pool.submit(
                     None,
                     |_, _| {
@@ -106,7 +105,7 @@ mod tests {
         let handler = std::thread::Builder::new()
             .name("test_timed_join".to_string())
             .spawn(move || {
-                let pool = CoroutinePoolImpl::default();
+                let pool = CoroutinePool::default();
                 let handle = pool.submit(
                     None,
                     |_, _| {

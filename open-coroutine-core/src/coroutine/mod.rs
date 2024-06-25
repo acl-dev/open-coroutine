@@ -7,6 +7,7 @@ use std::ops::Deref;
 use std::panic::UnwindSafe;
 
 /// Coroutine suspender abstraction.
+#[allow(missing_debug_implementations)]
 pub mod suspender;
 
 /// Coroutine local abstraction.

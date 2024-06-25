@@ -15,7 +15,6 @@ extern "C" {
     fn task_timeout_join(handle: &JoinHandle, ns_time: u64) -> libc::c_long;
 }
 
-#[allow(dead_code)]
 pub fn task<F, P: 'static, R: 'static>(f: F, param: P) -> JoinHandle
 where
     F: FnOnce(*const Suspender<(), ()>, P) -> R + Copy,
