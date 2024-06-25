@@ -106,11 +106,11 @@ impl<'s> Scheduler<'s> {
         &self,
         mut coroutine: SchedulableCoroutine<'static>,
     ) -> std::io::Result<()> {
-        coroutine.ready()?;
         for listener in &self.listeners {
             #[allow(clippy::transmute_ptr_to_ptr, clippy::missing_transmute_annotations)]
             coroutine.add_raw_listener(unsafe { std::mem::transmute(*listener) });
         }
+        coroutine.ready()?;
         self.ready.push_back(coroutine);
         Ok(())
     }

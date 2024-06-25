@@ -4,7 +4,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::pool::creator::CoroutineCreator;
 use crate::pool::join::JoinHandle;
 use crate::pool::task::Task;
-use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender, Scheduler};
+use crate::scheduler::{SchedulableSuspender, Scheduler};
 use crate::{error, impl_current_for, impl_for_named};
 use crossbeam_deque::{Injector, Steal};
 use dashmap::DashMap;
@@ -193,39 +193,6 @@ impl<'p> CoroutinePool<'p> {
     /// Change the blocker in this pool.
     pub fn change_blocker(&self, blocker: impl Blocker + 'p) -> Box<dyn Blocker + 'p> {
         self.blocker.replace(Box::new(blocker))
-    }
-
-    /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
-    ///
-    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
-    /// but only allow one thread to execute scheduling.
-    ///
-    /// # Errors
-    /// if create coroutine fails.
-    pub fn submit_co(
-        &self,
-        f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + UnwindSafe + 'static,
-        stack_size: Option<usize>,
-    ) -> std::io::Result<crate::scheduler::join::JoinHandle<'p>> {
-        let coroutine = SchedulableCoroutine::new(
-            format!("{}|{}", self.get_name(), Uuid::new_v4()),
-            f,
-            stack_size.unwrap_or(self.get_stack_size()),
-        )?;
-        let co_name = Box::leak(Box::from(coroutine.get_name()));
-        self.submit_raw_co(coroutine)?;
-        Ok(crate::scheduler::join::JoinHandle::new(&**self, co_name))
-    }
-
-    /// Submit a closure to create new coroutine, then the coroutine will be push into ready queue.
-    ///
-    /// Allow multiple threads to concurrently submit coroutine to the scheduler,
-    /// but only allow one thread to execute scheduling.
-    pub fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'static>) -> std::io::Result<()> {
-        Self::init_current(self);
-        let result = self.deref().submit_raw_co(coroutine);
-        Self::clean_current();
-        result
     }
 
     /// Submit a new task to this pool.
