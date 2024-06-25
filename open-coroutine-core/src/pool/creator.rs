@@ -1,7 +1,7 @@
 use crate::common::{Current, Pool};
 use crate::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
-use crate::pool::{CoroutinePool, CoroutinePoolImpl};
+use crate::pool::CoroutinePool;
 use crate::scheduler::{SchedulableCoroutine, SchedulableCoroutineState, SchedulableListener};
 use std::sync::atomic::Ordering;
 
@@ -18,19 +18,19 @@ impl Listener<(), (), Option<usize>> for CoroutineCreator {
     ) {
         match new_state {
             CoroutineState::Suspend((), _) | CoroutineState::SystemCall((), _, _) => {
-                if let Some(pool) = CoroutinePoolImpl::current() {
+                if let Some(pool) = CoroutinePool::current() {
                     _ = pool.try_grow();
                 }
             }
             CoroutineState::Complete(_) => {
-                if let Some(pool) = CoroutinePoolImpl::current() {
+                if let Some(pool) = CoroutinePool::current() {
                     //worker协程正常退出
                     pool.running
                         .store(pool.get_running_size().saturating_sub(1), Ordering::Release);
                 }
             }
             CoroutineState::Error(_) => {
-                if let Some(pool) = CoroutinePoolImpl::current() {
+                if let Some(pool) = CoroutinePool::current() {
                     //worker协程异常退出，需要先回收再创建
                     pool.running
                         .store(pool.get_running_size().saturating_sub(1), Ordering::Release);

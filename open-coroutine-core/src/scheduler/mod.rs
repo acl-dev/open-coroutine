@@ -108,8 +108,8 @@ impl<'s> Scheduler<'s> {
     ) -> std::io::Result<()> {
         coroutine.ready()?;
         for listener in &self.listeners {
-            #[allow(clippy::transmute_ptr_to_ptr)]
-            coroutine.add_raw_listener(unsafe { std::mem::transmute::<&dyn SchedulableListener, &dyn Listener<(), (), Option<usize>>>(*listener) });
+            #[allow(clippy::transmute_ptr_to_ptr, clippy::missing_transmute_annotations)]
+            coroutine.add_raw_listener(unsafe { std::mem::transmute(*listener) });
         }
         self.ready.push_back(coroutine);
         Ok(())

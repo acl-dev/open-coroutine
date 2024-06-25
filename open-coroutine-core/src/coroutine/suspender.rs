@@ -62,7 +62,6 @@ mod korosensei {
 
     /// Ths suspender implemented for coroutine.
     #[repr(C)]
-    #[allow(missing_debug_implementations)]
     pub struct Suspender<'s, Param: UnwindSafe, Yield: UnwindSafe> {
         inner: &'s Yielder<Param, Yield>,
     }

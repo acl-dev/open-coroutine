@@ -3,7 +3,6 @@ use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
 use crate::net::event_loop::join::{CoJoinHandle, TaskJoinHandle};
 use crate::pool::task::Task;
-use crate::pool::TaskPool;
 use crate::warn;
 use core_affinity::{set_for_current, CoreId};
 use once_cell::sync::{Lazy, OnceCell};

@@ -27,7 +27,6 @@ pub fn page_size() -> usize {
 }
 
 /// Catch panic.
-#[allow(unused_macros)]
 #[macro_export]
 macro_rules! catch {
     ($f:expr, $msg:expr, $arg1:expr, $arg2:expr) => {
@@ -69,7 +68,6 @@ pub trait Named {
 
 /// Fast impl common traits for `Named` types.
 /// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
-#[allow(unused_macros)]
 #[macro_export]
 macro_rules! impl_for_named {
     ($struct_name:ident$(<$($generic1:tt $( : $trait_tt1: tt $( + $trait_tt2: tt)*)?),+>)?

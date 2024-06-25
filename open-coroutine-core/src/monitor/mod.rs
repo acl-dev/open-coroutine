@@ -3,7 +3,6 @@ use crate::constants::{MonitorState, MONITOR_CPU};
 use crate::monitor::node::NotifyNode;
 #[cfg(feature = "net")]
 use crate::net::event_loop::EventLoops;
-use crate::pool::TaskPool;
 use crate::scheduler::SchedulableSuspender;
 use crate::{error, impl_current_for, warn};
 use core_affinity::{set_for_current, CoreId};
