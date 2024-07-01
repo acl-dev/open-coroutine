@@ -6,7 +6,7 @@ use std::ffi::c_void;
 #[derive(Debug, Default)]
 pub struct CoroutineLocal<'c>(DashMap<&'c str, usize>);
 
-#[allow(missing_docs, box_pointers)]
+#[allow(missing_docs)]
 impl CoroutineLocal<'_> {
     #[must_use]
     pub fn put<V>(&self, key: &str, val: V) -> Option<V> {

@@ -9,7 +9,6 @@ use std::io::{Error, ErrorKind};
 pub struct JoinHandle<'j>(*const Scheduler<'j>, *const c_char);
 
 impl<'j> JoinHandler<Scheduler<'j>> for JoinHandle<'j> {
-    #[allow(box_pointers)]
     fn new(pool: *const Scheduler<'j>, name: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(
             CString::new(name).expect("init JoinHandle failed!"),
@@ -44,7 +43,6 @@ impl<'j> JoinHandler<Scheduler<'j>> for JoinHandle<'j> {
     }
 }
 
-#[allow(box_pointers)]
 #[cfg(test)]
 mod tests {
     use super::*;

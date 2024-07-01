@@ -10,7 +10,6 @@ use std::time::Duration;
 pub struct JoinHandle<'j>(*const CoroutinePool<'j>, *const c_char);
 
 impl<'j> JoinHandler<CoroutinePool<'j>> for JoinHandle<'j> {
-    #[allow(box_pointers)]
     fn new(pool: *const CoroutinePool<'j>, name: &str) -> Self {
         let boxed: &'static mut CString = Box::leak(Box::from(
             CString::new(name).expect("init JoinHandle failed!"),
@@ -39,7 +38,6 @@ impl<'j> JoinHandler<CoroutinePool<'j>> for JoinHandle<'j> {
     }
 }
 
-#[allow(box_pointers)]
 #[cfg(test)]
 mod tests {
     use super::*;

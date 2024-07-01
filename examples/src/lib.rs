@@ -232,14 +232,14 @@ fn now() -> u64 {
 
 pub fn sleep_test(millis: u64) {
     _ = task!(
-        |_, _| {
-            println!("[coroutine1] launched");
+        move |_, _| {
+            println!("[coroutine1] {millis} launched");
         },
         (),
     );
     _ = task!(
-        |_, _| {
-            println!("[coroutine2] launched");
+        move |_, _| {
+            println!("[coroutine2] {millis} launched");
         },
         (),
     );
@@ -251,19 +251,19 @@ pub fn sleep_test(millis: u64) {
 
 pub fn sleep_test_co(millis: u64) {
     _ = task!(
-        |_, _| {
+        move |_, _| {
             let start = now();
             std::thread::sleep(Duration::from_millis(millis));
             let end = now();
             assert!(end - start >= millis, "Time consumption less than expected");
-            println!("[coroutine1] launched");
+            println!("[coroutine1] {millis} launched");
         },
         (),
     );
     _ = task!(
-        |_, _| {
+        move |_, _| {
             std::thread::sleep(Duration::from_millis(500));
-            println!("[coroutine2] launched");
+            println!("[coroutine2] {millis} launched");
         },
         (),
     );

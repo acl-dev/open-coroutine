@@ -6,6 +6,7 @@ use crate::net::selector::{Event, Events, Poller, Selector};
 use crate::pool::task::Task;
 use crate::pool::CoroutinePool;
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+use crate::{impl_current_for, impl_for_named};
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
@@ -52,13 +53,15 @@ pub struct EventLoop {
     pool: MaybeUninit<CoroutinePool<'static>>,
 }
 
-impl Eq for EventLoop {}
-
-impl PartialEq for EventLoop {
-    fn eq(&self, other: &Self) -> bool {
-        self.get_name().eq(other.get_name())
+impl Named for EventLoop {
+    fn get_name(&self) -> &str {
+        self.deref().get_name()
     }
 }
+
+impl_for_named!(EventLoop);
+
+impl_current_for!(EVENT_LOOP, EventLoop);
 
 #[allow(clippy::type_complexity)]
 #[cfg(all(target_os = "linux", feature = "io_uring"))]

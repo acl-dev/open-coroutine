@@ -44,25 +44,6 @@ impl SleepSyscall for NioSleepSyscall {
         _: Option<&StaticDetour<unsafe extern "system" fn(u32)>>,
         dw_milliseconds: u32,
     ) {
-        _ = EventLoops::wait_event(Some(Duration::from_millis(u64::from(dw_milliseconds))));
-    }
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-struct RawSleepSyscall {}
-
-impl SleepSyscall for RawSleepSyscall {
-    extern "system" fn Sleep(
-        &self,
-        fn_ptr: Option<&StaticDetour<unsafe extern "system" fn(u32)>>,
-        dw_milliseconds: u32,
-    ) {
-        unsafe {
-            if let Some(f) = fn_ptr {
-                f.call(dw_milliseconds);
-            } else {
-                windows_sys::Win32::System::Threading::Sleep(dw_milliseconds);
-            }
-        }
+        _ = EventLoops::wait_just(Some(Duration::from_millis(u64::from(dw_milliseconds))));
     }
 }

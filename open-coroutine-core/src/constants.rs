@@ -12,6 +12,8 @@ pub const MONITOR_CPU: usize = 0;
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Syscall {
+    #[cfg(windows)]
+    Sleep,
     sleep,
     usleep,
     nanosleep,

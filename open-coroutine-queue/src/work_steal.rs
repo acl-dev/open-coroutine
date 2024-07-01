@@ -31,7 +31,7 @@ impl<T: Debug> Drop for WorkStealQueue<T> {
 
 impl<T: Debug> WorkStealQueue<T> {
     /// Get a global `WorkStealQueue` instance.
-    #[allow(unsafe_code, trivial_casts, box_pointers)]
+    #[allow(unsafe_code, trivial_casts)]
     pub fn get_instance<'s>() -> &'s WorkStealQueue<T> {
         static INSTANCE: AtomicUsize = AtomicUsize::new(0);
         let mut ret = INSTANCE.load(Ordering::Relaxed);
