@@ -115,6 +115,17 @@ macro_rules! impl_for_named {
                 Some(self.cmp(other))
             }
         }
+
+        impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? std::hash::Hash
+            for $struct_name$(<$($generic1),+>)?
+        where
+            $($($generic2 $( : $trait_tt3 $( + $trait_tt4)*)?),+,)?
+            $struct_name$(<$($generic1),+>)?: $crate::common::Named,
+        {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                self.get_name().hash(state)
+            }
+        }
     };
 }
 

@@ -297,7 +297,7 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         _: Option<&extern "C" fn(c_uint) -> c_uint>,
         secs: c_uint,
     ) -> c_uint {
-        _ = EventLoops::wait_event(Some(Duration::from_secs(u64::from(secs))));
+        _ = EventLoops::wait_just(Some(Duration::from_secs(u64::from(secs))));
         reset_errno();
         0
     }
@@ -311,7 +311,7 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             Some(v) => Duration::from_nanos(v),
             None => Duration::MAX,
         };
-        _ = EventLoops::wait_event(Some(time));
+        _ = EventLoops::wait_just(Some(time));
         reset_errno();
         0
     }
@@ -328,7 +328,7 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             return -1;
         }
         //等待事件到来
-        _ = EventLoops::wait_event(Some(Duration::new(rqtp.tv_sec as u64, rqtp.tv_nsec as u32)));
+        _ = EventLoops::wait_just(Some(Duration::new(rqtp.tv_sec as u64, rqtp.tv_nsec as u32)));
         reset_errno();
         if !rmtp.is_null() {
             unsafe {
@@ -355,7 +355,7 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             if r != 0 || t == 0 {
                 break;
             }
-            _ = EventLoops::wait_event(Some(Duration::from_millis(t.min(x) as u64)));
+            _ = EventLoops::wait_just(Some(Duration::from_millis(t.min(x) as u64)));
             if t != c_int::MAX {
                 t = if t > x { t - x } else { 0 };
             }
@@ -408,7 +408,7 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             if r != 0 || t == 0 {
                 break;
             }
-            _ = EventLoops::wait_event(Some(Duration::from_millis(u64::from(t.min(x)))));
+            _ = EventLoops::wait_just(Some(Duration::from_millis(u64::from(t.min(x)))));
             if t != c_uint::MAX {
                 t = if t > x { t - x } else { 0 };
             }

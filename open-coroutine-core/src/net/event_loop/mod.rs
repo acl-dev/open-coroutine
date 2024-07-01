@@ -1,3 +1,4 @@
+use crate::common::Current;
 use crate::coroutine::suspender::Suspender;
 use crate::net::config::Config;
 use crate::net::event_loop::core::EventLoop;
@@ -15,7 +16,6 @@ use std::time::Duration;
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-        use crate::common::Current;
         use crate::scheduler::SchedulableSuspender;
         use libc::{c_void, epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 
@@ -95,11 +95,11 @@ impl EventLoops {
         }
     }
 
-    pub(crate) fn monitor() -> &'static mut EventLoop {
+    pub(crate) fn monitor() -> &'static EventLoop {
         //monitor线程的EventLoop固定
         unsafe {
             EVENT_LOOPS
-                .get_mut(0)
+                .first()
                 .expect("init event-loop-monitor failed!")
         }
     }
@@ -125,11 +125,13 @@ impl EventLoops {
                                     warn!("pin event-loop-{i} thread to CPU core-{i} failed !");
                                 }
                                 let event_loop = Self::next(true);
+                                EventLoop::init_current(event_loop);
                                 while EVENT_LOOP_STARTED.load(Ordering::Acquire)
                                     || event_loop.has_task()
                                 {
                                     _ = event_loop.wait_event(Some(Duration::from_millis(10)));
                                 }
+                                EventLoop::clean_current();
                                 let pair = Self::new_condition();
                                 let (lock, cvar) = pair.as_ref();
                                 let pending = lock.lock().unwrap();
@@ -186,7 +188,7 @@ impl EventLoops {
         Self::next(true).submit_raw_task(task);
     }
 
-    fn slice_wait(
+    fn slice_wait_just(
         timeout: Option<Duration>,
         event_loop: &'static EventLoop,
     ) -> std::io::Result<()> {
@@ -203,28 +205,28 @@ impl EventLoops {
         }
     }
 
-    pub fn wait_event(timeout: Option<Duration>) -> std::io::Result<()> {
-        Self::slice_wait(timeout, Self::next(true))
+    pub fn wait_just(timeout: Option<Duration>) -> std::io::Result<()> {
+        Self::slice_wait_just(timeout, Self::next(true))
     }
 
     pub fn wait_read_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = Self::next(false);
         event_loop.add_read_event(fd)?;
-        if Self::monitor() == event_loop {
+        if Self::monitor().eq(event_loop) {
             // wait only happens in non-monitor for non-monitor thread
-            return Self::wait_event(timeout);
+            return Self::wait_just(timeout);
         }
-        Self::slice_wait(timeout, event_loop)
+        Self::slice_wait_just(timeout, event_loop)
     }
 
     pub fn wait_write_event(fd: c_int, timeout: Option<Duration>) -> std::io::Result<()> {
         let event_loop = Self::next(false);
         event_loop.add_write_event(fd)?;
-        if Self::monitor() == event_loop {
+        if Self::monitor().eq(event_loop) {
             // wait only happens in non-monitor for non-monitor thread
-            return Self::wait_event(timeout);
+            return Self::wait_just(timeout);
         }
-        Self::slice_wait(timeout, event_loop)
+        Self::slice_wait_just(timeout, event_loop)
     }
 
     pub fn del_event(fd: c_int) {

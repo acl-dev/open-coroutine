@@ -350,7 +350,7 @@ impl_for_named!(Scheduler<'s>);
 
 impl_current_for!(SCHEDULER, Scheduler<'s>);
 
-impl<'s, HasSchedulerImpl: Deref<Target = Scheduler<'s>>> Named for HasSchedulerImpl {
+impl<'s, DerefScheduler: Deref<Target = Scheduler<'s>>> Named for DerefScheduler {
     fn get_name(&self) -> &str {
         Box::leak(Box::from(self.deref().get_name()))
     }

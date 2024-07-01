@@ -7,7 +7,7 @@ use std::panic::UnwindSafe;
 
 /// Note: the param and the result is raw pointer.
 #[repr(C)]
-#[allow(clippy::type_complexity, box_pointers)]
+#[allow(clippy::type_complexity)]
 pub struct Task<'t> {
     name: String,
     func: Box<dyn FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 't>,
@@ -56,7 +56,6 @@ impl<'t> Task<'t> {
     ///
     /// # Errors
     /// if an exception occurred while executing this task.
-    #[allow(box_pointers)]
     pub fn run<'e>(
         self,
         suspender: &Suspender<(), ()>,

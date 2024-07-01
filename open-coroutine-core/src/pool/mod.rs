@@ -199,7 +199,6 @@ impl<'p> CoroutinePool<'p> {
     ///
     /// Allow multiple threads to concurrently submit task to the pool,
     /// but only allow one thread to execute scheduling.
-    #[allow(box_pointers)]
     pub fn submit(
         &self,
         name: Option<String>,

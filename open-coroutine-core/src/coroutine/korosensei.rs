@@ -351,7 +351,6 @@ where
         let inner = ScopedCoroutine::with_stack(stack, move |y, p| {
             let suspender = Suspender::new(y);
             Suspender::<Param, Yield>::init_current(&suspender);
-            #[allow(box_pointers)]
             let r = catch!(
                 || f(&suspender, p),
                 "coroutine failed without message",
