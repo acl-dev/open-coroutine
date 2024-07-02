@@ -89,7 +89,7 @@ impl<'s> Scheduler<'s> {
         stack_size: Option<usize>,
     ) -> std::io::Result<JoinHandle<'s>> {
         let coroutine = SchedulableCoroutine::new(
-            format!("{}|{}", self.get_name(), Uuid::new_v4()),
+            format!("{}|co-{}", self.get_name(), Uuid::new_v4()),
             f,
             stack_size.unwrap_or(self.get_stack_size()),
         )?;
@@ -322,7 +322,7 @@ impl<'s> Scheduler<'s> {
 impl Default for Scheduler<'_> {
     fn default() -> Self {
         Self::new(
-            format!("open-coroutine-scheduler-{}", Uuid::new_v4()),
+            format!("open-coroutine-scheduler-{:?}", std::thread::current().id()),
             crate::constants::DEFAULT_STACK_SIZE,
         )
     }
