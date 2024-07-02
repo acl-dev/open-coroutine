@@ -1,15 +1,13 @@
 use crate::common::{Current, Named};
-use crate::info;
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timespec,
-    timeval,
+    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
 };
-use std::ffi::{c_int, c_uint, c_void};
+use std::ffi::{c_int, c_void};
 
 #[derive(Debug, Default)]
 pub struct StateLinuxSyscall<I: UnixSyscall> {
@@ -39,34 +37,6 @@ macro_rules! syscall_state {
 }
 
 impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
-    extern "C" fn sleep(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>,
-        secs: c_uint,
-    ) -> c_uint {
-        info!("sleep hooked");
-        self.inner.sleep(fn_ptr, secs)
-    }
-
-    extern "C" fn usleep(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
-        microseconds: c_uint,
-    ) -> c_int {
-        info!("usleep hooked");
-        self.inner.usleep(fn_ptr, microseconds)
-    }
-
-    extern "C" fn nanosleep(
-        &self,
-        fn_ptr: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
-        rqtp: *const timespec,
-        rmtp: *mut timespec,
-    ) -> c_int {
-        info!("nanosleep hooked");
-        self.inner.nanosleep(fn_ptr, rqtp, rmtp)
-    }
-
     extern "C" fn poll(
         &self,
         fn_ptr: Option<&extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int>,

@@ -103,7 +103,7 @@ impl EventLoop {
         stack_size: Option<usize>,
     ) -> std::io::Result<CoJoinHandle> {
         let coroutine = SchedulableCoroutine::new(
-            format!("{}|{}", self.get_name(), Uuid::new_v4()),
+            format!("{}|co-{}", self.get_name(), Uuid::new_v4()),
             f,
             stack_size.unwrap_or(self.get_stack_size()),
         )?;
@@ -117,7 +117,7 @@ impl EventLoop {
         f: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'static,
         param: Option<usize>,
     ) -> TaskJoinHandle {
-        let name = format!("{}|{}", self.get_name(), Uuid::new_v4());
+        let name = format!("{}|task-{}", self.get_name(), Uuid::new_v4());
         self.submit_raw_task(Task::new(name.clone(), f, param));
         TaskJoinHandle::new(self, &name)
     }

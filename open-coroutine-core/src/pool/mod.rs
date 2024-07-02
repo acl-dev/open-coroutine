@@ -205,7 +205,7 @@ impl<'p> CoroutinePool<'p> {
         func: impl FnOnce(&Suspender<(), ()>, Option<usize>) -> Option<usize> + UnwindSafe + 'p,
         param: Option<usize>,
     ) -> JoinHandle<'p> {
-        let name = name.unwrap_or(format!("{}|{}", self.get_name(), Uuid::new_v4()));
+        let name = name.unwrap_or(format!("{}|task-{}", self.get_name(), Uuid::new_v4()));
         self.submit_raw_task(Task::new(name.clone(), func, param));
         JoinHandle::new(self, &name)
     }
@@ -363,7 +363,7 @@ impl_current_for!(COROUTINE_POOL, CoroutinePool<'p>);
 impl Default for CoroutinePool<'_> {
     fn default() -> Self {
         Self::new(
-            format!("open-coroutine-pool-{}", Uuid::new_v4()),
+            format!("open-coroutine-pool-{:?}", std::thread::current().id()),
             1,
             crate::constants::DEFAULT_STACK_SIZE,
             0,

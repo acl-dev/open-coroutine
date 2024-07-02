@@ -7,11 +7,10 @@ use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timespec,
-    timeval,
+    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
 };
 use once_cell::sync::Lazy;
-use std::ffi::{c_int, c_uint, c_void};
+use std::ffi::{c_int, c_void};
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
@@ -22,30 +21,6 @@ cfg_if::cfg_if! {
         static CHAIN: Lazy<StateLinuxSyscall<NioLinuxSyscall<RawLinuxSyscall>>> =
             Lazy::new(StateLinuxSyscall::default);
     }
-}
-
-/// sleep
-
-#[must_use]
-pub extern "C" fn sleep(fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>, secs: c_uint) -> c_uint {
-    CHAIN.sleep(fn_ptr, secs)
-}
-
-#[must_use]
-pub extern "C" fn usleep(
-    fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
-    microseconds: c_uint,
-) -> c_int {
-    CHAIN.usleep(fn_ptr, microseconds)
-}
-
-#[must_use]
-pub extern "C" fn nanosleep(
-    fn_ptr: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
-    rqtp: *const timespec,
-    rmtp: *mut timespec,
-) -> c_int {
-    CHAIN.nanosleep(fn_ptr, rqtp, rmtp)
 }
 
 /// poll

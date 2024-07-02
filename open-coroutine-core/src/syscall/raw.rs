@@ -4,52 +4,14 @@ use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timespec,
-    timeval,
+    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
 };
-use std::ffi::{c_int, c_uint, c_void};
+use std::ffi::{c_int, c_void};
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct RawLinuxSyscall {}
 
 impl UnixSyscall for RawLinuxSyscall {
-    extern "C" fn sleep(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_uint) -> c_uint>,
-        secs: c_uint,
-    ) -> c_uint {
-        if let Some(f) = fn_ptr {
-            (f)(secs)
-        } else {
-            unsafe { libc::sleep(secs) }
-        }
-    }
-
-    extern "C" fn usleep(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
-        microseconds: c_uint,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(microseconds)
-        } else {
-            unsafe { libc::usleep(microseconds) }
-        }
-    }
-
-    extern "C" fn nanosleep(
-        &self,
-        fn_ptr: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
-        rqtp: *const timespec,
-        rmtp: *mut timespec,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(rqtp, rmtp)
-        } else {
-            unsafe { libc::nanosleep(rqtp, rmtp) }
-        }
-    }
-
     /// poll
 
     extern "C" fn poll(

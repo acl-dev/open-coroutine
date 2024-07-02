@@ -6,8 +6,7 @@ use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timespec,
-    timeval,
+    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
 };
 use std::ffi::{c_int, c_uint, c_void};
 use std::time::Duration;
@@ -292,53 +291,6 @@ macro_rules! impl_expected_batch_write_hook {
 }
 
 impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
-    extern "C" fn sleep(
-        &self,
-        _: Option<&extern "C" fn(c_uint) -> c_uint>,
-        secs: c_uint,
-    ) -> c_uint {
-        _ = EventLoops::wait_just(Some(Duration::from_secs(u64::from(secs))));
-        reset_errno();
-        0
-    }
-
-    extern "C" fn usleep(
-        &self,
-        _: Option<&extern "C" fn(c_uint) -> c_int>,
-        microseconds: c_uint,
-    ) -> c_int {
-        let time = match u64::from(microseconds).checked_mul(1_000) {
-            Some(v) => Duration::from_nanos(v),
-            None => Duration::MAX,
-        };
-        _ = EventLoops::wait_just(Some(time));
-        reset_errno();
-        0
-    }
-
-    extern "C" fn nanosleep(
-        &self,
-        _: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
-        rqtp: *const timespec,
-        rmtp: *mut timespec,
-    ) -> c_int {
-        let rqtp = unsafe { *rqtp };
-        if rqtp.tv_sec < 0 || rqtp.tv_nsec < 0 || rqtp.tv_nsec > 999_999_999 {
-            set_errno(libc::EINVAL);
-            return -1;
-        }
-        //等待事件到来
-        _ = EventLoops::wait_just(Some(Duration::new(rqtp.tv_sec as u64, rqtp.tv_nsec as u32)));
-        reset_errno();
-        if !rmtp.is_null() {
-            unsafe {
-                (*rmtp).tv_sec = 0;
-                (*rmtp).tv_nsec = 0;
-            }
-        }
-        0
-    }
-
     extern "C" fn poll(
         &self,
         fn_ptr: Option<&extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int>,
