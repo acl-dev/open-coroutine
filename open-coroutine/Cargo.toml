@@ -24,7 +24,7 @@ criterion = "0.5.1"
 glob = "0.3.1"
 
 [features]
-default = ["open-coroutine-hooks/full", "open-coroutine-core/full"]
+default = ["open-coroutine-hooks/default", "open-coroutine-core/default"]
 
 # Print some help log.
 # Enable for default.

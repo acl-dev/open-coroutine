@@ -1,4 +1,5 @@
 use crate::common::{Current, JoinHandler, Named};
+use crate::constants::{CoroutineState, SyscallState};
 use crate::coroutine::suspender::Suspender;
 use crate::net::event_loop::blocker::SelectBlocker;
 use crate::net::event_loop::join::{CoJoinHandle, TaskJoinHandle};
@@ -7,6 +8,7 @@ use crate::pool::task::Task;
 use crate::pool::CoroutinePool;
 use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use crate::{impl_current_for, impl_for_named};
+use open_coroutine_timer::get_timeout_time;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
@@ -183,10 +185,43 @@ impl EventLoop {
     pub fn wait_just(&'static self, timeout: Option<Duration>) -> std::io::Result<()> {
         let mut timeout = timeout;
         if let Some(time) = timeout {
+            let timestamp = get_timeout_time(time);
+            if let Some(co) = SchedulableCoroutine::current() {
+                if let CoroutineState::SystemCall((), syscall, SyscallState::Executing) = co.state()
+                {
+                    let new_state = SyscallState::Suspend(timestamp);
+                    if co.syscall((), syscall, new_state).is_err() {
+                        crate::error!(
+                            "{} change to syscall {} {} failed !",
+                            co.get_name(),
+                            syscall,
+                            new_state
+                        );
+                    }
+                }
+            }
             if let Some(suspender) = SchedulableSuspender::current() {
-                suspender.delay(time);
+                suspender.until(timestamp);
                 //回来的时候等待的时间已经到了
                 timeout = Some(Duration::ZERO);
+            }
+            if let Some(co) = SchedulableCoroutine::current() {
+                if let CoroutineState::SystemCall(
+                    (),
+                    syscall,
+                    SyscallState::Callback | SyscallState::Timeout,
+                ) = co.state()
+                {
+                    let new_state = SyscallState::Executing;
+                    if co.syscall((), syscall, new_state).is_err() {
+                        crate::error!(
+                            "{} change to syscall {} {} failed !",
+                            co.get_name(),
+                            syscall,
+                            new_state
+                        );
+                    }
+                }
             }
         }
         if self

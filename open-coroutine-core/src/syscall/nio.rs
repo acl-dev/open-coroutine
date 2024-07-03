@@ -473,11 +473,11 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
                 break;
             }
         }
-        if blocking {
-            set_blocking(socket);
-        }
         if r == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ETIMEDOUT) {
             set_errno(libc::EINPROGRESS);
+        }
+        if blocking {
+            set_blocking(socket);
         }
         r
     }

@@ -16,7 +16,9 @@ use std::time::Duration;
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-        use crate::scheduler::SchedulableSuspender;
+        use crate::common::Named;
+        use crate::constants::{CoroutineState, SyscallState};
+        use crate::scheduler::{SchedulableSuspender, SchedulableCoroutine};
         use libc::{c_void, epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 
         macro_rules! wrap_io_uring {
@@ -24,9 +26,37 @@ cfg_if::cfg_if! {
                 EventLoops::next(false)
                     .$syscall($($arg, )*)
                     .map(|r| {
+                        if let Some(co) = SchedulableCoroutine::current() {
+                            if let CoroutineState::SystemCall((), syscall, SyscallState::Executing) = co.state()
+                            {
+                                let new_state = SyscallState::Suspend(u64::MAX);
+                                if co.syscall((), syscall, new_state).is_err() {
+                                    crate::error!(
+                                        "{} change to syscall {} {} failed !",
+                                        co.get_name(),
+                                        syscall,
+                                        new_state
+                                    );
+                                }
+                            }
+                        }
                         if let Some(suspender) = SchedulableSuspender::current() {
                             suspender.suspend();
                             //回来的时候，系统调用已经执行完了
+                        }
+                        if let Some(co) = SchedulableCoroutine::current() {
+                            if let CoroutineState::SystemCall((), syscall, SyscallState::Callback) = co.state()
+                            {
+                                let new_state = SyscallState::Executing;
+                                if co.syscall((), syscall, new_state).is_err() {
+                                    crate::error!(
+                                        "{} change to syscall {} {} failed !",
+                                        co.get_name(),
+                                        syscall,
+                                        new_state
+                                    );
+                                }
+                            }
                         }
                         let (lock, cvar) = &*r;
                         let syscall_result = cvar

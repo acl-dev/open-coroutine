@@ -82,23 +82,27 @@ fn test_state() -> std::io::Result<()> {
     let scheduler = Scheduler::default();
     _ = scheduler.submit_co(
         |_, _| {
-            if let Some(coroutine) = SchedulableCoroutine::current() {
-                match coroutine.state() {
+            if let Some(co) = SchedulableCoroutine::current() {
+                match co.state() {
                     CoroutineState::Running => println!("syscall nanosleep started !"),
                     _ => unreachable!("test_state 1 should never execute to here"),
                 };
                 let timeout_time =
                     open_coroutine_timer::get_timeout_time(Duration::from_millis(10));
-                coroutine
-                    .syscall((), Syscall::nanosleep, SyscallState::Suspend(timeout_time))
+                co.syscall((), Syscall::nanosleep, SyscallState::Suspend(timeout_time))
                     .expect("change to syscall state failed !");
                 if let Some(suspender) = SchedulableSuspender::current() {
                     suspender.suspend();
                 }
             }
-            if let Some(coroutine) = SchedulableCoroutine::current() {
-                match coroutine.state() {
-                    CoroutineState::Running => println!("syscall nanosleep finished !"),
+            if let Some(co) = SchedulableCoroutine::current() {
+                match co.state() {
+                    CoroutineState::SystemCall((), Syscall::nanosleep, SyscallState::Timeout) => {
+                        println!("syscall nanosleep finished !");
+                        co.syscall((), Syscall::nanosleep, SyscallState::Executing)
+                            .expect("change to syscall state failed !");
+                        co.running().expect("change to running state failed !");
+                    }
                     _ => unreachable!("test_state 2 should never execute to here"),
                 };
             }
