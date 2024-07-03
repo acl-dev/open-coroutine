@@ -98,11 +98,10 @@ where
                     return Ok(());
                 }
             }
-            CoroutineState::SystemCall(
-                _,
-                _,
-                SyscallState::Executing | SyscallState::Finished | SyscallState::Timeout,
-            ) => {
+            CoroutineState::SystemCall(_, _, SyscallState::Callback | SyscallState::Timeout) => {
+                return Ok(());
+            }
+            CoroutineState::SystemCall(_, _, SyscallState::Executing) => {
                 let new_state = CoroutineState::Running;
                 let old_state = self.change_state(new_state);
                 self.on_running(self, old_state);

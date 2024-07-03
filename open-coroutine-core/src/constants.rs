@@ -81,8 +81,8 @@ pub enum SyscallState {
     ///到指定时间戳后回来，期间系统调用可能没执行完毕
     ///对于sleep系列，这个状态表示正常完成
     Timeout,
-    ///系统调用完成
-    Finished,
+    ///系统调用回调成功
+    Callback,
 }
 
 impl_display_by_debug!(SyscallState);

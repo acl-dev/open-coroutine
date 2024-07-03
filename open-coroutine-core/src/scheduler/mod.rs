@@ -4,7 +4,7 @@ use crate::coroutine::listener::Listener;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
 use crate::scheduler::join::JoinHandle;
-use crate::{impl_current_for, impl_for_named};
+use crate::{error, impl_current_for, impl_for_named};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use open_coroutine_queue::LocalQueue;
@@ -125,8 +125,16 @@ impl<'s> Scheduler<'s> {
     pub fn try_resume(&self, co_name: &str) -> std::io::Result<()> {
         let co_name: &str = Box::leak(Box::from(co_name));
         unsafe {
-            if let Some(coroutine) = SYSTEM_CALL_TABLE.remove(co_name) {
-                self.ready.push_back(coroutine);
+            if let Some(co) = SYSTEM_CALL_TABLE.remove(co_name) {
+                let state = co.state();
+                match state {
+                    CoroutineState::SystemCall(val, syscall, SyscallState::Suspend(_)) => {
+                        co.syscall(val, syscall, SyscallState::Callback)
+                            .expect("change syscall state failed");
+                    }
+                    _ => panic!("try_resume should never execute to here {co_name} {state}"),
+                }
+                self.ready.push_back(co);
             }
         }
         Ok(())
@@ -173,18 +181,19 @@ impl<'s> Scheduler<'s> {
             return Ok(timeout_time.saturating_sub(open_coroutine_timer::now()));
         }
         Self::init_current(self);
+        let left_time = self.do_schedule(timeout_time);
+        Self::clean_current();
+        self.scheduling.store(false, Ordering::Release);
+        left_time
+    }
+
+    fn do_schedule(&self, timeout_time: u64) -> std::io::Result<u64> {
         loop {
             let left_time = timeout_time.saturating_sub(open_coroutine_timer::now());
             if left_time == 0 {
-                Self::clean_current();
-                self.scheduling.store(false, Ordering::Release);
                 return Ok(0);
             }
-            if let Err(e) = self.check_ready() {
-                Self::clean_current();
-                self.scheduling.store(false, Ordering::Release);
-                return Err(e);
-            }
+            self.check_ready()?;
             // schedule coroutines
             if let Some(mut coroutine) = self.ready.pop_front() {
                 match coroutine.resume() {
@@ -224,8 +233,6 @@ impl<'s> Scheduler<'s> {
                             );
                         }
                         _ => {
-                            Self::clean_current();
-                            self.scheduling.store(false, Ordering::Release);
                             return Err(std::io::Error::new(
                                 std::io::ErrorKind::Other,
                                 "try_timeout_schedule should never execute to here",
@@ -233,14 +240,11 @@ impl<'s> Scheduler<'s> {
                         }
                     },
                     Err(e) => {
-                        Self::clean_current();
-                        self.scheduling.store(false, Ordering::Release);
+                        error!("{} resume failed: {:?}", coroutine.get_name(), e);
                         return Err(e);
                     }
                 };
             } else {
-                Self::clean_current();
-                self.scheduling.store(false, Ordering::Release);
                 return Ok(left_time);
             }
         }
