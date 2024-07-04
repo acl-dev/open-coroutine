@@ -384,25 +384,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         r
     }
 
-    extern "C" fn socket(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int, c_int) -> c_int>,
-        domain: c_int,
-        ty: c_int,
-        protocol: c_int,
-    ) -> c_int {
-        self.inner.socket(fn_ptr, domain, ty, protocol)
-    }
-
-    extern "C" fn listen(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        backlog: c_int,
-    ) -> c_int {
-        self.inner.listen(fn_ptr, socket, backlog)
-    }
-
     extern "C" fn accept(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,
