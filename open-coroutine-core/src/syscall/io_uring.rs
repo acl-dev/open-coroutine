@@ -51,16 +51,6 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         unsupported!(self, select, fn_ptr, nfds, readfds, writefds, errorfds, timeout)
     }
 
-    extern "C" fn accept(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,
-        socket: c_int,
-        address: *mut sockaddr,
-        address_len: *mut socklen_t,
-    ) -> c_int {
-        impl_io_uring!(self, accept, fn_ptr, socket, address, address_len)
-    }
-
     extern "C" fn connect(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
@@ -265,16 +255,5 @@ impl<I: LinuxSyscall> LinuxSyscall for IoUringLinuxSyscall<I> {
         event: *mut epoll_event,
     ) -> c_int {
         impl_io_uring!(self, epoll_ctl, fn_ptr, epfd, op, fd, event)
-    }
-
-    extern "C" fn accept4(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t, c_int) -> c_int>,
-        fd: c_int,
-        addr: *mut sockaddr,
-        len: *mut socklen_t,
-        flg: c_int,
-    ) -> c_int {
-        impl_io_uring!(self, accept4, fn_ptr, fd, addr, len, flg)
     }
 }

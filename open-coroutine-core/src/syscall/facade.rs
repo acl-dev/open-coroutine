@@ -52,16 +52,6 @@ pub extern "C" fn select(
 /// socket
 
 #[must_use]
-pub extern "C" fn accept(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,
-    socket: c_int,
-    address: *mut sockaddr,
-    address_len: *mut socklen_t,
-) -> c_int {
-    CHAIN.accept(fn_ptr, socket, address, address_len)
-}
-
-#[must_use]
 pub extern "C" fn connect(
     fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
     socket: c_int,
@@ -257,18 +247,4 @@ pub extern "C" fn epoll_ctl(
     event: *mut epoll_event,
 ) -> c_int {
     CHAIN.epoll_ctl(fn_ptr, epfd, op, fd, event)
-}
-
-/// socket
-
-#[cfg(target_os = "linux")]
-#[must_use]
-pub extern "C" fn accept4(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t, c_int) -> c_int>,
-    fd: c_int,
-    addr: *mut sockaddr,
-    len: *mut socklen_t,
-    flg: c_int,
-) -> c_int {
-    CHAIN.accept4(fn_ptr, fd, addr, len, flg)
 }
