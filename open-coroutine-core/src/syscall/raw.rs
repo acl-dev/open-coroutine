@@ -48,33 +48,6 @@ impl UnixSyscall for RawLinuxSyscall {
 
     /// socket
 
-    extern "C" fn socket(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int, c_int) -> c_int>,
-        domain: c_int,
-        ty: c_int,
-        protocol: c_int,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(domain, ty, protocol)
-        } else {
-            unsafe { libc::socket(domain, ty, protocol) }
-        }
-    }
-
-    extern "C" fn listen(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        backlog: c_int,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(socket, backlog)
-        } else {
-            unsafe { libc::listen(socket, backlog) }
-        }
-    }
-
     extern "C" fn accept(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,

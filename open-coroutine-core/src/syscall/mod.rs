@@ -54,21 +54,6 @@ pub trait UnixSyscall {
 
     /// socket
 
-    extern "C" fn socket(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int, c_int) -> c_int>,
-        domain: c_int,
-        ty: c_int,
-        protocol: c_int,
-    ) -> c_int;
-
-    extern "C" fn listen(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        backlog: c_int,
-    ) -> c_int;
-
     extern "C" fn accept(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,

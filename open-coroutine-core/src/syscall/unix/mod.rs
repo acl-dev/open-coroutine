@@ -1,5 +1,7 @@
+pub use listen::listen;
 pub use nanosleep::nanosleep;
 pub use sleep::sleep;
+pub use socket::socket;
 pub use usleep::usleep;
 
 macro_rules! impl_facade {
@@ -41,6 +43,29 @@ macro_rules! impl_facade {
 }
 
 #[allow(unused_macros)]
+macro_rules! impl_io_uring {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        #[derive(Debug, Default)]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "C" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "C" fn($($arg_type),*) -> $result>,
+                $($arg: $arg_type),*
+            ) -> $result {
+                $crate::net::event_loop::EventLoops::$syscall($($arg, )*)
+                    .unwrap_or_else(|_| self.inner.$syscall(fn_ptr, $($arg, )*))
+            }
+        }
+    }
+}
+
+#[allow(unused_macros)]
 macro_rules! impl_raw {
     ( $struct_name: ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
         #[derive(Debug, Copy, Clone, Default)]
@@ -62,6 +87,8 @@ macro_rules! impl_raw {
     }
 }
 
+mod listen;
 mod nanosleep;
 mod sleep;
+mod socket;
 mod usleep;
