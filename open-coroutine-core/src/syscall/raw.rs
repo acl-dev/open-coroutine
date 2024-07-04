@@ -48,20 +48,6 @@ impl UnixSyscall for RawLinuxSyscall {
 
     /// socket
 
-    extern "C" fn accept(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,
-        socket: c_int,
-        address: *mut sockaddr,
-        address_len: *mut socklen_t,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(socket, address, address_len)
-        } else {
-            unsafe { libc::accept(socket, address, address_len) }
-        }
-    }
-
     extern "C" fn connect(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
@@ -344,23 +330,6 @@ impl LinuxSyscall for RawLinuxSyscall {
             (f)(epfd, op, fd, event)
         } else {
             unsafe { libc::epoll_ctl(epfd, op, fd, event) }
-        }
-    }
-
-    /// socket
-
-    extern "C" fn accept4(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t, c_int) -> c_int>,
-        fd: c_int,
-        addr: *mut sockaddr,
-        len: *mut socklen_t,
-        flg: c_int,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(fd, addr, len, flg)
-        } else {
-            unsafe { libc::accept4(fd, addr, len, flg) }
         }
     }
 }

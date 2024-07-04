@@ -54,18 +54,10 @@ pub trait UnixSyscall {
 
     /// socket
 
-    extern "C" fn accept(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,
-        socket: c_int,
-        address: *mut sockaddr,
-        address_len: *mut socklen_t,
-    ) -> c_int;
-
     extern "C" fn connect(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        socket: c_int,
+        fd: c_int,
         address: *const sockaddr,
         len: socklen_t,
     ) -> c_int;
@@ -73,7 +65,7 @@ pub trait UnixSyscall {
     extern "C" fn shutdown(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
+        fd: c_int,
         how: c_int,
     ) -> c_int;
 
@@ -84,7 +76,7 @@ pub trait UnixSyscall {
     extern "C" fn recv(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t>,
-        socket: c_int,
+        fd: c_int,
         buf: *mut c_void,
         len: size_t,
         flags: c_int,
@@ -102,7 +94,7 @@ pub trait UnixSyscall {
                 *mut socklen_t,
             ) -> ssize_t,
         >,
-        socket: c_int,
+        fd: c_int,
         buf: *mut c_void,
         len: size_t,
         flags: c_int,
@@ -157,7 +149,7 @@ pub trait UnixSyscall {
     extern "C" fn send(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
-        socket: c_int,
+        fd: c_int,
         buf: *const c_void,
         len: size_t,
         flags: c_int,
@@ -175,7 +167,7 @@ pub trait UnixSyscall {
                 socklen_t,
             ) -> ssize_t,
         >,
-        socket: c_int,
+        fd: c_int,
         buf: *const c_void,
         len: size_t,
         flags: c_int,
@@ -237,17 +229,6 @@ pub trait LinuxSyscall: UnixSyscall {
         op: c_int,
         fd: c_int,
         event: *mut epoll_event,
-    ) -> c_int;
-
-    /// socket
-
-    extern "C" fn accept4(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t, c_int) -> c_int>,
-        fd: c_int,
-        addr: *mut sockaddr,
-        len: *mut socklen_t,
-        flg: c_int,
     ) -> c_int;
 }
 

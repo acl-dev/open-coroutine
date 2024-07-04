@@ -16,38 +16,6 @@ pub struct NioLinuxSyscall<I: UnixSyscall> {
     inner: I,
 }
 
-macro_rules! impl_read_hook {
-    ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $($arg: expr),* $(,)* ) => {{
-        let socket = $socket;
-        let blocking = $crate::syscall::common::is_blocking(socket);
-        if blocking {
-            $crate::syscall::common::set_non_blocking(socket);
-        }
-        let mut r;
-        loop {
-            r = $invoker.$syscall($fn_ptr, $socket, $($arg, )*);
-            if r != -1 {
-                $crate::syscall::common::reset_errno();
-                break;
-            }
-            let error_kind = std::io::Error::last_os_error().kind();
-            if error_kind == std::io::ErrorKind::WouldBlock {
-                //wait read event
-                _ = $crate::net::event_loop::EventLoops::wait_read_event(
-                    socket,
-                    Some(std::time::Duration::from_millis(10)),
-                );
-            } else if error_kind != std::io::ErrorKind::Interrupted {
-                break;
-            }
-        }
-        if blocking {
-            $crate::syscall::common::set_blocking(socket);
-        }
-        r
-    }};
-}
-
 macro_rules! impl_expected_read_hook {
     ( $invoker: expr, $syscall: ident, $fn_ptr: expr, $socket:expr, $buffer:expr, $length:expr, $($arg: expr),* $(,)* ) => {{
         let socket = $socket;
@@ -382,16 +350,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             o.tv_usec = 0;
         }
         r
-    }
-
-    extern "C" fn accept(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t) -> c_int>,
-        socket: c_int,
-        address: *mut sockaddr,
-        address_len: *mut socklen_t,
-    ) -> c_int {
-        impl_read_hook!(self.inner, accept, fn_ptr, socket, address, address_len)
     }
 
     extern "C" fn connect(
@@ -849,16 +807,5 @@ impl<I: LinuxSyscall> LinuxSyscall for NioLinuxSyscall<I> {
         event: *mut epoll_event,
     ) -> c_int {
         self.inner.epoll_ctl(fn_ptr, epfd, op, fd, event)
-    }
-
-    extern "C" fn accept4(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut sockaddr, *mut socklen_t, c_int) -> c_int>,
-        fd: c_int,
-        addr: *mut sockaddr,
-        len: *mut socklen_t,
-        flg: c_int,
-    ) -> c_int {
-        impl_read_hook!(self.inner, accept4, fn_ptr, fd, addr, len, flg)
     }
 }
