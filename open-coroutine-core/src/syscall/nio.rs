@@ -1,5 +1,5 @@
 use crate::net::event_loop::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
+use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_non_blocking};
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
@@ -350,99 +350,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             o.tv_usec = 0;
         }
         r
-    }
-
-    extern "C" fn connect(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        socket: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
-    ) -> c_int {
-        let blocking = is_blocking(socket);
-        if blocking {
-            set_non_blocking(socket);
-        }
-        let mut r;
-        loop {
-            r = self.inner.connect(fn_ptr, socket, address, len);
-            if r == 0 {
-                reset_errno();
-                break;
-            }
-            let errno = std::io::Error::last_os_error().raw_os_error();
-            if errno == Some(libc::EINPROGRESS) {
-                //阻塞，直到写事件发生
-                if EventLoops::wait_write_event(socket, Some(Duration::from_millis(10))).is_err() {
-                    r = -1;
-                    break;
-                }
-                let mut err: c_int = 0;
-                unsafe {
-                    let mut len: socklen_t = std::mem::zeroed();
-                    r = libc::getsockopt(
-                        socket,
-                        libc::SOL_SOCKET,
-                        libc::SO_ERROR,
-                        (std::ptr::addr_of_mut!(err)).cast::<c_void>(),
-                        &mut len,
-                    );
-                }
-                if r != 0 {
-                    r = -1;
-                    break;
-                }
-                if err != 0 {
-                    set_errno(err);
-                    r = -1;
-                    break;
-                };
-                unsafe {
-                    let mut address = std::mem::zeroed();
-                    let mut address_len = std::mem::zeroed();
-                    r = libc::getpeername(socket, &mut address, &mut address_len);
-                }
-                if r == 0 {
-                    reset_errno();
-                    r = 0;
-                    break;
-                }
-            } else if errno != Some(libc::EINTR) {
-                r = -1;
-                break;
-            }
-        }
-        if r == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ETIMEDOUT) {
-            set_errno(libc::EINPROGRESS);
-        }
-        if blocking {
-            set_blocking(socket);
-        }
-        r
-    }
-
-    extern "C" fn shutdown(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        how: c_int,
-    ) -> c_int {
-        //取消对fd的监听
-        match how {
-            libc::SHUT_RD => EventLoops::del_read_event(socket),
-            libc::SHUT_WR => EventLoops::del_write_event(socket),
-            libc::SHUT_RDWR => EventLoops::del_event(socket),
-            _ => {
-                set_errno(libc::EINVAL);
-                return -1;
-            }
-        };
-        self.inner.shutdown(fn_ptr, socket, how)
-    }
-
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-        EventLoops::del_event(fd);
-        self.inner.close(fn_ptr, fd)
     }
 
     extern "C" fn recv(

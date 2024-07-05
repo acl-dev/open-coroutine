@@ -52,25 +52,6 @@ pub trait UnixSyscall {
         timeout: *mut timeval,
     ) -> c_int;
 
-    /// socket
-
-    extern "C" fn connect(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        fd: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
-    ) -> c_int;
-
-    extern "C" fn shutdown(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        fd: c_int,
-        how: c_int,
-    ) -> c_int;
-
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int;
-
     /// read
 
     extern "C" fn recv(

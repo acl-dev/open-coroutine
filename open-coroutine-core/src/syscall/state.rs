@@ -61,29 +61,6 @@ impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
         syscall_state!(self, select, fn_ptr, nfds, readfds, writefds, errorfds, timeout)
     }
 
-    extern "C" fn connect(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        socket: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
-    ) -> c_int {
-        syscall_state!(self, connect, fn_ptr, socket, address, len)
-    }
-
-    extern "C" fn shutdown(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        how: c_int,
-    ) -> c_int {
-        syscall_state!(self, shutdown, fn_ptr, socket, how)
-    }
-
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-        syscall_state!(self, close, fn_ptr, fd)
-    }
-
     extern "C" fn recv(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t>,
