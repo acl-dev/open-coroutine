@@ -1,9 +1,11 @@
 pub use accept::accept;
 #[cfg(target_os = "linux")]
 pub use accept4::accept4;
+pub use close::close;
 pub use connect::connect;
 pub use listen::listen;
 pub use nanosleep::nanosleep;
+pub use shutdown::shutdown;
 pub use sleep::sleep;
 pub use socket::socket;
 pub use usleep::usleep;
@@ -139,9 +141,11 @@ macro_rules! impl_raw {
 mod accept;
 #[cfg(target_os = "linux")]
 mod accept4;
+mod close;
 mod connect;
 mod listen;
 mod nanosleep;
+mod shutdown;
 mod sleep;
 mod socket;
 mod usleep;

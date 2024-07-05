@@ -1,5 +1,5 @@
 use crate::net::event_loop::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
+use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_non_blocking};
 #[cfg(target_os = "linux")]
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
@@ -350,30 +350,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
             o.tv_usec = 0;
         }
         r
-    }
-
-    extern "C" fn shutdown(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        how: c_int,
-    ) -> c_int {
-        //取消对fd的监听
-        match how {
-            libc::SHUT_RD => EventLoops::del_read_event(socket),
-            libc::SHUT_WR => EventLoops::del_write_event(socket),
-            libc::SHUT_RDWR => EventLoops::del_event(socket),
-            _ => {
-                set_errno(libc::EINVAL);
-                return -1;
-            }
-        };
-        self.inner.shutdown(fn_ptr, socket, how)
-    }
-
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-        EventLoops::del_event(fd);
-        self.inner.close(fn_ptr, fd)
     }
 
     extern "C" fn recv(

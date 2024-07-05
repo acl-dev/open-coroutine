@@ -49,22 +49,6 @@ pub extern "C" fn select(
     CHAIN.select(fn_ptr, nfds, readfds, writefds, errorfds, timeout)
 }
 
-/// socket
-
-#[must_use]
-pub extern "C" fn shutdown(
-    fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-    socket: c_int,
-    how: c_int,
-) -> c_int {
-    CHAIN.shutdown(fn_ptr, socket, how)
-}
-
-#[must_use]
-pub extern "C" fn close(fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-    CHAIN.close(fn_ptr, fd)
-}
-
 /// read
 
 #[must_use]

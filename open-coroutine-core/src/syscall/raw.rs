@@ -46,29 +46,6 @@ impl UnixSyscall for RawLinuxSyscall {
         }
     }
 
-    /// socket
-
-    extern "C" fn shutdown(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-        socket: c_int,
-        how: c_int,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(socket, how)
-        } else {
-            unsafe { libc::shutdown(socket, how) }
-        }
-    }
-
-    extern "C" fn close(&self, fn_ptr: Option<&extern "C" fn(c_int) -> c_int>, fd: c_int) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(fd)
-        } else {
-            unsafe { libc::close(fd) }
-        }
-    }
-
     /// read
 
     extern "C" fn recv(
