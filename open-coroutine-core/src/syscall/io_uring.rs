@@ -51,16 +51,6 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         unsupported!(self, select, fn_ptr, nfds, readfds, writefds, errorfds, timeout)
     }
 
-    extern "C" fn connect(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        socket: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
-    ) -> c_int {
-        impl_io_uring!(self, connect, fn_ptr, socket, address, len)
-    }
-
     extern "C" fn shutdown(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,

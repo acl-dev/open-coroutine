@@ -52,16 +52,6 @@ pub extern "C" fn select(
 /// socket
 
 #[must_use]
-pub extern "C" fn connect(
-    fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-    socket: c_int,
-    address: *const sockaddr,
-    len: socklen_t,
-) -> c_int {
-    CHAIN.connect(fn_ptr, socket, address, len)
-}
-
-#[must_use]
 pub extern "C" fn shutdown(
     fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
     socket: c_int,

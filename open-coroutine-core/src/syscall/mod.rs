@@ -54,14 +54,6 @@ pub trait UnixSyscall {
 
     /// socket
 
-    extern "C" fn connect(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        fd: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
-    ) -> c_int;
-
     extern "C" fn shutdown(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,

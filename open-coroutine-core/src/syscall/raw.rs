@@ -48,20 +48,6 @@ impl UnixSyscall for RawLinuxSyscall {
 
     /// socket
 
-    extern "C" fn connect(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        socket: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
-    ) -> c_int {
-        if let Some(f) = fn_ptr {
-            (f)(socket, address, len)
-        } else {
-            unsafe { libc::connect(socket, address, len) }
-        }
-    }
-
     extern "C" fn shutdown(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
