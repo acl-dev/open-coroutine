@@ -527,17 +527,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         r
     }
 
-    extern "C" fn send(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
-        socket: c_int,
-        buf: *const c_void,
-        len: size_t,
-        flags: c_int,
-    ) -> ssize_t {
-        impl_expected_write_hook!(self.inner, send, fn_ptr, socket, buf, len, flags)
-    }
-
     extern "C" fn sendto(
         &self,
         fn_ptr: Option<

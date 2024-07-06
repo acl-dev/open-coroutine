@@ -163,21 +163,6 @@ impl UnixSyscall for RawLinuxSyscall {
 
     /// write
 
-    extern "C" fn send(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
-        socket: c_int,
-        buf: *const c_void,
-        len: size_t,
-        flags: c_int,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(socket, buf, len, flags)
-        } else {
-            unsafe { libc::send(socket, buf, len, flags) }
-        }
-    }
-
     extern "C" fn sendto(
         &self,
         fn_ptr: Option<

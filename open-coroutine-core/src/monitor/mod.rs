@@ -166,10 +166,7 @@ impl Monitor {
 
     #[allow(dead_code)]
     pub fn stop() {
-        assert_eq!(
-            MonitorState::Running,
-            Self::get_instance().state.replace(MonitorState::Stopping)
-        );
+        Self::get_instance().state.set(MonitorState::Stopping);
         cfg_if::cfg_if! {
             if #[cfg(feature = "net")] {
                 let pair = EventLoops::new_condition();

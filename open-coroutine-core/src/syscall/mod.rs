@@ -127,15 +127,6 @@ pub trait UnixSyscall {
 
     /// write
 
-    extern "C" fn send(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
-        fd: c_int,
-        buf: *const c_void,
-        len: size_t,
-        flags: c_int,
-    ) -> ssize_t;
-
     extern "C" fn sendto(
         &self,
         fn_ptr: Option<

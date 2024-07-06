@@ -136,17 +136,6 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         impl_io_uring!(self, recvmsg, fn_ptr, fd, msg, flags)
     }
 
-    extern "C" fn send(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
-        socket: c_int,
-        buf: *const c_void,
-        len: size_t,
-        flags: c_int,
-    ) -> ssize_t {
-        impl_io_uring!(self, send, fn_ptr, socket, buf, len, flags)
-    }
-
     extern "C" fn sendto(
         &self,
         fn_ptr: Option<
