@@ -132,17 +132,6 @@ pub extern "C" fn recvmsg(
 /// write
 
 #[must_use]
-pub extern "C" fn send(
-    fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t, c_int) -> ssize_t>,
-    socket: c_int,
-    buf: *const c_void,
-    len: size_t,
-    flags: c_int,
-) -> ssize_t {
-    CHAIN.send(fn_ptr, socket, buf, len, flags)
-}
-
-#[must_use]
 pub extern "C" fn sendto(
     fn_ptr: Option<
         &extern "C" fn(c_int, *const c_void, size_t, c_int, *const sockaddr, socklen_t) -> ssize_t,

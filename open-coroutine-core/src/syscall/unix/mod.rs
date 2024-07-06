@@ -5,6 +5,7 @@ pub use close::close;
 pub use connect::connect;
 pub use listen::listen;
 pub use nanosleep::nanosleep;
+pub use send::send;
 pub use shutdown::shutdown;
 pub use sleep::sleep;
 pub use socket::socket;
@@ -117,6 +118,69 @@ macro_rules! impl_nio_read {
     }
 }
 
+macro_rules! impl_nio_expected_write {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
+        $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[derive(Debug, Default)]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "C" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "C" fn($fd_type, $buf_type, $len_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $buf: $buf_type,
+                $len: $len_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                let blocking = $crate::syscall::common::is_blocking($fd);
+                if blocking {
+                    $crate::syscall::common::set_non_blocking($fd);
+                }
+                let mut sent = 0;
+                let mut r = 0;
+                while sent < $len {
+                    r = self.inner.$syscall(
+                        fn_ptr,
+                        $fd,
+                        ($buf as usize + sent) as *const c_void,
+                        $len - sent,
+                        $($arg, )*
+                    );
+                    if r != -1 {
+                        $crate::syscall::common::reset_errno();
+                        sent += r as size_t;
+                        if sent >= $len {
+                            r = sent as ssize_t;
+                            break;
+                        }
+                    }
+                    let error_kind = std::io::Error::last_os_error().kind();
+                    if error_kind == std::io::ErrorKind::WouldBlock {
+                        //wait write event
+                        if $crate::net::event_loop::EventLoops::wait_write_event(
+                            $fd,
+                            Some(std::time::Duration::from_millis(10)),
+                        )
+                        .is_err()
+                        {
+                            break;
+                        }
+                    } else if error_kind != std::io::ErrorKind::Interrupted {
+                        break;
+                    }
+                }
+                if blocking {
+                    $crate::syscall::common::set_blocking($fd);
+                }
+                r
+            }
+        }
+    }
+}
+
 macro_rules! impl_raw {
     ( $struct_name: ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
         #[derive(Debug, Copy, Clone, Default)]
@@ -145,6 +209,7 @@ mod close;
 mod connect;
 mod listen;
 mod nanosleep;
+mod send;
 mod shutdown;
 mod sleep;
 mod socket;
