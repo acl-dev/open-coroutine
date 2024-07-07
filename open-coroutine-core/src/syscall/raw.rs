@@ -48,21 +48,6 @@ impl UnixSyscall for RawLinuxSyscall {
 
     /// read
 
-    extern "C" fn recv(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t>,
-        socket: c_int,
-        buf: *mut c_void,
-        len: size_t,
-        flags: c_int,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(socket, buf, len, flags)
-        } else {
-            unsafe { libc::send(socket, buf, len, flags) }
-        }
-    }
-
     extern "C" fn recvfrom(
         &self,
         fn_ptr: Option<

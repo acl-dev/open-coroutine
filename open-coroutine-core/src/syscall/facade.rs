@@ -52,17 +52,6 @@ pub extern "C" fn select(
 /// read
 
 #[must_use]
-pub extern "C" fn recv(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, c_int) -> ssize_t>,
-    socket: c_int,
-    buf: *mut c_void,
-    len: size_t,
-    flags: c_int,
-) -> ssize_t {
-    CHAIN.recv(fn_ptr, socket, buf, len, flags)
-}
-
-#[must_use]
 pub extern "C" fn recvfrom(
     fn_ptr: Option<
         &extern "C" fn(c_int, *mut c_void, size_t, c_int, *mut sockaddr, *mut socklen_t) -> ssize_t,
