@@ -14,52 +14,61 @@ fn crate_task(input: i32) {
     );
 }
 
-pub fn start_server<A: ToSocketAddrs>(
-    addr: A,
-    server_finished: Arc<(Mutex<bool>, Condvar)>,
-) -> std::io::Result<()> {
-    let listener = TcpListener::bind(addr)?;
+pub fn start_server<A: ToSocketAddrs>(addr: A, server_finished: Arc<(Mutex<bool>, Condvar)>) {
+    let listener = TcpListener::bind(addr).expect("start server failed");
     for stream in listener.incoming() {
-        let mut stream = stream?;
+        let mut socket = stream.expect("accept new connection failed");
         let mut buffer1 = [0; 256];
         for _ in 0..3 {
-            assert_eq!(12, stream.read(&mut buffer1)?);
+            assert_eq!(12, socket.read(&mut buffer1).expect("recv failed"));
             println!("Server Received: {}", String::from_utf8_lossy(&buffer1));
-            assert_eq!(256, stream.write(&buffer1)?);
+            assert_eq!(256, socket.write(&buffer1).expect("send failed"));
             println!("Server Send");
         }
         let mut buffer2 = [0; 256];
         for _ in 0..3 {
             let mut buffers = [IoSliceMut::new(&mut buffer1), IoSliceMut::new(&mut buffer2)];
-            assert_eq!(26, stream.read_vectored(&mut buffers)?);
+            assert_eq!(
+                26,
+                socket.read_vectored(&mut buffers).expect("readv failed")
+            );
             println!(
                 "Server Received Multiple: {}{}",
                 String::from_utf8_lossy(&buffer1),
                 String::from_utf8_lossy(&buffer2)
             );
             let responses = [IoSlice::new(&buffer1), IoSlice::new(&buffer2)];
-            assert_eq!(512, stream.write_vectored(&responses)?);
+            assert_eq!(
+                512,
+                socket.write_vectored(&responses).expect("writev failed")
+            );
             println!("Server Send Multiple");
         }
         println!("Server Shutdown Write");
-        stream.shutdown(Shutdown::Write).map(|()| {
+        if socket.shutdown(Shutdown::Write).is_ok() {
             println!("Server Closed Connection");
-        })?;
-        let (lock, cvar) = &*server_finished;
-        let mut pending = lock.lock().unwrap();
-        *pending = false;
-        cvar.notify_one();
+            let (lock, cvar) = &*server_finished;
+            let mut pending = lock.lock().unwrap();
+            *pending = false;
+            cvar.notify_one();
+            println!("Server Closed");
+            return;
+        }
     }
-    Ok(())
 }
 
-pub fn start_client<A: ToSocketAddrs>(addr: A) -> std::io::Result<()> {
-    let mut stream = connect_timeout(addr, Duration::from_secs(3))?;
+pub fn start_client<A: ToSocketAddrs>(addr: A) {
+    let mut stream = connect_timeout(addr, Duration::from_secs(3)).expect("connect failed");
     let mut buffer1 = [0; 256];
     for i in 0..3 {
-        assert_eq!(12, stream.write(format!("RequestPart{i}").as_ref())?);
+        assert_eq!(
+            12,
+            stream
+                .write(format!("RequestPart{i}").as_ref())
+                .expect("send failed")
+        );
         println!("Client Send");
-        assert_eq!(256, stream.read(&mut buffer1)?);
+        assert_eq!(256, stream.read(&mut buffer1).expect("recv failed"));
         println!("Client Received: {}", String::from_utf8_lossy(&buffer1));
     }
     let mut buffer2 = [0; 256];
@@ -70,10 +79,13 @@ pub fn start_client<A: ToSocketAddrs>(addr: A) -> std::io::Result<()> {
             IoSlice::new(request1.as_ref()),
             IoSlice::new(request2.as_ref()),
         ];
-        assert_eq!(26, stream.write_vectored(&requests)?);
+        assert_eq!(26, stream.write_vectored(&requests).expect("writev failed"));
         println!("Client Send Multiple");
         let mut buffers = [IoSliceMut::new(&mut buffer1), IoSliceMut::new(&mut buffer2)];
-        assert_eq!(512, stream.read_vectored(&mut buffers)?);
+        assert_eq!(
+            512,
+            stream.read_vectored(&mut buffers).expect("readv failed")
+        );
         println!(
             "Client Received Multiple: {}{}",
             String::from_utf8_lossy(&buffer1),
@@ -81,9 +93,8 @@ pub fn start_client<A: ToSocketAddrs>(addr: A) -> std::io::Result<()> {
         );
     }
     println!("Client Shutdown Write");
-    stream.shutdown(Shutdown::Write).map(|()| {
-        println!("Client Closed");
-    })
+    stream.shutdown(Shutdown::Write).expect("shutdown failed");
+    println!("Client Closed");
 }
 
 fn connect_timeout<A: ToSocketAddrs>(addr: A, timeout: Duration) -> std::io::Result<TcpStream> {
@@ -111,7 +122,7 @@ pub fn crate_server(
     crate_task(1);
     let mut data: [u8; 512] = unsafe { std::mem::zeroed() };
     data[511] = b'\n';
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+    let listener = TcpListener::bind((IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port))
         .unwrap_or_else(|_| panic!("bind to 127.0.0.1:{port} failed !"));
     server_started.store(true, Ordering::Release);
     //invoke by libc::accept
@@ -205,7 +216,7 @@ pub fn crate_co_server(
     crate_task(11);
     let mut data: [u8; 512] = unsafe { std::mem::zeroed() };
     data[511] = b'\n';
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+    let listener = TcpListener::bind((IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port))
         .unwrap_or_else(|_| panic!("bind to 127.0.0.1:{port} failed !"));
     server_started.store(true, Ordering::Release);
     //invoke by libc::accept

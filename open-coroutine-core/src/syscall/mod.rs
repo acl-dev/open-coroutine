@@ -91,14 +91,6 @@ pub trait UnixSyscall {
         offset: off_t,
     ) -> ssize_t;
 
-    extern "C" fn readv(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t;
-
     extern "C" fn preadv(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
@@ -153,14 +145,6 @@ pub trait UnixSyscall {
         buf: *const c_void,
         count: size_t,
         offset: off_t,
-    ) -> ssize_t;
-
-    extern "C" fn writev(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
     ) -> ssize_t;
 
     extern "C" fn pwritev(

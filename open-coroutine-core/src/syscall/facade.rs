@@ -88,16 +88,6 @@ pub extern "C" fn pread(
 }
 
 #[must_use]
-pub extern "C" fn readv(
-    fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-    fd: c_int,
-    iov: *const iovec,
-    iovcnt: c_int,
-) -> ssize_t {
-    CHAIN.readv(fn_ptr, fd, iov, iovcnt)
-}
-
-#[must_use]
 pub extern "C" fn preadv(
     fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
     fd: c_int,
@@ -154,16 +144,6 @@ pub extern "C" fn pwrite(
     offset: off_t,
 ) -> ssize_t {
     CHAIN.pwrite(fn_ptr, fd, buf, count, offset)
-}
-
-#[must_use]
-pub extern "C" fn writev(
-    fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-    fd: c_int,
-    iov: *const iovec,
-    iovcnt: c_int,
-) -> ssize_t {
-    CHAIN.writev(fn_ptr, fd, iov, iovcnt)
 }
 
 #[must_use]

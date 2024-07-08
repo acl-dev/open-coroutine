@@ -132,10 +132,7 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
                     READABLE_RECORDS.remove(&fd).is_some(),
                     "Clean READABLE_RECORDS failed !"
                 );
-                assert!(
-                    READABLE_TOKEN_RECORDS.remove(&fd).is_some(),
-                    "Clean READABLE_TOKEN_RECORDS failed !"
-                );
+                _ = READABLE_TOKEN_RECORDS.remove(&fd);
             } else {
                 self.del_event(fd)?;
             }
@@ -158,10 +155,7 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
                     WRITABLE_RECORDS.remove(&fd).is_some(),
                     "Clean WRITABLE_RECORDS failed !"
                 );
-                assert!(
-                    WRITABLE_TOKEN_RECORDS.remove(&fd).is_some(),
-                    "Clean WRITABLE_TOKEN_RECORDS failed !"
-                );
+                _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
             } else {
                 self.del_event(fd)?;
             }
