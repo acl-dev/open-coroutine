@@ -42,7 +42,7 @@ impl_io_uring!(IoUringRecvSyscall, RecvSyscall,
     recv(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t
 );
 
-impl_nio_expected_read!(NioRecvSyscall, RecvSyscall,
+impl_nio_read_buf!(NioRecvSyscall, RecvSyscall,
     recv(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t
 );
 

@@ -103,20 +103,6 @@ impl UnixSyscall for RawLinuxSyscall {
         }
     }
 
-    extern "C" fn readv(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(fd, iov, iovcnt)
-        } else {
-            unsafe { libc::readv(fd, iov, iovcnt) }
-        }
-    }
-
     extern "C" fn preadv(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
@@ -200,20 +186,6 @@ impl UnixSyscall for RawLinuxSyscall {
             (f)(fd, buf, count, offset)
         } else {
             unsafe { libc::pwrite(fd, buf, count, offset) }
-        }
-    }
-
-    extern "C" fn writev(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(fd, iov, iovcnt)
-        } else {
-            unsafe { libc::writev(fd, iov, iovcnt) }
         }
     }
 

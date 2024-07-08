@@ -42,7 +42,7 @@ impl_io_uring!(IoUringSendSyscall, SendSyscall,
     send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t
 );
 
-impl_nio_expected_write!(NioSendSyscall, SendSyscall,
+impl_nio_write_buf!(NioSendSyscall, SendSyscall,
     send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t
 );
 

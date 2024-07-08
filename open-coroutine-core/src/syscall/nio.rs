@@ -397,16 +397,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         impl_expected_read_hook!(self.inner, pread, fn_ptr, fd, buf, count, offset)
     }
 
-    extern "C" fn readv(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t {
-        impl_expected_batch_read_hook!(self.inner, readv, fn_ptr, fd, iov, iovcnt,)
-    }
-
     extern "C" fn preadv(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
@@ -559,16 +549,6 @@ impl<I: UnixSyscall> UnixSyscall for NioLinuxSyscall<I> {
         offset: off_t,
     ) -> ssize_t {
         impl_expected_write_hook!(self.inner, pwrite, fn_ptr, fd, buf, count, offset)
-    }
-
-    extern "C" fn writev(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t {
-        impl_expected_batch_write_hook!(self.inner, writev, fn_ptr, fd, iov, iovcnt,)
     }
 
     extern "C" fn pwritev(

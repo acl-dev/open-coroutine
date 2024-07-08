@@ -94,16 +94,6 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         impl_io_uring!(self, pread, fn_ptr, fd, buf, count, offset)
     }
 
-    extern "C" fn readv(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t {
-        impl_io_uring!(self, readv, fn_ptr, fd, iov, iovcnt)
-    }
-
     extern "C" fn preadv(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
@@ -166,16 +156,6 @@ impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
         offset: off_t,
     ) -> ssize_t {
         impl_io_uring!(self, pwrite, fn_ptr, fd, buf, count, offset)
-    }
-
-    extern "C" fn writev(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-    ) -> ssize_t {
-        impl_io_uring!(self, writev, fn_ptr, fd, iov, iovcnt)
     }
 
     extern "C" fn pwritev(

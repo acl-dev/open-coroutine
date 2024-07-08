@@ -5,12 +5,14 @@ pub use close::close;
 pub use connect::connect;
 pub use listen::listen;
 pub use nanosleep::nanosleep;
+pub use readv::readv;
 pub use recv::recv;
 pub use send::send;
 pub use shutdown::shutdown;
 pub use sleep::sleep;
 pub use socket::socket;
 pub use usleep::usleep;
+pub use writev::writev;
 
 macro_rules! impl_facade {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
@@ -119,7 +121,7 @@ macro_rules! impl_nio_read {
     }
 }
 
-macro_rules! impl_nio_expected_read {
+macro_rules! impl_nio_read_buf {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
         $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
         #[derive(Debug, Default)]
@@ -146,7 +148,7 @@ macro_rules! impl_nio_expected_read {
                     r = self.inner.$syscall(
                         fn_ptr,
                         $fd,
-                        ($buf as usize + received) as *mut c_void,
+                        ($buf as usize + received) as *mut std::ffi::c_void,
                         $len - received,
                         $($arg, )*
                     );
@@ -182,7 +184,110 @@ macro_rules! impl_nio_expected_read {
     }
 }
 
-macro_rules! impl_nio_expected_write {
+macro_rules! impl_nio_read_iovec {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
+        $iov: ident : $iov_type: ty, $iovcnt: ident : $iovcnt_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[derive(Debug, Default)]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "C" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "C" fn($fd_type, $iov_type, $iovcnt_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $iov: $iov_type,
+                $iovcnt: $iovcnt_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                let blocking = $crate::syscall::common::is_blocking($fd);
+                if blocking {
+                    $crate::syscall::common::set_non_blocking($fd);
+                }
+                let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
+                let mut length = 0;
+                let mut received = 0usize;
+                let mut r = 0;
+                let mut index = 0;
+                for iovec in &vec {
+                    let mut offset = received.saturating_sub(length);
+                    length += iovec.iov_len;
+                    if received > length {
+                        index += 1;
+                        continue;
+                    }
+                    let mut arg = Vec::new();
+                    for i in vec.iter().skip(index) {
+                        arg.push(*i);
+                    }
+                    while received < length {
+                        if 0 != offset {
+                            arg[0] = libc::iovec {
+                                iov_base: (arg[0].iov_base as usize + offset) as *mut std::ffi::c_void,
+                                iov_len: arg[0].iov_len - offset,
+                            };
+                        }
+                        r = self.inner.$syscall(
+                            fn_ptr,
+                            $fd,
+                            arg.as_ptr(),
+                            c_int::try_from(arg.len()).unwrap_or_else(|_| {
+                                panic!("{} iovcnt overflow", $crate::constants::Syscall::$syscall)
+                            }),
+                            $($arg, )*
+                        );
+                        if r == 0 {
+                            std::mem::forget(vec);
+                            if blocking {
+                                $crate::syscall::common::set_blocking($fd);
+                            }
+                            return r;
+                        } else if r != -1 {
+                            $crate::syscall::common::reset_errno();
+                            received += r as usize;
+                            if received >= length {
+                                r = received as ssize_t;
+                                break;
+                            }
+                            offset = received.saturating_sub(length);
+                        }
+                        let error_kind = std::io::Error::last_os_error().kind();
+                        if error_kind == std::io::ErrorKind::WouldBlock {
+                            //wait read event
+                            if $crate::net::event_loop::EventLoops::wait_read_event(
+                                $fd,
+                                Some(std::time::Duration::from_millis(10))
+                            ).is_err() {
+                                std::mem::forget(vec);
+                                if blocking {
+                                    $crate::syscall::common::set_blocking($fd);
+                                }
+                                return r;
+                            }
+                        } else if error_kind != std::io::ErrorKind::Interrupted {
+                            std::mem::forget(vec);
+                            if blocking {
+                                $crate::syscall::common::set_blocking($fd);
+                            }
+                            return r;
+                        }
+                    }
+                    if received >= length {
+                        index += 1;
+                    }
+                }
+                std::mem::forget(vec);
+                if blocking {
+                    $crate::syscall::common::set_blocking($fd);
+                }
+                r
+            }
+        }
+    }
+}
+
+macro_rules! impl_nio_write_buf {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
         $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
         #[derive(Debug, Default)]
@@ -209,7 +314,7 @@ macro_rules! impl_nio_expected_write {
                     r = self.inner.$syscall(
                         fn_ptr,
                         $fd,
-                        ($buf as usize + sent) as *const c_void,
+                        ($buf as usize + sent) as *const std::ffi::c_void,
                         $len - sent,
                         $($arg, )*
                     );
@@ -236,6 +341,103 @@ macro_rules! impl_nio_expected_write {
                         break;
                     }
                 }
+                if blocking {
+                    $crate::syscall::common::set_blocking($fd);
+                }
+                r
+            }
+        }
+    }
+}
+
+macro_rules! impl_nio_write_iovec {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
+        $iov: ident : $iov_type: ty, $iovcnt: ident : $iovcnt_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[derive(Debug, Default)]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "C" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "C" fn($fd_type, $iov_type, $iovcnt_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $iov: $iov_type,
+                $iovcnt: $iovcnt_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                let blocking = $crate::syscall::common::is_blocking($fd);
+                if blocking {
+                    $crate::syscall::common::set_non_blocking($fd);
+                }
+                let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
+                let mut length = 0;
+                let mut sent = 0usize;
+                let mut r = 0;
+                let mut index = 0;
+                for iovec in &vec {
+                    let mut offset = sent.saturating_sub(length);
+                    length += iovec.iov_len;
+                    if sent > length {
+                        index += 1;
+                        continue;
+                    }
+                    let mut arg = Vec::new();
+                    for i in vec.iter().skip(index) {
+                        arg.push(*i);
+                    }
+                    while sent < length {
+                        if 0 != offset {
+                            arg[0] = libc::iovec {
+                                iov_base: (arg[0].iov_base as usize + offset) as *mut std::ffi::c_void,
+                                iov_len: arg[0].iov_len - offset,
+                            };
+                        }
+                        r = self.inner.$syscall(
+                            fn_ptr,
+                            $fd,
+                            arg.as_ptr(),
+                            c_int::try_from(arg.len()).unwrap_or_else(|_| {
+                                panic!("{} iovcnt overflow", $crate::constants::Syscall::$syscall)
+                            }),
+                            $($arg, )*
+                        );
+                        if r != -1 {
+                            $crate::syscall::common::reset_errno();
+                            sent += r as usize;
+                            if sent >= length {
+                                r = sent as ssize_t;
+                                break;
+                            }
+                            offset = sent.saturating_sub(length);
+                        }
+                        let error_kind = std::io::Error::last_os_error().kind();
+                        if error_kind == std::io::ErrorKind::WouldBlock {
+                            //wait write event
+                            if $crate::net::event_loop::EventLoops::wait_write_event(
+                                $fd,
+                                Some(std::time::Duration::from_millis(10))
+                            ).is_err() {
+                                std::mem::forget(vec);
+                                if blocking {
+                                    $crate::syscall::common::set_blocking($fd);
+                                }
+                                return r;
+                            }
+                        } else if error_kind != std::io::ErrorKind::Interrupted {
+                            std::mem::forget(vec);
+                            if blocking {
+                                $crate::syscall::common::set_blocking($fd);
+                            }
+                            return r;
+                        }
+                    }
+                    if sent >= length {
+                        index += 1;
+                    }
+                }
+                std::mem::forget(vec);
                 if blocking {
                     $crate::syscall::common::set_blocking($fd);
                 }
@@ -273,9 +475,11 @@ mod close;
 mod connect;
 mod listen;
 mod nanosleep;
+mod readv;
 mod recv;
 mod send;
 mod shutdown;
 mod sleep;
 mod socket;
 mod usleep;
+mod writev;
