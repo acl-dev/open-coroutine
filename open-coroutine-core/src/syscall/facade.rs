@@ -6,9 +6,7 @@ use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
-use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
-};
+use libc::{iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
 
@@ -23,48 +21,7 @@ cfg_if::cfg_if! {
     }
 }
 
-/// poll
-
-#[must_use]
-pub extern "C" fn poll(
-    fn_ptr: Option<&extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int>,
-    fds: *mut pollfd,
-    nfds: nfds_t,
-    timeout: c_int,
-) -> c_int {
-    CHAIN.poll(fn_ptr, fds, nfds, timeout)
-}
-
-#[must_use]
-pub extern "C" fn select(
-    fn_ptr: Option<
-        &extern "C" fn(c_int, *mut fd_set, *mut fd_set, *mut fd_set, *mut timeval) -> c_int,
-    >,
-    nfds: c_int,
-    readfds: *mut fd_set,
-    writefds: *mut fd_set,
-    errorfds: *mut fd_set,
-    timeout: *mut timeval,
-) -> c_int {
-    CHAIN.select(fn_ptr, nfds, readfds, writefds, errorfds, timeout)
-}
-
 /// read
-
-#[must_use]
-pub extern "C" fn recvfrom(
-    fn_ptr: Option<
-        &extern "C" fn(c_int, *mut c_void, size_t, c_int, *mut sockaddr, *mut socklen_t) -> ssize_t,
-    >,
-    socket: c_int,
-    buf: *mut c_void,
-    len: size_t,
-    flags: c_int,
-    addr: *mut sockaddr,
-    addrlen: *mut socklen_t,
-) -> ssize_t {
-    CHAIN.recvfrom(fn_ptr, socket, buf, len, flags, addr, addrlen)
-}
 
 #[must_use]
 pub extern "C" fn read(

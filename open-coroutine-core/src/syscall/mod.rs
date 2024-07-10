@@ -1,9 +1,7 @@
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
 #[cfg(unix)]
-use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
-};
+use libc::{iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 #[cfg(unix)]
 use std::ffi::{c_int, c_void};
 
@@ -30,49 +28,7 @@ pub use facade::*;
 
 #[cfg(unix)]
 pub trait UnixSyscall {
-    /// poll
-
-    extern "C" fn poll(
-        &self,
-        fn_ptr: Option<&extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int>,
-        fds: *mut pollfd,
-        nfds: nfds_t,
-        timeout: c_int,
-    ) -> c_int;
-
-    extern "C" fn select(
-        &self,
-        fn_ptr: Option<
-            &extern "C" fn(c_int, *mut fd_set, *mut fd_set, *mut fd_set, *mut timeval) -> c_int,
-        >,
-        nfds: c_int,
-        readfds: *mut fd_set,
-        writefds: *mut fd_set,
-        errorfds: *mut fd_set,
-        timeout: *mut timeval,
-    ) -> c_int;
-
     /// read
-
-    extern "C" fn recvfrom(
-        &self,
-        fn_ptr: Option<
-            &extern "C" fn(
-                c_int,
-                *mut c_void,
-                size_t,
-                c_int,
-                *mut sockaddr,
-                *mut socklen_t,
-            ) -> ssize_t,
-        >,
-        fd: c_int,
-        buf: *mut c_void,
-        len: size_t,
-        flags: c_int,
-        addr: *mut sockaddr,
-        addrlen: *mut socklen_t,
-    ) -> ssize_t;
 
     extern "C" fn read(
         &self,
