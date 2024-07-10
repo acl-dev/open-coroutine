@@ -5,8 +5,11 @@ pub use close::close;
 pub use connect::connect;
 pub use listen::listen;
 pub use nanosleep::nanosleep;
+pub use poll::poll;
 pub use readv::readv;
 pub use recv::recv;
+pub use recvfrom::recvfrom;
+pub use select::select;
 pub use send::send;
 pub use shutdown::shutdown;
 pub use sleep::sleep;
@@ -32,7 +35,7 @@ macro_rules! impl_facade {
                 use $crate::scheduler::SchedulableCoroutine;
 
                 let syscall = Syscall::$syscall;
-                $crate::info!("hook syscall {}", syscall);
+                $crate::info!("enter syscall {}", syscall);
                 if let Some(co) = SchedulableCoroutine::current() {
                     let new_state = SyscallState::Executing;
                     if co.syscall((), syscall, new_state).is_err() {
@@ -46,6 +49,7 @@ macro_rules! impl_facade {
                         $crate::error!("{} change to running state failed !", co.get_name());
                     }
                 }
+                $crate::info!("exit syscall {}", syscall);
                 r
             }
         }
@@ -475,8 +479,11 @@ mod close;
 mod connect;
 mod listen;
 mod nanosleep;
+mod poll;
 mod readv;
 mod recv;
+mod recvfrom;
+mod select;
 mod send;
 mod shutdown;
 mod sleep;

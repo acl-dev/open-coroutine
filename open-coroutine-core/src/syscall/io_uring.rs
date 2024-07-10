@@ -1,9 +1,7 @@
 use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
 use libc::epoll_event;
-use libc::{
-    fd_set, iovec, msghdr, nfds_t, off_t, pollfd, size_t, sockaddr, socklen_t, ssize_t, timeval,
-};
+use libc::{iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use std::ffi::{c_int, c_void};
 
 #[derive(Debug, Default)]
@@ -27,52 +25,6 @@ macro_rules! impl_io_uring {
 }
 
 impl<I: UnixSyscall> UnixSyscall for IoUringLinuxSyscall<I> {
-    extern "C" fn poll(
-        &self,
-        fn_ptr: Option<&extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int>,
-        fds: *mut pollfd,
-        nfds: nfds_t,
-        timeout: c_int,
-    ) -> c_int {
-        unsupported!(self, poll, fn_ptr, fds, nfds, timeout)
-    }
-
-    extern "C" fn select(
-        &self,
-        fn_ptr: Option<
-            &extern "C" fn(c_int, *mut fd_set, *mut fd_set, *mut fd_set, *mut timeval) -> c_int,
-        >,
-        nfds: c_int,
-        readfds: *mut fd_set,
-        writefds: *mut fd_set,
-        errorfds: *mut fd_set,
-        timeout: *mut timeval,
-    ) -> c_int {
-        unsupported!(self, select, fn_ptr, nfds, readfds, writefds, errorfds, timeout)
-    }
-
-    extern "C" fn recvfrom(
-        &self,
-        fn_ptr: Option<
-            &extern "C" fn(
-                c_int,
-                *mut c_void,
-                size_t,
-                c_int,
-                *mut sockaddr,
-                *mut socklen_t,
-            ) -> ssize_t,
-        >,
-        socket: c_int,
-        buf: *mut c_void,
-        len: size_t,
-        flags: c_int,
-        addr: *mut sockaddr,
-        addrlen: *mut socklen_t,
-    ) -> ssize_t {
-        unsupported!(self, recvfrom, fn_ptr, socket, buf, len, flags, addr, addrlen)
-    }
-
     extern "C" fn read(
         &self,
         fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t) -> ssize_t>,
