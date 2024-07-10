@@ -6,7 +6,7 @@ use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
-use libc::{iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
+use libc::{msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
 
@@ -42,17 +42,6 @@ pub extern "C" fn pread(
     offset: off_t,
 ) -> ssize_t {
     CHAIN.pread(fn_ptr, fd, buf, count, offset)
-}
-
-#[must_use]
-pub extern "C" fn preadv(
-    fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
-    fd: c_int,
-    iov: *const iovec,
-    iovcnt: c_int,
-    offset: off_t,
-) -> ssize_t {
-    CHAIN.preadv(fn_ptr, fd, iov, iovcnt, offset)
 }
 
 #[must_use]
@@ -101,17 +90,6 @@ pub extern "C" fn pwrite(
     offset: off_t,
 ) -> ssize_t {
     CHAIN.pwrite(fn_ptr, fd, buf, count, offset)
-}
-
-#[must_use]
-pub extern "C" fn pwritev(
-    fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
-    fd: c_int,
-    iov: *const iovec,
-    iovcnt: c_int,
-    offset: off_t,
-) -> ssize_t {
-    CHAIN.pwritev(fn_ptr, fd, iov, iovcnt, offset)
 }
 
 #[must_use]

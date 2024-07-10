@@ -4,7 +4,7 @@ use crate::syscall::LinuxSyscall;
 use crate::syscall::UnixSyscall;
 #[cfg(target_os = "linux")]
 use libc::epoll_event;
-use libc::{iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
+use libc::{msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use std::ffi::{c_int, c_void};
 
 #[derive(Debug, Default)]
@@ -54,17 +54,6 @@ impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
         offset: off_t,
     ) -> ssize_t {
         syscall_state!(self, pread, fn_ptr, fd, buf, count, offset)
-    }
-
-    extern "C" fn preadv(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-        offset: off_t,
-    ) -> ssize_t {
-        syscall_state!(self, preadv, fn_ptr, fd, iov, iovcnt, offset)
     }
 
     extern "C" fn recvmsg(
@@ -118,17 +107,6 @@ impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
         offset: off_t,
     ) -> ssize_t {
         syscall_state!(self, pwrite, fn_ptr, fd, buf, count, offset)
-    }
-
-    extern "C" fn pwritev(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const iovec, c_int, off_t) -> ssize_t>,
-        fd: c_int,
-        iov: *const iovec,
-        iovcnt: c_int,
-        offset: off_t,
-    ) -> ssize_t {
-        syscall_state!(self, pwritev, fn_ptr, fd, iov, iovcnt, offset)
     }
 
     extern "C" fn sendmsg(

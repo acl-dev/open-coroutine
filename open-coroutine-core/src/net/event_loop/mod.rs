@@ -106,6 +106,8 @@ static EVENT_LOOP_WORKERS: OnceCell<Box<[std::thread::JoinHandle<()>]>> = OnceCe
 
 static EVENT_LOOP_STARTED: Lazy<AtomicBool> = Lazy::new(AtomicBool::default);
 
+static EVENT_LOOP_START_COUNT: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+
 static EVENT_LOOP_STOP: Lazy<Arc<(Mutex<AtomicUsize>, Condvar)>> =
     Lazy::new(|| Arc::new((Mutex::new(AtomicUsize::new(0)), Condvar::new())));
 
@@ -151,6 +153,7 @@ impl EventLoops {
                             .name(format!("open-coroutine-event-loop-{i}"))
                             .spawn(move || {
                                 warn!("open-coroutine-event-loop-{i} has started");
+                                _ = EVENT_LOOP_START_COUNT.fetch_add(1, Ordering::Release);
                                 if set_for_current(CoreId { id: i }) {
                                     warn!("pin event-loop-{i} thread to CPU core-{i} failed !");
                                 }
@@ -185,7 +188,10 @@ impl EventLoops {
             .wait_timeout_while(
                 lock.lock().unwrap(),
                 Duration::from_millis(30000),
-                |stopped| stopped.load(Ordering::Acquire) < unsafe { EVENT_LOOPS.len() } - 1,
+                |stopped| {
+                    stopped.load(Ordering::Acquire)
+                        < EVENT_LOOP_START_COUNT.load(Ordering::Acquire) - 1
+                },
             )
             .unwrap()
             .1;
