@@ -35,37 +35,6 @@ macro_rules! syscall_state {
 }
 
 impl<I: UnixSyscall> UnixSyscall for StateLinuxSyscall<I> {
-    extern "C" fn read(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t) -> ssize_t>,
-        fd: c_int,
-        buf: *mut c_void,
-        count: size_t,
-    ) -> ssize_t {
-        syscall_state!(self, read, fn_ptr, fd, buf, count)
-    }
-
-    extern "C" fn pread(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, off_t) -> ssize_t>,
-        fd: c_int,
-        buf: *mut c_void,
-        count: size_t,
-        offset: off_t,
-    ) -> ssize_t {
-        syscall_state!(self, pread, fn_ptr, fd, buf, count, offset)
-    }
-
-    extern "C" fn recvmsg(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut msghdr, c_int) -> ssize_t>,
-        fd: c_int,
-        msg: *mut msghdr,
-        flags: c_int,
-    ) -> ssize_t {
-        syscall_state!(self, recvmsg, fn_ptr, fd, msg, flags)
-    }
-
     extern "C" fn sendto(
         &self,
         fn_ptr: Option<

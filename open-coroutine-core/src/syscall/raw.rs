@@ -10,51 +10,6 @@ use std::ffi::{c_int, c_void};
 pub struct RawLinuxSyscall {}
 
 impl UnixSyscall for RawLinuxSyscall {
-    /// read
-
-    extern "C" fn read(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t) -> ssize_t>,
-        fd: c_int,
-        buf: *mut c_void,
-        count: size_t,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(fd, buf, count)
-        } else {
-            unsafe { libc::read(fd, buf, count) }
-        }
-    }
-
-    extern "C" fn pread(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, off_t) -> ssize_t>,
-        fd: c_int,
-        buf: *mut c_void,
-        count: size_t,
-        offset: off_t,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(fd, buf, count, offset)
-        } else {
-            unsafe { libc::pread(fd, buf, count, offset) }
-        }
-    }
-
-    extern "C" fn recvmsg(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *mut msghdr, c_int) -> ssize_t>,
-        fd: c_int,
-        msg: *mut msghdr,
-        flags: c_int,
-    ) -> ssize_t {
-        if let Some(f) = fn_ptr {
-            (f)(fd, msg, flags)
-        } else {
-            unsafe { libc::recvmsg(fd, msg, flags) }
-        }
-    }
-
     /// write
 
     extern "C" fn sendto(
