@@ -21,39 +21,6 @@ cfg_if::cfg_if! {
     }
 }
 
-/// read
-
-#[must_use]
-pub extern "C" fn read(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t) -> ssize_t>,
-    fd: c_int,
-    buf: *mut c_void,
-    count: size_t,
-) -> ssize_t {
-    CHAIN.read(fn_ptr, fd, buf, count)
-}
-
-#[must_use]
-pub extern "C" fn pread(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut c_void, size_t, off_t) -> ssize_t>,
-    fd: c_int,
-    buf: *mut c_void,
-    count: size_t,
-    offset: off_t,
-) -> ssize_t {
-    CHAIN.pread(fn_ptr, fd, buf, count, offset)
-}
-
-#[must_use]
-pub extern "C" fn recvmsg(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut msghdr, c_int) -> ssize_t>,
-    fd: c_int,
-    msg: *mut msghdr,
-    flags: c_int,
-) -> ssize_t {
-    CHAIN.recvmsg(fn_ptr, fd, msg, flags)
-}
-
 /// write
 
 #[must_use]
