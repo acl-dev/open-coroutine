@@ -181,27 +181,30 @@ impl EventLoops {
 
     pub fn stop() {
         warn!("open-coroutine is exiting...");
-        EVENT_LOOP_STARTED.store(false, Ordering::Release);
-        // wait for the event-loops to stop
-        let (lock, cvar) = EVENT_LOOP_STOP.as_ref();
-        let result = cvar
-            .wait_timeout_while(
-                lock.lock().unwrap(),
-                Duration::from_millis(30000),
-                |stopped| {
-                    stopped.load(Ordering::Acquire)
-                        < EVENT_LOOP_START_COUNT.load(Ordering::Acquire) - 1
-                },
-            )
-            .unwrap()
-            .1;
+        if EVENT_LOOP_STARTED
+            .compare_exchange(true, false, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            // wait for the event-loops to stop
+            let (lock, cvar) = EVENT_LOOP_STOP.as_ref();
+            let result = cvar
+                .wait_timeout_while(
+                    lock.lock().unwrap(),
+                    Duration::from_millis(30000),
+                    |stopped| {
+                        stopped.load(Ordering::Acquire)
+                            < EVENT_LOOP_START_COUNT.load(Ordering::Acquire) - 1
+                    },
+                )
+                .unwrap()
+                .1;
+            if result.timed_out() {
+                crate::error!("open-coroutine didn't exit successfully within 30 seconds !");
+            }
+        }
         #[cfg(all(unix, feature = "preemptive-schedule"))]
         crate::monitor::Monitor::stop();
-        if result.timed_out() {
-            crate::error!("open-coroutine didn't exit successfully within 30 seconds !");
-        } else {
-            crate::info!("open-coroutine exit successfully !");
-        }
+        crate::info!("open-coroutine exit successfully !");
     }
 
     pub fn submit_co(
