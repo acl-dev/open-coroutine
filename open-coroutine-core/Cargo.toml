@@ -21,7 +21,7 @@ time = { version = "0.3.36", features = [
 # common
 cfg-if = "1.0.0"
 # coroutine
-corosensei = { version = "0.1.4", optional = true }
+corosensei = { version = "0.2.1", optional = true }
 uuid = { version = "1.8.0", features = [
     "v4",
     "fast-rng",
