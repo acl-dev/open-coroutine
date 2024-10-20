@@ -1,28 +1,13 @@
 #!/bin/bash
 
-cd open-coroutine-timer
+cd core
 cargo publish
 
-cd ..
-cd open-coroutine-queue
+cd ../hook
 cargo publish
 
-cd ..
-cd open-coroutine-iouring
+cd ../macros
 cargo publish
 
-cd ..
-cd open-coroutine-core
-cargo publish
-
-cd ..
-cd open-coroutine-hooks
-cargo publish
-
-cd ..
-cd open-coroutine-macros
-cargo publish
-
-cd ..
-cd open-coroutine
+cd ../open-coroutine
 cargo publish

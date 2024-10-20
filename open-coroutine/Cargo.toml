@@ -1,56 +1,50 @@
 [package]
 name = "open-coroutine"
-version = "0.5.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 authors = ["zhangzicheng@apache.org"]
 description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
 repository = "https://github.com/acl-dev/open-coroutine"
 keywords = ["coroutine", "fiber", "stackful", "hook"]
 categories = ["data-structures", "concurrency", "asynchronous", "web-programming", "wasm"]
-license = "Apache-2.0"
-readme = "../README.md"
+license.workspace = true
+readme.workspace = true
 
 [dependencies]
-libc = "0.2.119"
-open-coroutine-core = { version = "0.5.0", path = "../open-coroutine-core" }
-open-coroutine-hooks = { version = "0.5.0", path = "../open-coroutine-hooks" }
-open-coroutine-macros = { version = "0.5.0", path = "../open-coroutine-macros" }
+libc.workspace = true
+open-coroutine-core.workspace = true
+open-coroutine-hook.workspace = true
+open-coroutine-macros.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Kernel",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_System_Diagnostics_Debug",
+] }
 
 [dev-dependencies]
-# benchmark
-criterion = "0.5.1"
-
-[build-dependencies]
-glob = "0.3.1"
+tempfile.workspace = true
 
 [features]
-default = ["open-coroutine-hooks/default", "open-coroutine-core/default"]
+default = ["open-coroutine-hook/default", "open-coroutine-core/default"]
 
 # Print some help log.
 # Enable for default.
-logs = ["open-coroutine-hooks/logs", "open-coroutine-core/logs"]
-
-korosensei = ["open-coroutine-hooks/korosensei", "open-coroutine-core/korosensei"]
-
-boost = ["open-coroutine-hooks/boost", "open-coroutine-core/boost"]
+log = ["open-coroutine-hook/log", "open-coroutine-core/log"]
 
 # Provide preemptive scheduling implementation.
 # Enable for default.
-preemptive-schedule = ["open-coroutine-hooks/preemptive-schedule", "open-coroutine-core/preemptive-schedule"]
+preemptive = ["open-coroutine-hook/preemptive", "open-coroutine-core/preemptive"]
 
 # Provide net API abstraction and implementation.
-net = ["open-coroutine-hooks/net", "open-coroutine-core/net"]
+net = ["open-coroutine-hook/net", "open-coroutine-core/net"]
 
 # Provide io_uring abstraction and implementation.
 # This feature only works in linux.
-io_uring = ["open-coroutine-hooks/io_uring", "open-coroutine-core/io_uring"]
+io_uring = ["open-coroutine-hook/io_uring", "open-coroutine-core/io_uring"]
 
 # Provide syscall implementation.
-syscall = ["open-coroutine-hooks/syscall", "open-coroutine-core/syscall"]
-
-# Enable all features
-full = ["open-coroutine-hooks/full", "open-coroutine-core/full"]
-
-[[bench]]
-name = "benchmark"
-harness = false
+syscall = ["open-coroutine-hook/syscall", "open-coroutine-core/syscall"]
