@@ -1,12 +1,37 @@
 use std::env::var;
 use std::fs::{read_dir, rename};
 use std::path::PathBuf;
+use tracing::{info, Level};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 fn main() {
+    // init log
+    let out_dir = PathBuf::from(var("OUT_DIR").expect("env not found"));
+    let target_dir = out_dir
+        .parent()
+        .expect("can not find deps dir")
+        .parent()
+        .expect("can not find deps dir")
+        .parent()
+        .expect("can not find deps dir")
+        .parent()
+        .expect("can not find deps dir");
+    _ = tracing_subscriber::fmt()
+        .with_writer(RollingFileAppender::new(
+            Rotation::NEVER,
+            target_dir,
+            "open-coroutine-build.log",
+        ))
+        .with_thread_names(true)
+        .with_line_number(true)
+        .with_max_level(Level::INFO)
+        .with_timer(tracing_subscriber::fmt::time::OffsetTime::new(
+            time::UtcOffset::from_hms(8, 0, 0).expect("create UtcOffset failed !"),
+            time::format_description::well_known::Rfc2822,
+        ))
+        .try_init();
     // build dylib
     let target = var("TARGET").expect("env not found");
-    let out_dir = PathBuf::from(var("OUT_DIR").expect("env not found"));
-    let cargo_manifest_dir = PathBuf::from(var("CARGO_MANIFEST_DIR").expect("env not found"));
     let mut cargo = std::process::Command::new("cargo");
     let mut cmd = cargo.arg("build").arg("--target").arg(target.clone());
     if cfg!(not(debug_assertions)) {
@@ -15,7 +40,7 @@ fn main() {
     if let Err(e) = cmd
         .arg("--manifest-path")
         .arg(
-            cargo_manifest_dir
+            PathBuf::from(var("CARGO_MANIFEST_DIR").expect("env not found"))
                 .parent()
                 .expect("parent not found")
                 .join("hook")
@@ -44,15 +69,17 @@ fn main() {
         .parent()
         .expect("can not find deps dir")
         .join("deps");
+    let dir = read_dir(hook_deps.clone())
+        .unwrap_or_else(|_| read_dir(deps.clone()).expect("can not find deps dir"));
+    info!("deps: {deps:?}");
+    info!("hook_deps:{hook_deps:?}");
+    info!("dir:{dir:?}");
     let lib_names = [
         String::from("libopen_coroutine_hook.so"),
         String::from("libopen_coroutine_hook.dylib"),
         String::from("open_coroutine_hook.lib"),
     ];
-    for entry in read_dir(hook_deps.clone())
-        .expect("Failed to read deps")
-        .flatten()
-    {
+    for entry in dir.flatten() {
         let file_name = entry.file_name().to_string_lossy().to_string();
         if !file_name.contains("open_coroutine_hook") {
             continue;
@@ -63,31 +90,47 @@ fn main() {
         if file_name.eq("open_coroutine_hook.dll") {
             continue;
         }
+        info!("{file_name:?}");
         if cfg!(target_os = "linux") && file_name.ends_with(".so") {
             rename(
-                hook_deps.join(file_name),
+                hook_deps.join(file_name.clone()),
                 deps.join("libopen_coroutine_hook.so"),
             )
-            .expect("rename to libopen_coroutine_hook.so failed!");
+            .unwrap_or_else(|_| {
+                rename(deps.join(file_name), deps.join("libopen_coroutine_hook.so"))
+                    .expect("rename to libopen_coroutine_hook.so failed!")
+            });
         } else if cfg!(target_os = "macos") && file_name.ends_with(".dylib") {
             rename(
-                hook_deps.join(file_name),
+                hook_deps.join(file_name.clone()),
                 deps.join("libopen_coroutine_hook.dylib"),
             )
-            .expect("rename to libopen_coroutine_hook.dylib failed!");
+            .unwrap_or_else(|_| {
+                rename(
+                    deps.join(file_name),
+                    deps.join("libopen_coroutine_hook.dylib"),
+                )
+                .expect("rename to libopen_coroutine_hook.dylib failed!")
+            });
         } else if cfg!(windows) {
             if file_name.ends_with(".dll") {
                 rename(
-                    hook_deps.join(file_name),
+                    hook_deps.join(file_name.clone()),
                     deps.join("open_coroutine_hook.dll"),
                 )
-                .expect("rename to open_coroutine_hook.dll failed!");
+                .unwrap_or_else(|_| {
+                    rename(deps.join(file_name), deps.join("open_coroutine_hook.dll"))
+                        .expect("rename to open_coroutine_hook.dll failed!")
+                });
             } else if file_name.ends_with(".lib") {
                 rename(
-                    hook_deps.join(file_name),
+                    hook_deps.join(file_name.clone()),
                     deps.join("open_coroutine_hook.lib"),
                 )
-                .expect("rename to open_coroutine_hook.lib failed!");
+                .unwrap_or_else(|_| {
+                    rename(deps.join(file_name), deps.join("open_coroutine_hook.lib"))
+                        .expect("rename to open_coroutine_hook.lib failed!")
+                });
             }
         }
     }
