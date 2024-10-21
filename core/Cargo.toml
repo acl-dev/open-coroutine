@@ -1,0 +1,93 @@
+[package]
+name = "open-coroutine-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "The open-coroutine is a simple, efficient and generic coroutine library."
+repository.workspace = true
+keywords = ["runtime", "coroutine", "hook", "preempt", "work-steal"]
+categories = ["concurrency", "asynchronous", "os", "network-programming", "wasm"]
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+once_cell.workspace = true
+dashmap.workspace = true
+num_cpus.workspace = true
+rand.workspace = true
+st3.workspace = true
+crossbeam-deque.workspace = true
+tracing = { workspace = true, default-features = false, optional = true }
+tracing-subscriber = { workspace = true, features = [
+    "fmt",
+    "local-time"
+], default-features = false, optional = true }
+time = { workspace = true, optional = true }
+corosensei = { workspace = true, optional = true }
+uuid = { workspace = true, features = [
+    "v4",
+    "fast-rng",
+], optional = true }
+derivative = { workspace = true, optional = true }
+core_affinity = { workspace = true, optional = true }
+crossbeam-utils = { workspace = true, optional = true }
+psm.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+nix = { workspace = true, features = ["signal"] }
+mio = { workspace = true, features = [
+    "net",
+    "os-poll",
+    "os-ext",
+], default-features = false, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_System_IO",
+    "Win32_Foundation",
+    "Win32_System_Kernel",
+    "Win32_System_Threading",
+    "Win32_Networking_WinSock",
+    "Win32_System_SystemInformation",
+    "Win32_System_Diagnostics_Debug",
+] }
+polling = { workspace = true, optional = true }
+
+[build-dependencies]
+cfg-if.workspace = true
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+cc.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+slab.workspace = true
+backtrace.workspace = true
+
+[features]
+# Print some help log.
+# Enable for default.
+log = ["tracing", "tracing-subscriber", "time"]
+
+# low-level raw coroutine
+korosensei = ["corosensei", "uuid", "nix/pthread", "derivative"]
+
+# Provide preemptive scheduling implementation.
+# Enable for default.
+preemptive = ["korosensei"]
+
+# Provide net API abstraction and implementation.
+net = ["korosensei", "polling", "mio", "crossbeam-utils", "core_affinity"]
+
+# Provide io_uring adaptation, this feature only works in linux.
+io_uring = ["net", "io-uring"]
+
+# Provide syscall implementation.
+syscall = ["net"]
+
+default = ["log", "syscall"]
