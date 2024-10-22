@@ -1,13 +1,13 @@
 #!/bin/bash
 
 cd core
-cargo publish
+cargo publish --registry crates-io
 
 cd ../hook
-cargo publish
+cargo publish --registry crates-io
 
 cd ../macros
-cargo publish
+cargo publish --registry crates-io
 
 cd ../open-coroutine
-cargo publish
+cargo publish --registry crates-io

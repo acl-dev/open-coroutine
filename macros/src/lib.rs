@@ -47,13 +47,9 @@
 )]
 //! see `https://github.com/acl-dev/open-coroutine`
 
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-
 use proc_macro::TokenStream;
-use syn::{ItemFn, LitBool, LitInt};
+use quote::quote;
+use syn::{parse_macro_input, ItemFn, LitBool, LitInt};
 
 /// use this macro like `#[open_coroutine::main(event_loop_size = 2, max_size = 2, keep_alive_time = 0)]`.
 #[proc_macro_attribute]

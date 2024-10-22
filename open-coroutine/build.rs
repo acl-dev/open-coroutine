@@ -1,33 +1,138 @@
+use cargo_metadata::MetadataCommand;
 use std::env::var;
-use std::fs::{read_dir, rename};
+use std::fs::{copy, read_dir};
 use std::path::PathBuf;
+use tracing::{info, Level};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 fn main() {
+    // init log
+    let out_dir = PathBuf::from(var("OUT_DIR").expect("OUT_DIR not found"));
+    let target_dir = out_dir
+        .parent()
+        .expect("can not find deps dir")
+        .parent()
+        .expect("can not find deps dir")
+        .parent()
+        .expect("can not find deps dir")
+        .parent()
+        .expect("can not find deps dir");
+    _ = tracing_subscriber::fmt()
+        .with_writer(RollingFileAppender::new(
+            Rotation::NEVER,
+            target_dir,
+            "open-coroutine-build.log",
+        ))
+        .with_thread_names(true)
+        .with_line_number(true)
+        .with_max_level(Level::INFO)
+        .with_timer(tracing_subscriber::fmt::time::OffsetTime::new(
+            time::UtcOffset::from_hms(8, 0, 0).expect("create UtcOffset failed !"),
+            time::format_description::well_known::Rfc2822,
+        ))
+        .try_init();
     // build dylib
     let target = var("TARGET").expect("env not found");
-    let out_dir = PathBuf::from(var("OUT_DIR").expect("env not found"));
-    let cargo_manifest_dir = PathBuf::from(var("CARGO_MANIFEST_DIR").expect("env not found"));
     let mut cargo = std::process::Command::new("cargo");
     let mut cmd = cargo.arg("build").arg("--target").arg(target.clone());
     if cfg!(not(debug_assertions)) {
         cmd = cmd.arg("--release");
     }
-    if let Err(e) = cmd
-        .arg("--manifest-path")
-        .arg(
-            cargo_manifest_dir
-                .parent()
-                .expect("parent not found")
-                .join("hook")
-                .join("Cargo.toml"),
-        )
-        .arg("--target-dir")
-        .arg(out_dir.clone())
-        .status()
-    {
-        panic!("failed to build build dylib {e}");
+    let mut hook_toml = PathBuf::from(var("CARGO_MANIFEST_DIR").expect("env not found"))
+        .parent()
+        .expect("parent not found")
+        .join("hook")
+        .join("Cargo.toml");
+    if !hook_toml.exists() {
+        info!(
+            "{:?} not exists, find open-coroutine-hook's Cargo.toml in $CARGO_HOME",
+            hook_toml
+        );
+        // 使用cargo_metadata读到依赖版本，结合CARGO_HOME获取open-coroutine-hook的toml
+        let dep_src_dir = PathBuf::from(var("CARGO_HOME").expect("CARGO_HOME not found"))
+            .join("registry")
+            .join("src");
+        let crates_parent_dirs = Vec::from_iter(
+            read_dir(dep_src_dir.clone())
+                .expect("Failed to read deps")
+                .flatten(),
+        );
+        let crates_parent = if crates_parent_dirs.len() == 1 {
+            crates_parent_dirs.first().expect("host dir not found")
+        } else {
+            let rustup_dist_server =
+                var("RUSTUP_DIST_SERVER").expect("RUSTUP_DIST_SERVER not found");
+            let host = rustup_dist_server
+                .split("://")
+                .last()
+                .expect("host not found");
+            crates_parent_dirs
+                .iter()
+                .find(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .to_string()
+                        .contains(host)
+                })
+                .unwrap_or_else(|| {
+                    crates_parent_dirs
+                        .iter()
+                        .find(|entry| {
+                            entry
+                                .file_name()
+                                .to_string_lossy()
+                                .to_string()
+                                .contains("crates.io")
+                        })
+                        .expect("host dir not found")
+                })
+        }
+        .file_name()
+        .to_string_lossy()
+        .to_string();
+        info!("crates parent dirs:{:?}", crates_parent_dirs);
+        let metadata = MetadataCommand::default()
+            .no_deps()
+            .exec()
+            .expect("read cargo metadata failed");
+        let package = metadata
+            .packages
+            .first()
+            .expect("read current package failed");
+        info!("read package:{:#?}", package);
+        let dependency = package
+            .dependencies
+            .iter()
+            .find(|dep| dep.name.eq("open-coroutine-hook"))
+            .expect("open-coroutine-hook not found");
+        let version = &dependency
+            .req
+            .comparators
+            .first()
+            .expect("version not found");
+        hook_toml = dep_src_dir
+            .join(crates_parent)
+            .join(format!(
+                "open-coroutine-hook-{}.{}.{}",
+                version.major,
+                version.minor.unwrap_or(0),
+                version.patch.unwrap_or(0)
+            ))
+            .join("Cargo.toml");
     }
-    //fix dylib name
+    info!("open-coroutine-hook's Cargo.toml is here:{:?}", hook_toml);
+    assert!(
+        cmd.arg("--manifest-path")
+            .arg(hook_toml)
+            .arg("--target-dir")
+            .arg(out_dir.clone())
+            .status()
+            .expect("failed to build dylib")
+            .success(),
+        "failed to build dylib"
+    );
+    // correct dylib path
     let hook_deps = out_dir
         .join(target)
         .join(if cfg!(debug_assertions) {
@@ -44,53 +149,38 @@ fn main() {
         .parent()
         .expect("can not find deps dir")
         .join("deps");
-    let lib_names = [
-        String::from("libopen_coroutine_hook.so"),
-        String::from("libopen_coroutine_hook.dylib"),
-        String::from("open_coroutine_hook.lib"),
-    ];
     for entry in read_dir(hook_deps.clone())
-        .expect("Failed to read deps")
+        .expect("can not find deps dir")
         .flatten()
     {
         let file_name = entry.file_name().to_string_lossy().to_string();
         if !file_name.contains("open_coroutine_hook") {
             continue;
         }
-        if lib_names.contains(&file_name) {
-            break;
-        }
-        if file_name.eq("open_coroutine_hook.dll") {
-            continue;
-        }
         if cfg!(target_os = "linux") && file_name.ends_with(".so") {
-            rename(
-                hook_deps.join(file_name),
-                deps.join("libopen_coroutine_hook.so"),
-            )
-            .expect("rename to libopen_coroutine_hook.so failed!");
+            let from = hook_deps.join(file_name);
+            let to = deps.join("libopen_coroutine_hook.so");
+            copy(from.clone(), to.clone()).expect("copy to libopen_coroutine_hook.so failed!");
+            info!("copy {:?} to {:?} success!", from, to);
         } else if cfg!(target_os = "macos") && file_name.ends_with(".dylib") {
-            rename(
-                hook_deps.join(file_name),
-                deps.join("libopen_coroutine_hook.dylib"),
-            )
-            .expect("rename to libopen_coroutine_hook.dylib failed!");
+            let from = hook_deps.join(file_name);
+            let to = deps.join("libopen_coroutine_hook.dylib");
+            copy(from.clone(), to.clone()).expect("copy to libopen_coroutine_hook.dylib failed!");
+            info!("copy {:?} to {:?} success!", from, to);
         } else if cfg!(windows) {
             if file_name.ends_with(".dll") {
-                rename(
-                    hook_deps.join(file_name),
-                    deps.join("open_coroutine_hook.dll"),
-                )
-                .expect("rename to open_coroutine_hook.dll failed!");
+                let from = hook_deps.join(file_name);
+                let to = deps.join("open_coroutine_hook.dll");
+                copy(from.clone(), to.clone()).expect("copy to open_coroutine_hook.dll failed!");
+                info!("copy {:?} to {:?} success!", from, to);
             } else if file_name.ends_with(".lib") {
-                rename(
-                    hook_deps.join(file_name),
-                    deps.join("open_coroutine_hook.lib"),
-                )
-                .expect("rename to open_coroutine_hook.lib failed!");
+                let from = hook_deps.join(file_name);
+                let to = deps.join("open_coroutine_hook.lib");
+                copy(from.clone(), to.clone()).expect("copy to open_coroutine_hook.lib failed!");
+                info!("copy {:?} to {:?} success!", from, to);
             }
         }
     }
-    //link hook dylib
+    // link dylib
     println!("cargo:rustc-link-lib=dylib=open_coroutine_hook");
 }

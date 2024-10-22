@@ -160,7 +160,6 @@ nanosleep hooked
 
 ### todo
 
-- [x] support scalable stack
 - [ ] support and compatibility for AF_XDP socket
 - [ ] hook other syscall maybe interrupt by signal
   <details>
@@ -203,6 +202,10 @@ nanosleep hooked
 
   </details>
 - [ ] support `#[open_coroutine::join]` macro to wait coroutines
+
+### 0.6.x
+
+- [x] support scalable stack
 
 ### 0.5.x
 

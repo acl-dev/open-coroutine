@@ -25,6 +25,16 @@ windows-sys = { workspace = true, features = [
     "Win32_System_Diagnostics_Debug",
 ] }
 
+[build-dependencies]
+tracing = { workspace = true, default-features = false }
+tracing-subscriber = { workspace = true, features = [
+    "fmt",
+    "local-time"
+], default-features = false }
+tracing-appender.workspace = true
+time.workspace = true
+cargo_metadata.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 
