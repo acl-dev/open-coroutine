@@ -1,28 +1,13 @@
 #!/bin/bash
 
-cd open-coroutine-timer
-cargo publish
+cd core
+cargo publish --registry crates-io
 
-cd ..
-cd open-coroutine-queue
-cargo publish
+cd ../hook
+cargo publish --registry crates-io
 
-cd ..
-cd open-coroutine-iouring
-cargo publish
+cd ../macros
+cargo publish --registry crates-io
 
-cd ..
-cd open-coroutine-core
-cargo publish
-
-cd ..
-cd open-coroutine-hooks
-cargo publish
-
-cd ..
-cd open-coroutine-macros
-cargo publish
-
-cd ..
-cd open-coroutine
-cargo publish
+cd ../open-coroutine
+cargo publish --registry crates-io
