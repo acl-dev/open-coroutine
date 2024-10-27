@@ -1,36 +1,13 @@
 use std::ffi::c_int;
 
-pub use accept::accept;
-#[cfg(target_os = "linux")]
-pub use accept4::accept4;
-pub use close::close;
-pub use connect::connect;
-pub use listen::listen;
-pub use nanosleep::nanosleep;
-pub use poll::poll;
-pub use pread::pread;
-pub use preadv::preadv;
-pub use pthread_cond_timedwait::pthread_cond_timedwait;
-pub use pthread_mutex_lock::pthread_mutex_lock;
-pub use pthread_mutex_trylock::pthread_mutex_trylock;
-pub use pthread_mutex_unlock::pthread_mutex_unlock;
-pub use pwrite::pwrite;
-pub use pwritev::pwritev;
-pub use read::read;
-pub use readv::readv;
-pub use recv::recv;
-pub use recvfrom::recvfrom;
-pub use recvmsg::recvmsg;
-pub use select::select;
-pub use send::send;
-pub use sendmsg::sendmsg;
-pub use sendto::sendto;
-pub use shutdown::shutdown;
-pub use sleep::sleep;
-pub use socket::socket;
-pub use usleep::usleep;
-pub use write::write;
-pub use writev::writev;
+macro_rules! syscall_mod {
+    ($($mod_name: ident);*) => {
+        $(
+            pub use $mod_name::$mod_name;
+            mod $mod_name;
+        )*
+    }
+}
 
 macro_rules! impl_facade {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
@@ -543,37 +520,44 @@ macro_rules! impl_raw {
     }
 }
 
-mod accept;
 #[cfg(target_os = "linux")]
-mod accept4;
-mod close;
-mod connect;
-mod listen;
-mod nanosleep;
-mod poll;
-mod pread;
-mod preadv;
-mod pthread_cond_timedwait;
-mod pthread_mutex_lock;
-mod pthread_mutex_trylock;
-mod pthread_mutex_unlock;
-mod pwrite;
-mod pwritev;
-mod read;
-mod readv;
-mod recv;
-mod recvfrom;
-mod recvmsg;
-mod select;
-mod send;
-mod sendmsg;
-mod sendto;
-mod shutdown;
-mod sleep;
-mod socket;
-mod usleep;
-mod write;
-mod writev;
+syscall_mod!(accept4);
+syscall_mod!(
+    accept;
+    close;
+    connect;
+    listen;
+    nanosleep;
+    poll;
+    pread;
+    preadv;
+    pthread_cond_timedwait;
+    pthread_mutex_lock;
+    pthread_mutex_trylock;
+    pthread_mutex_unlock;
+    pwrite;
+    pwritev;
+    read;
+    readv;
+    recv;
+    recvfrom;
+    recvmsg;
+    select;
+    send;
+    sendmsg;
+    sendto;
+    shutdown;
+    sleep;
+    socket;
+    usleep;
+    write;
+    writev;
+    mkdir;
+    rmdir;
+    lseek;
+    link;
+    unlink
+);
 
 extern "C" {
     #[cfg(not(any(target_os = "dragonfly", target_os = "vxworks")))]

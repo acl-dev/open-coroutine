@@ -1,8 +1,8 @@
 use libc::{
-    fd_set, iovec, msghdr, off_t, pthread_cond_t, pthread_mutex_t, size_t, sockaddr, socklen_t,
-    ssize_t, timespec, timeval,
+    fd_set, iovec, mode_t, msghdr, off_t, pthread_cond_t, pthread_mutex_t, size_t, sockaddr,
+    socklen_t, ssize_t, timespec, timeval,
 };
-use std::ffi::{c_int, c_uint, c_void};
+use std::ffi::{c_char, c_int, c_uint, c_void};
 
 // check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[allow(unused_macros)]
@@ -34,8 +34,6 @@ macro_rules! impl_hook {
 impl_hook!(SLEEP, sleep(secs: c_uint) -> c_uint);
 impl_hook!(USLEEP, usleep(microseconds: c_uint) -> c_int);
 impl_hook!(NANOSLEEP, nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> c_int);
-// NOTE: unhook poll due to mio's poller
-// impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
 impl_hook!(SELECT, select(nfds: c_int, readfds: *mut fd_set, writefds: *mut fd_set, errorfds: *mut fd_set, timeout: *mut timeval) -> c_int);
 impl_hook!(SOCKET, socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int);
 impl_hook!(CONNECT, connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int);
@@ -51,6 +49,7 @@ impl_hook!(ACCEPT4, accept4(fd: c_int, addr: *mut sockaddr, len: *mut socklen_t,
 impl_hook!(SHUTDOWN, shutdown(fd: c_int, how: c_int) -> c_int);
 impl_hook!(RECV, recv(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t);
 impl_hook!(RECVFROM, recvfrom(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int, addr: *mut sockaddr, addrlen: *mut socklen_t) -> ssize_t);
+impl_hook!(READ, read(fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t);
 impl_hook!(PREAD, pread(fd: c_int, buf: *mut c_void, count: size_t, offset: off_t) -> ssize_t);
 impl_hook!(READV, readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_hook!(PREADV, preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
@@ -62,8 +61,17 @@ impl_hook!(WRITEV, writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_
 impl_hook!(PWRITEV, pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
 impl_hook!(SENDMSG, sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t);
 impl_hook!(PTHREAD_COND_TIMEDWAIT, pthread_cond_timedwait(cond: *mut pthread_cond_t, lock: *mut pthread_mutex_t, abstime: *const timespec) -> c_int);
-// NOTE: unhook pthread_mutex_lock due to stack overflow
-// impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
 impl_hook!(PTHREAD_MUTEX_TRYLOCK, pthread_mutex_trylock(lock: *mut pthread_mutex_t) -> c_int);
-// NOTE: unhook pthread_mutex_unlock due to stack overflow
+impl_hook!(MKDIR, mkdir(path: *const c_char, mode: mode_t) -> c_int);
+impl_hook!(RMDIR, rmdir(path: *const c_char) -> c_int);
+impl_hook!(LSEEK, lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t);
+impl_hook!(LINK, link(src: *const c_char, dst: *const c_char) -> c_int);
+impl_hook!(UNLINK, unlink(src: *const c_char) -> c_int);
+
+// NOTE: unhook poll due to mio's poller
+// impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
+
+// NOTE: unhook write/pthread_mutex_lock/pthread_mutex_unlock due to stack overflow or bug
+// impl_hook!(WRITE, write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t);
+// impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
 // impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
