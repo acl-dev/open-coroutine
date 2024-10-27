@@ -107,8 +107,13 @@ pub enum Syscall {
     renameat,
     #[cfg(target_os = "linux")]
     renameat2,
+    mkdir,
     mkdirat,
+    rmdir,
+    lseek,
     openat,
+    link,
+    unlink,
     pthread_cond_timedwait,
     pthread_mutex_trylock,
     pthread_mutex_lock,
