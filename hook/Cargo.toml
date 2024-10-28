@@ -19,12 +19,13 @@ libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
-    "Win32_Foundation",
-    "Win32_System_Diagnostics_Debug",
-    "Win32_System_Threading",
     "Win32_Security",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_Storage_FileSystem",
     "Win32_System_LibraryLoader",
-    "Win32_System_SystemServices"
+    "Win32_System_SystemServices",
+    "Win32_System_Diagnostics_Debug"
 ] }
 minhook.workspace = true
 

@@ -118,6 +118,12 @@ pub enum Syscall {
     pthread_mutex_trylock,
     pthread_mutex_lock,
     pthread_mutex_unlock,
+    #[cfg(windows)]
+    CreateFileW,
+    #[cfg(windows)]
+    SetFilePointerEx,
+    #[cfg(windows)]
+    WaitOnAddress,
 }
 
 impl Syscall {

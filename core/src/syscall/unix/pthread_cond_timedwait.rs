@@ -71,6 +71,10 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
                 .unwrap_or(u64::MAX)
         };
         loop {
+            let mut left_time = abstimeout.saturating_sub(now());
+            if 0 == left_time {
+                return libc::ETIMEDOUT;
+            }
             let r = self.inner.pthread_cond_timedwait(
                 fn_ptr,
                 cond,
@@ -83,7 +87,7 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
             if libc::ETIMEDOUT != r {
                 return r;
             }
-            let left_time = abstimeout.saturating_sub(now());
+            left_time = abstimeout.saturating_sub(now());
             if 0 == left_time {
                 return libc::ETIMEDOUT;
             }

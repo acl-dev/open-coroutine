@@ -1,13 +1,5 @@
+use crate::syscall_mod;
 use std::ffi::c_int;
-
-macro_rules! syscall_mod {
-    ($($mod_name: ident);*) => {
-        $(
-            pub use $mod_name::$mod_name;
-            mod $mod_name;
-        )*
-    }
-}
 
 macro_rules! impl_facade {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
