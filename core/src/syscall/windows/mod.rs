@@ -1,18 +1,7 @@
+use crate::syscall_mod;
 use dashmap::DashSet;
 use once_cell::sync::Lazy;
 use windows_sys::Win32::Networking::WinSock::SOCKET;
-
-pub use accept::accept;
-pub use ioctlsocket::ioctlsocket;
-pub use listen::listen;
-pub use recv::recv;
-pub use send::send;
-pub use shutdown::shutdown;
-pub use socket::socket;
-pub use Sleep::Sleep;
-pub use WSARecv::WSARecv;
-pub use WSASend::WSASend;
-pub use WSASocketW::WSASocketW;
 
 macro_rules! impl_facade {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
@@ -450,17 +439,22 @@ macro_rules! impl_raw {
     }
 }
 
-mod Sleep;
-mod WSARecv;
-mod WSASend;
-mod WSASocketW;
-mod accept;
-mod ioctlsocket;
-mod listen;
-mod recv;
-mod send;
-mod shutdown;
-mod socket;
+syscall_mod!(
+    Sleep;
+    WSARecv;
+    WSASend;
+    WSASocketW;
+    accept;
+    ioctlsocket;
+    listen;
+    recv;
+    send;
+    shutdown;
+    socket;
+    CreateFileW;
+    SetFilePointerEx;
+    WaitOnAddress
+);
 
 static NON_BLOCKING: Lazy<DashSet<SOCKET>> = Lazy::new(Default::default);
 

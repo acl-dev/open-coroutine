@@ -1,10 +1,15 @@
-use std::ffi::{c_int, c_uint, c_void};
+use std::ffi::{c_int, c_longlong, c_uint, c_void};
 use std::io::{Error, ErrorKind};
-use windows_sys::core::{PCSTR, PSTR};
-use windows_sys::Win32::Foundation::{BOOL, TRUE};
+use windows_sys::core::{PCSTR, PCWSTR, PSTR};
+use windows_sys::Win32::Foundation::{BOOL, HANDLE, TRUE};
 use windows_sys::Win32::Networking::WinSock::{
     IPPROTO, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET,
     WINSOCK_SHUTDOWN_HOW, WINSOCK_SOCKET_TYPE, WSABUF, WSAPROTOCOL_INFOW,
+};
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Storage::FileSystem::{
+    FILE_CREATION_DISPOSITION, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
+    SET_FILE_POINTER_MOVE_METHOD,
 };
 use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
 use windows_sys::Win32::System::IO::OVERLAPPED;
@@ -115,6 +120,28 @@ unsafe fn attach() -> std::io::Result<()> {
         g: c_uint,
         dw_flags: c_uint
     ) -> SOCKET);
+    impl_hook!("kernel32.dll", CREATEFILEW, CreateFileW(
+        lpfilename: PCWSTR,
+        dwdesiredaccess: c_uint,
+        dwsharemode: FILE_SHARE_MODE,
+        lpsecurityattributes: *const SECURITY_ATTRIBUTES,
+        dwcreationdisposition: FILE_CREATION_DISPOSITION,
+        dwflagsandattributes: FILE_FLAGS_AND_ATTRIBUTES,
+        htemplatefile: HANDLE
+    ) -> HANDLE);
+    impl_hook!("kernel32.dll", SETFILEPOINTEREX, SetFilePointerEx(
+        hfile: HANDLE,
+        lidistancetomove: c_longlong,
+        lpnewfilepointer : *mut c_longlong,
+        dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
+    ) -> BOOL);
+    // NOTE: unhook WaitOnAddress due to stack overflow or bug
+    // impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(
+    //     address: *const c_void,
+    //     compareaddress: *const c_void,
+    //     addresssize: usize,
+    //     dwmilliseconds: c_uint
+    // ) -> BOOL);
     // Enable the hook
     minhook::MinHook::enable_all_hooks()
         .map_err(|_| Error::new(ErrorKind::Other, "init all hooks failed !"))

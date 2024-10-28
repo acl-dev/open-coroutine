@@ -5,6 +5,16 @@ pub extern "C" fn reset_errno() {
 }
 
 #[macro_export]
+macro_rules! syscall_mod {
+    ($($mod_name: ident);*) => {
+        $(
+            pub use $mod_name::$mod_name;
+            mod $mod_name;
+        )*
+    }
+}
+
+#[macro_export]
 macro_rules! log_syscall {
     ( $socket:expr, $done:expr, $once_result:expr ) => {
         #[cfg(feature = "logs")]
