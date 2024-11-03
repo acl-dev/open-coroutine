@@ -94,6 +94,13 @@ unsafe fn attach() -> std::io::Result<()> {
         ty: WINSOCK_SOCKET_TYPE,
         protocol: IPPROTO
     ) -> SOCKET);
+    impl_hook!("ws2_32.dll", SETSOCKOPT, setsockopt(
+        socket: SOCKET,
+        level: c_int,
+        name: c_int,
+        value: PSTR,
+        option_len: c_int
+    ) -> c_int);
     impl_hook!("ws2_32.dll", WSARECV, WSARecv(
         fd: SOCKET,
         buf: *const WSABUF,

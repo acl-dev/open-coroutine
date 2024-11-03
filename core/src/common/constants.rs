@@ -75,6 +75,7 @@ pub enum Syscall {
     kevent,
     #[cfg(windows)]
     iocp,
+    setsockopt,
     recv,
     #[cfg(windows)]
     WSARecv,

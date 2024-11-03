@@ -36,6 +36,7 @@ impl_hook!(USLEEP, usleep(microseconds: c_uint) -> c_int);
 impl_hook!(NANOSLEEP, nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> c_int);
 impl_hook!(SELECT, select(nfds: c_int, readfds: *mut fd_set, writefds: *mut fd_set, errorfds: *mut fd_set, timeout: *mut timeval) -> c_int);
 impl_hook!(SOCKET, socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int);
+impl_hook!(SETSOCKOPT, setsockopt(socket: c_int, level: c_int, name: c_int, value: *const c_void, option_len: socklen_t) -> c_int);
 impl_hook!(CONNECT, connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int);
 impl_hook!(LISTEN, listen(fd: c_int, backlog: c_int) -> c_int);
 impl_hook!(ACCEPT, accept(fd: c_int, address: *mut sockaddr, address_len: *mut socklen_t) -> c_int);

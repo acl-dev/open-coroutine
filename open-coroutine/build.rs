@@ -122,16 +122,15 @@ fn main() {
             .join("Cargo.toml");
     }
     info!("open-coroutine-hook's Cargo.toml is here:{:?}", hook_toml);
-    assert!(
-        cmd.arg("--manifest-path")
-            .arg(hook_toml)
-            .arg("--target-dir")
-            .arg(out_dir.clone())
-            .status()
-            .expect("failed to build dylib")
-            .success(),
-        "failed to build dylib"
-    );
+    if let Err(e) = cmd
+        .arg("--manifest-path")
+        .arg(hook_toml)
+        .arg("--target-dir")
+        .arg(out_dir.clone())
+        .status()
+    {
+        panic!("failed to build dylib {}", e);
+    }
     // correct dylib path
     let hook_deps = out_dir
         .join(target)
