@@ -1,4 +1,7 @@
-pub use crate::syscall::{is_blocking, is_non_blocking, set_blocking, set_errno, set_non_blocking};
+pub use crate::syscall::{
+    is_blocking, is_non_blocking, recv_time_limit, send_time_limit, set_blocking, set_errno,
+    set_non_blocking,
+};
 
 pub extern "C" fn reset_errno() {
     set_errno(0);
