@@ -3,6 +3,7 @@ use crate::common::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::coroutine::suspender::Suspender;
+use crate::coroutine::StackInfo;
 use corosensei::stack::{DefaultStack, Stack};
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
@@ -27,7 +28,7 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, DefaultStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
     pub(crate) stack_size: usize,
-    pub(crate) stack_bottom: RefCell<VecDeque<usize>>,
+    pub(crate) stack_infos: RefCell<VecDeque<StackInfo>>,
     pub(crate) listeners: VecDeque<&'c dyn Listener<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
 }
@@ -327,9 +328,12 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 return Ok(callback());
             }
             return DefaultStack::new(stack_size).map(|stack| {
-                co.stack_bottom.borrow_mut().push_front(stack.limit().get());
+                co.stack_infos.borrow_mut().push_back(StackInfo {
+                    stack_top: stack.base().get(),
+                    stack_bottom: stack.limit().get(),
+                });
                 let r = corosensei::on_stack(stack, callback);
-                _ = co.stack_bottom.borrow_mut().pop_front();
+                _ = co.stack_infos.borrow_mut().pop_back();
                 r
             });
         }
@@ -362,7 +366,10 @@ where
     {
         let stack_size = stack_size.max(crate::common::page_size());
         let stack = DefaultStack::new(stack_size)?;
-        let stack_bottom = RefCell::new(VecDeque::from([stack.limit().get()]));
+        let stack_infos = RefCell::new(VecDeque::from([StackInfo {
+            stack_top: stack.base().get(),
+            stack_bottom: stack.limit().get(),
+        }]));
         let co_name = name.clone().leak();
         let inner = corosensei::Coroutine::with_stack(stack, move |y, p| {
             catch!(
@@ -382,7 +389,7 @@ where
             name,
             inner,
             stack_size,
-            stack_bottom,
+            stack_infos,
             state: Cell::new(CoroutineState::Ready),
             listeners: VecDeque::default(),
             local: CoroutineLocal::default(),
