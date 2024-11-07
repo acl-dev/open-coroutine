@@ -2,6 +2,7 @@ use crate::common::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
+use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 
@@ -41,6 +42,18 @@ macro_rules! co {
     };
 }
 
+/// The coroutine stack information.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct StackInfo {
+    /// The base address of the stack. This is the highest address
+    /// since stacks grow downwards on most modern architectures.
+    pub stack_top: usize,
+    /// The maximum limit address of the stack. This is the lowest address
+    /// since stacks grow downwards on most modern architectures.
+    pub stack_bottom: usize,
+}
+
 /// Coroutine state abstraction and impl.
 mod state;
 
@@ -74,7 +87,14 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     /// This can only be done safely in coroutine.
     pub unsafe fn remaining_stack(&self) -> usize {
         let current_ptr = psm::stack_pointer() as usize;
-        current_ptr - self.stack_bottom.borrow().front().copied().unwrap()
+        current_ptr - self.stack_infos.borrow().back().unwrap().stack_bottom
+    }
+
+    /// Queries the current stack info of this coroutine.
+    ///
+    /// The first used stack index is 0 and increases with usage.
+    pub fn stack_infos(&self) -> VecDeque<StackInfo> {
+        self.stack_infos.borrow().clone()
     }
 
     /// Grows the call stack if necessary.
