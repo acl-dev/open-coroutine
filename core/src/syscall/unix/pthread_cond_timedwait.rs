@@ -60,6 +60,15 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
         lock: *mut pthread_mutex_t,
         abstime: *const timespec,
     ) -> c_int {
+        #[cfg(all(unix, feature = "preemptive"))]
+        if crate::monitor::Monitor::current().is_some() {
+            return self.inner.pthread_cond_timedwait(
+                fn_ptr,
+                cond,
+                lock,
+                abstime,
+            );
+        }
         let abstimeout = if abstime.is_null() {
             u64::MAX
         } else {
