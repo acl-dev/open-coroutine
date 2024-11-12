@@ -21,6 +21,7 @@ cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
         use dashmap::DashMap;
+        use std::ffi::c_longlong;
     }
 }
 
@@ -36,7 +37,7 @@ pub(crate) struct EventLoop<'e> {
     operator: crate::net::operator::Operator<'e>,
     #[allow(clippy::type_complexity)]
     #[cfg(all(target_os = "linux", feature = "io_uring"))]
-    syscall_wait_table: DashMap<usize, Arc<(Mutex<Option<ssize_t>>, Condvar)>>,
+    syscall_wait_table: DashMap<usize, Arc<(Mutex<Option<c_longlong>>, Condvar)>>,
     selector: Poller,
     pool: CoroutinePool<'e>,
     phantom_data: PhantomData<&'e EventLoop<'e>>,
@@ -223,7 +224,27 @@ impl<'e> EventLoop<'e> {
             }
         }
 
-        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        cfg_if::cfg_if! {
+            if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+                left_time = self.adapt_io_uring(left_time)?;
+            }
+        }
+
+        // use epoll/kevent/iocp
+        let mut events = Events::with_capacity(1024);
+        self.selector.select(&mut events, left_time)?;
+        #[allow(clippy::explicit_iter_loop)]
+        for event in events.iter() {
+            let token = event.get_token();
+            if event.readable() || event.writable() {
+                unsafe { self.resume(token) };
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    fn adapt_io_uring(&self, mut left_time: Option<Duration>) -> std::io::Result<Option<Duration>> {
         if crate::net::operator::support_io_uring() {
             // use io_uring
             let (count, mut cq, left) = self.operator.select(left_time, 0)?;
@@ -239,7 +260,7 @@ impl<'e> EventLoop<'e> {
                     if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
                         let (lock, cvar) = &*pair;
                         let mut pending = lock.lock().expect("lock failed");
-                        *pending = Some(result);
+                        *pending = Some(result.try_into().expect("result overflow"));
                         cvar.notify_one();
                     }
                     unsafe { self.resume(token) };
@@ -249,18 +270,7 @@ impl<'e> EventLoop<'e> {
                 left_time = Some(left.unwrap_or(Duration::ZERO));
             }
         }
-
-        // use epoll/kevent/iocp
-        let mut events = Events::with_capacity(1024);
-        self.selector.select(&mut events, left_time)?;
-        #[allow(clippy::explicit_iter_loop)]
-        for event in events.iter() {
-            let token = event.get_token();
-            if event.readable() || event.writable() {
-                unsafe { self.resume(token) };
-            }
-        }
-        Ok(())
+        Ok(left_time)
     }
 
     #[allow(clippy::unused_self)]
@@ -404,7 +414,7 @@ macro_rules! impl_io_uring {
             pub(super) fn $syscall(
                 &self,
                 $($arg: $arg_type),*
-            ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+            ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
                 let token = EventLoop::token(Syscall::$syscall);
                 self.operator.$syscall(token, $($arg, )*)?;
                 let arc = Arc::new((Mutex::new(None), Condvar::new()));

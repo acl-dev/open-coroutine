@@ -492,23 +492,23 @@ static SEND_TIME_LIMIT: Lazy<DashMap<SOCKET, u64>> = Lazy::new(Default::default)
 
 static RECV_TIME_LIMIT: Lazy<DashMap<SOCKET, u64>> = Lazy::new(Default::default);
 
-pub extern "C" fn set_errno(errno: windows_sys::Win32::Foundation::WIN32_ERROR) {
+pub extern "system" fn set_errno(errno: windows_sys::Win32::Foundation::WIN32_ERROR) {
     unsafe { windows_sys::Win32::Foundation::SetLastError(errno) }
 }
 
 /// # Panics
 /// if set fails.
-pub extern "C" fn set_non_blocking(fd: SOCKET) {
+pub extern "system" fn set_non_blocking(fd: SOCKET) {
     assert!(set_non_blocking_flag(fd, true), "set_non_blocking failed !");
 }
 
 /// # Panics
 /// if set fails.
-pub extern "C" fn set_blocking(fd: SOCKET) {
+pub extern "system" fn set_blocking(fd: SOCKET) {
     assert!(set_non_blocking_flag(fd, false), "set_blocking failed !");
 }
 
-extern "C" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
+extern "system" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
     let non_blocking = is_non_blocking(fd);
     if non_blocking == on {
         return true;
@@ -524,17 +524,17 @@ extern "C" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
 }
 
 #[must_use]
-pub extern "C" fn is_blocking(fd: SOCKET) -> bool {
+pub extern "system" fn is_blocking(fd: SOCKET) -> bool {
     !is_non_blocking(fd)
 }
 
 #[must_use]
-pub extern "C" fn is_non_blocking(fd: SOCKET) -> bool {
+pub extern "system" fn is_non_blocking(fd: SOCKET) -> bool {
     NON_BLOCKING.contains(&fd)
 }
 
 #[must_use]
-pub extern "C" fn send_time_limit(fd: SOCKET) -> u64 {
+pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
     SEND_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;
@@ -561,7 +561,7 @@ pub extern "C" fn send_time_limit(fd: SOCKET) -> u64 {
 }
 
 #[must_use]
-pub extern "C" fn recv_time_limit(fd: SOCKET) -> u64 {
+pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
     RECV_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;
