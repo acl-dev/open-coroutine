@@ -16,8 +16,8 @@ pub type UserFunc = extern "C" fn(usize) -> usize;
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-        use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
-        use std::ffi::c_void;
+        use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
+        use std::ffi::{c_longlong, c_void};
     }
 }
 
@@ -247,7 +247,7 @@ macro_rules! impl_io_uring {
             #[allow(missing_docs)]
             pub fn $syscall(
                 $($arg: $arg_type),*
-            ) -> std::io::Result<Arc<(Mutex<Option<ssize_t>>, Condvar)>> {
+            ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
                 Self::event_loop().$syscall($($arg, )*)
             }
         }

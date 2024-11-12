@@ -43,6 +43,28 @@ fn main() {
         .expect("parent not found")
         .join("hook")
         .join("Cargo.toml");
+    let metadata = MetadataCommand::default()
+        .no_deps()
+        .exec()
+        .expect("read cargo metadata failed");
+    let package = if hook_toml.exists() {
+        metadata
+            .packages
+            .iter()
+            .find(|pkg| pkg.name.eq("open-coroutine"))
+            .expect("read current package failed")
+    } else {
+        metadata
+            .packages
+            .first()
+            .expect("read current package failed")
+    };
+    info!("read package:{:#?}", package);
+    let dependency = package
+        .dependencies
+        .iter()
+        .find(|dep| dep.name.eq("open-coroutine-hook"))
+        .expect("open-coroutine-hook not found");
     if !hook_toml.exists() {
         info!(
             "{:?} not exists, find open-coroutine-hook's Cargo.toml in $CARGO_HOME",
@@ -92,20 +114,6 @@ fn main() {
         .to_string_lossy()
         .to_string();
         info!("crates parent dirs:{:?}", crates_parent_dirs);
-        let metadata = MetadataCommand::default()
-            .no_deps()
-            .exec()
-            .expect("read cargo metadata failed");
-        let package = metadata
-            .packages
-            .first()
-            .expect("read current package failed");
-        info!("read package:{:#?}", package);
-        let dependency = package
-            .dependencies
-            .iter()
-            .find(|dep| dep.name.eq("open-coroutine-hook"))
-            .expect("open-coroutine-hook not found");
         let version = &dependency
             .req
             .comparators
@@ -122,7 +130,32 @@ fn main() {
             .join("Cargo.toml");
     }
     info!("open-coroutine-hook's Cargo.toml is here:{:?}", hook_toml);
+    if !dependency.uses_default_features {
+        cmd = cmd.arg("--no-default-features");
+    }
+    let mut features = Vec::new();
+    if cfg!(feature = "log") {
+        features.push("log");
+    }
+    if cfg!(feature = "preemptive") {
+        features.push("preemptive");
+    }
+    if cfg!(feature = "net") {
+        features.push("net");
+    }
+    if cfg!(feature = "io_uring") {
+        features.push("io_uring");
+    }
+    if cfg!(feature = "syscall") {
+        features.push("syscall");
+    }
+    info!(
+        "use open-coroutine-hook's default-features:{} and features:{:?}",
+        dependency.uses_default_features, features
+    );
     if let Err(e) = cmd
+        .arg("--features")
+        .arg(features.join(","))
         .arg("--manifest-path")
         .arg(hook_toml)
         .arg("--target-dir")

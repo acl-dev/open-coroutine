@@ -1,16 +1,15 @@
 use crate::catch;
-use derivative::Derivative;
 
 /// 做C兼容时会用到
 pub type UserTaskFunc = extern "C" fn(usize) -> usize;
 
 /// The task impls.
 #[repr(C)]
-#[derive(Derivative)]
-#[derivative(Debug)]
+#[derive(educe::Educe)]
+#[educe(Debug)]
 pub struct Task<'t> {
     name: String,
-    #[derivative(Debug = "ignore")]
+    #[educe(Debug(ignore))]
     func: Box<dyn FnOnce(Option<usize>) -> Option<usize> + 't>,
     param: Option<usize>,
 }

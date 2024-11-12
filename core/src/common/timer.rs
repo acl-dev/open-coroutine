@@ -1,5 +1,4 @@
 use crate::impl_display_by_debug;
-use derivative::Derivative;
 use std::collections::{BTreeMap, VecDeque};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -62,11 +61,11 @@ impl_display_by_debug!(TimerEntry<T>);
 
 /// A queue for managing multiple `TimerEntry`.
 #[repr(C)]
-#[derive(Derivative)]
-#[derivative(Debug, Eq, PartialEq)]
+#[derive(educe::Educe)]
+#[educe(Debug, Eq, PartialEq)]
 pub struct TimerList<T> {
     inner: BTreeMap<u64, TimerEntry<T>>,
-    #[derivative(PartialEq = "ignore")]
+    #[educe(PartialEq(ignore))]
     total: AtomicUsize,
 }
 
