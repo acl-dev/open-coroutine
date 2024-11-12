@@ -50,6 +50,7 @@ impl_hook!(ACCEPT4, accept4(fd: c_int, addr: *mut sockaddr, len: *mut socklen_t,
 impl_hook!(SHUTDOWN, shutdown(fd: c_int, how: c_int) -> c_int);
 impl_hook!(RECV, recv(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t);
 impl_hook!(RECVFROM, recvfrom(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int, addr: *mut sockaddr, addrlen: *mut socklen_t) -> ssize_t);
+#[cfg(not(all(target_os = "linux", feature = "io_uring")))]
 impl_hook!(READ, read(fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t);
 impl_hook!(PREAD, pread(fd: c_int, buf: *mut c_void, count: size_t, offset: off_t) -> ssize_t);
 impl_hook!(READV, readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
