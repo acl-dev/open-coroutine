@@ -134,10 +134,9 @@ pub struct JoinHandle<R>(open_coroutine_core::net::join::JoinHandle, PhantomData
 
 #[allow(missing_docs)]
 impl<R> JoinHandle<R> {
-    #[allow(clippy::cast_possible_truncation)]
     pub fn timeout_join(&self, dur: Duration) -> std::io::Result<Option<R>> {
         unsafe {
-            let ptr = task_timeout_join(self, dur.as_nanos() as u64);
+            let ptr = task_timeout_join(self, dur.as_nanos().try_into().expect("overflow"));
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "timeout join failed")),
                 Ordering::Equal => Ok(None),

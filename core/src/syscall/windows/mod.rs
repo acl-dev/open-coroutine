@@ -43,6 +43,82 @@ macro_rules! impl_facade {
     }
 }
 
+macro_rules! impl_iocp {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(windows, feature = "iocp"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(windows, feature = "iocp"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "system" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
+                $($arg: $arg_type),*
+            ) -> $result {
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($($arg, )*) {
+                    use $crate::common::constants::{CoroutineState, SyscallState};
+                    use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::SystemCall((), syscall, SyscallState::Executing) = co.state()
+                        {
+                            let new_state = SyscallState::Suspend(u64::MAX);
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(),
+                                    syscall,
+                                    new_state
+                                );
+                            }
+                        }
+                    }
+                    if let Some(suspender) = SchedulableSuspender::current() {
+                        suspender.suspend();
+                        //回来的时候，系统调用已经执行完了
+                    }
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::SystemCall((), syscall, SyscallState::Callback) = co.state()
+                        {
+                            let new_state = SyscallState::Executing;
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(),
+                                    syscall,
+                                    new_state
+                                );
+                            }
+                        }
+                    }
+                    let (lock, cvar) = &*arc;
+                    let syscall_result: $result = cvar
+                        .wait_while(lock.lock().expect("lock failed"),
+                            |&mut result| result.is_none()
+                        )
+                        .expect("lock failed")
+                        .expect("no syscall result")
+                        .try_into()
+                        .expect("IOCP syscall result overflow");
+                    // fixme 错误处理
+                    // if syscall_result < 0 {
+                    //     let errno: std::ffi::c_int = (-syscall_result).try_into()
+                    //         .expect("IOCP errno overflow");
+                    //     $crate::syscall::common::set_errno(errno);
+                    //     syscall_result = -1;
+                    // }
+                    return syscall_result;
+                }
+                self.inner.$syscall(fn_ptr, $($arg, )*)
+            }
+        }
+    }
+}
+
 macro_rules! impl_nio_read {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
         #[repr(C)]
@@ -492,23 +568,23 @@ static SEND_TIME_LIMIT: Lazy<DashMap<SOCKET, u64>> = Lazy::new(Default::default)
 
 static RECV_TIME_LIMIT: Lazy<DashMap<SOCKET, u64>> = Lazy::new(Default::default);
 
-pub extern "C" fn set_errno(errno: windows_sys::Win32::Foundation::WIN32_ERROR) {
+pub extern "system" fn set_errno(errno: windows_sys::Win32::Foundation::WIN32_ERROR) {
     unsafe { windows_sys::Win32::Foundation::SetLastError(errno) }
 }
 
 /// # Panics
 /// if set fails.
-pub extern "C" fn set_non_blocking(fd: SOCKET) {
+pub extern "system" fn set_non_blocking(fd: SOCKET) {
     assert!(set_non_blocking_flag(fd, true), "set_non_blocking failed !");
 }
 
 /// # Panics
 /// if set fails.
-pub extern "C" fn set_blocking(fd: SOCKET) {
+pub extern "system" fn set_blocking(fd: SOCKET) {
     assert!(set_non_blocking_flag(fd, false), "set_blocking failed !");
 }
 
-extern "C" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
+extern "system" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
     let non_blocking = is_non_blocking(fd);
     if non_blocking == on {
         return true;
@@ -524,17 +600,17 @@ extern "C" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
 }
 
 #[must_use]
-pub extern "C" fn is_blocking(fd: SOCKET) -> bool {
+pub extern "system" fn is_blocking(fd: SOCKET) -> bool {
     !is_non_blocking(fd)
 }
 
 #[must_use]
-pub extern "C" fn is_non_blocking(fd: SOCKET) -> bool {
+pub extern "system" fn is_non_blocking(fd: SOCKET) -> bool {
     NON_BLOCKING.contains(&fd)
 }
 
 #[must_use]
-pub extern "C" fn send_time_limit(fd: SOCKET) -> u64 {
+pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
     SEND_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;
@@ -561,7 +637,7 @@ pub extern "C" fn send_time_limit(fd: SOCKET) -> u64 {
 }
 
 #[must_use]
-pub extern "C" fn recv_time_limit(fd: SOCKET) -> u64 {
+pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
     RECV_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;

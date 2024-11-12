@@ -1,6 +1,5 @@
 use crate::common::CondvarBlocker;
 use crossbeam_utils::atomic::AtomicCell;
-use derivative::Derivative;
 use mio::event::Event;
 use mio::unix::SourceFd;
 use mio::{Events, Interest, Poll, Token};
@@ -47,12 +46,12 @@ impl super::EventIterator<Event> for Events {
 }
 
 #[repr(C)]
-#[derive(Derivative)]
-#[derivative(Debug)]
+#[derive(educe::Educe)]
+#[educe(Debug)]
 pub(crate) struct Poller {
     waiting: AtomicBool,
     blocker: CondvarBlocker,
-    #[derivative(Debug = "ignore")]
+    #[educe(Debug(ignore))]
     inner: AtomicCell<Poll>,
 }
 

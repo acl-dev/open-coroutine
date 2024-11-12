@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     static TIMESTAMP: RefCell<VecDeque<u64>> = const { RefCell::new(VecDeque::new()) };
 }
 
@@ -52,14 +53,13 @@ pub use korosensei::Suspender;
 #[cfg(feature = "korosensei")]
 mod korosensei {
     use corosensei::Yielder;
-    use derivative::Derivative;
 
     /// Ths suspender implemented for coroutine.
     #[repr(C)]
-    #[derive(Derivative)]
-    #[derivative(Debug)]
+    #[derive(educe::Educe)]
+    #[educe(Debug)]
     pub struct Suspender<'s, Param, Yield> {
-        #[derivative(Debug = "ignore")]
+        #[educe(Debug(ignore))]
         inner: &'s Yielder<Param, Yield>,
     }
 
