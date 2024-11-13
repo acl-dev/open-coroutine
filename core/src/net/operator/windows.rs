@@ -143,7 +143,7 @@ impl Operator<'_> {
                 )
             };
             let e = Error::last_os_error();
-            eprintln!("IOCP returns:{ret} recv_count:{recv_count} e:{e}");
+
             if FALSE == ret {
                 if ErrorKind::TimedOut == e.kind() {
                     continue;
@@ -161,13 +161,19 @@ impl Operator<'_> {
                     syscall: overlapped.syscall,
                     dw_number_of_bytes_transferred: entry.dwNumberOfBytesTransferred,
                 });
+                eprintln!(
+                    "IOCP got OVERLAPPED:{} {} {} {}",
+                    overlapped.base.Internal,
+                    overlapped.base.InternalHigh,
+                    unsafe { overlapped.base.Anonymous.Anonymous.Offset },
+                    unsafe { overlapped.base.Anonymous.Anonymous.OffsetHigh }
+                );
             }
             if cq.len() >= want {
                 break;
             }
         }
         let cost = Instant::now().saturating_duration_since(start_time);
-        eprintln!("IOCP do_select {cq:?}");
         Ok((cq.len(), cq, timeout.map(|t| t.saturating_sub(cost))))
     }
 
@@ -221,7 +227,13 @@ impl Operator<'_> {
                     break;
                 }
             }
-            std::mem::forget(overlapped);
+            eprintln!(
+                "add accept operation OVERLAPPED:{} {} {} {}",
+                overlapped.base.Internal,
+                overlapped.base.InternalHigh,
+                overlapped.base.Anonymous.Anonymous.Offset,
+                overlapped.base.Anonymous.Anonymous.OffsetHigh
+            );
         }
         Ok(())
     }
@@ -260,7 +272,6 @@ impl Operator<'_> {
                     "add recv operation failed",
                 ));
             }
-            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -302,7 +313,6 @@ impl Operator<'_> {
                     "add WSARecv operation failed",
                 ));
             }
-            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -341,7 +351,6 @@ impl Operator<'_> {
                     "add send operation failed",
                 ));
             }
-            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -383,7 +392,6 @@ impl Operator<'_> {
                     "add WSASend operation failed",
                 ));
             }
-            std::mem::forget(overlapped);
         }
         Ok(())
     }
