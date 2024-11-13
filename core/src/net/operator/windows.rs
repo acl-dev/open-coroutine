@@ -1,5 +1,6 @@
 use crate::common::constants::Syscall;
 use crate::common::{get_timeout_time, now};
+use crate::impl_display_by_debug;
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
@@ -33,8 +34,11 @@ pub(crate) static SOCKET_CONTEXT: Lazy<DashMap<SOCKET, SocketContext>> =
 
 /// The overlapped struct we actually used for IOCP.
 #[repr(C)]
+#[derive(educe::Educe)]
+#[educe(Debug)]
 pub(crate) struct Overlapped {
     /// The base [`OVERLAPPED`].
+    #[educe(Debug(ignore))]
     pub base: OVERLAPPED,
     pub from_fd: SOCKET,
     pub socket: SOCKET,
@@ -42,6 +46,8 @@ pub(crate) struct Overlapped {
     pub syscall: Syscall,
     pub dw_number_of_bytes_transferred: u32,
 }
+
+impl_display_by_debug!(Overlapped);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -131,8 +137,9 @@ impl Operator<'_> {
                     1,
                 )
             };
-            let err = Error::last_os_error().raw_os_error();
-            eprintln!("IOCP try add cq {ret} {err:?}");
+            let e = Error::last_os_error();
+            let err = e.raw_os_error();
+            eprintln!("IOCP returns:{ret} bytes:{bytes} e:{e} try add cq:{overlapped}");
             if ret == FALSE {
                 if timeout_time.saturating_sub(now()) == 0 {
                     break;
