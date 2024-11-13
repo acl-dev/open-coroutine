@@ -21,7 +21,7 @@ jobs:
           toolchain: ${{ matrix.target == 'i686-pc-windows-gnu' && format('{0}-i686-pc-windows-gnu', matrix.channel) || matrix.channel }}
           target: ${{ matrix.target }}
           override: true
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Check code format
         uses: actions-rs/cargo@v1
         with:
@@ -31,12 +31,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all
+          args: --all -- -D warnings
       - name: Check clippy with all features
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all --all-features
+          args: --all --all-features -- -D warnings
       - name: Run cargo deny
         if: ${{ contains(matrix.os, 'ubuntu') }}
         uses: EmbarkStudios/cargo-deny-action@v2
