@@ -8,7 +8,9 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::core::{PCSTR, PSTR};
-use windows_sys::Win32::Foundation::{ERROR_NETNAME_DELETED, FALSE, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    ERROR_NETNAME_DELETED, FALSE, HANDLE, INVALID_HANDLE_VALUE, WAIT_TIMEOUT,
+};
 use windows_sys::Win32::Networking::WinSock::{
     closesocket, AcceptEx, WSAGetLastError, WSARecv, WSASend, WSASocketW, INVALID_SOCKET, IPPROTO,
     LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKADDR_IN, SOCKET,
@@ -131,15 +133,21 @@ impl Operator<'_> {
             let err = Error::last_os_error().raw_os_error();
             eprintln!("IOCP try add cq {ret} {err:?}");
             if ret == FALSE {
+                if timeout_time.saturating_sub(now()) == 0 {
+                    break;
+                }
+                if Some(WAIT_TIMEOUT.try_into().expect("overflow")) == err {
+                    continue;
+                }
                 if Some(ERROR_NETNAME_DELETED.try_into().expect("overflow")) == err {
                     _ = unsafe { closesocket(overlapped.socket) };
+                    continue;
                 }
-                continue;
             }
             overlapped.token = token;
             overlapped.dw_number_of_bytes_transferred = bytes;
             cq.push(overlapped);
-            if cq.len() >= want || timeout_time.saturating_sub(now()) == 0 {
+            if cq.len() >= want {
                 break;
             }
         }
