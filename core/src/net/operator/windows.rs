@@ -47,6 +47,7 @@ pub(crate) struct Overlapped {
 #[derive(Debug)]
 pub(crate) struct Operator<'o> {
     iocp: HANDLE,
+    completion_key: usize,
     entering: AtomicBool,
     handles: DashSet<HANDLE>,
     phantom_data: PhantomData<&'o HANDLE>,
@@ -61,6 +62,8 @@ impl Operator<'_> {
         }
         Ok(Self {
             iocp,
+            completion_key: unsafe { windows_sys::Win32::System::Threading::GetCurrentThread() }
+                as usize,
             entering: AtomicBool::new(false),
             handles: DashSet::default(),
             phantom_data: PhantomData,
@@ -76,11 +79,11 @@ impl Operator<'_> {
     /// Any object which is convertible to a `HANDLE` via the `AsRawHandle`
     /// trait can be provided to this function, such as `std::fs::File` and
     /// friends.
-    fn add_handle(&self, token: usize, handle: HANDLE) -> std::io::Result<()> {
+    fn add_handle(&self, handle: HANDLE) -> std::io::Result<()> {
         if self.handles.contains(&handle) {
             return Ok(());
         }
-        let ret = unsafe { CreateIoCompletionPort(handle, self.iocp, token, 0) };
+        let ret = unsafe { CreateIoCompletionPort(handle, self.iocp, self.completion_key, 0) };
         if ret.is_null() {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -119,13 +122,12 @@ impl Operator<'_> {
         let mut cq = Vec::new();
         loop {
             let mut bytes = 0;
-            let mut token = 0;
             let mut overlapped: Overlapped = unsafe { std::mem::zeroed() };
             let ret = unsafe {
                 GetQueuedCompletionStatus(
                     self.iocp,
                     &mut bytes,
-                    &mut token,
+                    &mut self.completion_key.clone(),
                     std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
                     1,
                 )
@@ -144,7 +146,6 @@ impl Operator<'_> {
                     continue;
                 }
             }
-            overlapped.token = token;
             overlapped.dw_number_of_bytes_transferred = bytes;
             cq.push(overlapped);
             if cq.len() >= want {
@@ -163,7 +164,7 @@ impl Operator<'_> {
         _address: *mut SOCKADDR,
         _address_len: *mut c_int,
     ) -> std::io::Result<()> {
-        self.add_handle(fd, fd as HANDLE)?;
+        self.add_handle(fd as HANDLE)?;
         let context = SOCKET_CONTEXT.get(&fd).expect("socket context not found");
         let ctx = context.value();
         unsafe {
@@ -217,7 +218,7 @@ impl Operator<'_> {
         len: c_int,
         flags: SEND_RECV_FLAGS,
     ) -> std::io::Result<()> {
-        self.add_handle(fd, fd as HANDLE)?;
+        self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
@@ -262,7 +263,7 @@ impl Operator<'_> {
             lpoverlapped.is_null(),
             "the WSARecv in Operator should be called without lpoverlapped! Correct your code!"
         );
-        self.add_handle(fd, fd as HANDLE)?;
+        self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
@@ -296,7 +297,7 @@ impl Operator<'_> {
         len: c_int,
         flags: SEND_RECV_FLAGS,
     ) -> std::io::Result<()> {
-        self.add_handle(fd, fd as HANDLE)?;
+        self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
@@ -341,7 +342,7 @@ impl Operator<'_> {
             lpoverlapped.is_null(),
             "the WSASend in Operator should be called without lpoverlapped! Correct your code!"
         );
-        self.add_handle(fd, fd as HANDLE)?;
+        self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
