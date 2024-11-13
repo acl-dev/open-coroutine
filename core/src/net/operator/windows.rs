@@ -56,7 +56,7 @@ pub(crate) struct Operator<'o> {
 impl Operator<'_> {
     pub(crate) fn new(cpu: usize) -> std::io::Result<Self> {
         let iocp =
-            unsafe { CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), cpu, 0) };
+            unsafe { CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), 0, 0) };
         if iocp.is_null() {
             return Err(Error::last_os_error());
         }
@@ -190,10 +190,11 @@ impl Operator<'_> {
             overlapped.socket = socket;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::accept;
+            let mut buf: Vec<u8> = Vec::with_capacity(2 * size);
             while AcceptEx(
                 fd,
                 socket,
-                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast(),
                 0,
                 size,
                 size,
