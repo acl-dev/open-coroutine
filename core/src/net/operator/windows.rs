@@ -144,12 +144,14 @@ impl Operator<'_> {
             }
             overlapped.token = token;
             overlapped.dw_number_of_bytes_transferred = bytes;
+            eprintln!("IOCP add cq {token} {bytes}");
             cq.push(overlapped);
             if cq.len() >= want || timeout_time.saturating_sub(now()) == 0 {
                 break;
             }
         }
         let cost = Instant::now().saturating_duration_since(start_time);
+        eprintln!("IOCP do_select {}", cq.len());
         Ok((cq.len(), cq, timeout.map(|t| t.saturating_sub(cost))))
     }
 

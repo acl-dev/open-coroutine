@@ -127,7 +127,7 @@ impl<'e> EventLoop<'e> {
     }
 
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
-    pub(crate) fn token(syscall: Syscall) -> usize {
+    fn token(syscall: Syscall) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
             let boxed: &'static mut CString = Box::leak(Box::from(
                 CString::new(co.name()).expect("build name failed!"),
@@ -148,7 +148,7 @@ impl<'e> EventLoop<'e> {
             let syscall_mask = <Syscall as Into<&str>>::into(syscall).as_ptr() as usize;
             let token = thread_id as usize ^ syscall_mask;
             if Syscall::nio() != syscall {
-                eprintln!("{syscall} {token}");
+                eprintln!("generate token:{token} for {syscall}");
             }
             token
         }
@@ -307,6 +307,8 @@ impl<'e> EventLoop<'e> {
         if count > 0 {
             for cqe in &mut cq {
                 let token = cqe.token;
+                let bytes_transferred = cqe.dw_number_of_bytes_transferred;
+                eprintln!("IOCP finish {token} {bytes_transferred}");
                 // resolve completed read/write tasks
                 // todo refactor IOCP impl
                 let result = match cqe.syscall {
@@ -322,7 +324,9 @@ impl<'e> EventLoop<'e> {
                         };
                         cqe.socket.try_into().expect("result overflow")
                     }
-                    Syscall::recv | Syscall::send => cqe.dw_number_of_bytes_transferred.into(),
+                    Syscall::recv | Syscall::WSARecv | Syscall::send | Syscall::WSASend => {
+                        bytes_transferred.into()
+                    }
                     _ => panic!("unsupported"),
                 };
                 eprintln!("IOCP finish {token} {result}");
