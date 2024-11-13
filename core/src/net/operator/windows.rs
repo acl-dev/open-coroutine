@@ -190,7 +190,7 @@ impl Operator<'_> {
             overlapped.socket = socket;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::accept;
-            let mut buf: Vec<u8> = Vec::with_capacity(2 * size);
+            let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
             while AcceptEx(
                 fd,
                 socket,
