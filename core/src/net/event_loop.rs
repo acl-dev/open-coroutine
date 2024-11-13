@@ -7,7 +7,7 @@ use crate::{error, impl_current_for, impl_display_by_debug, info};
 use crossbeam_utils::atomic::AtomicCell;
 use dashmap::DashSet;
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
-use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
+use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
 use once_cell::sync::Lazy;
 use rand::Rng;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
@@ -282,7 +282,7 @@ impl<'e> EventLoop<'e> {
                         continue;
                     }
                     // resolve completed read/write tasks
-                    let result = cqe.result() as c_longlong;
+                    let result = c_longlong::from(cqe.result());
                     eprintln!("io_uring finish {token} {result}");
                     if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
                         let (lock, cvar) = &*pair;
