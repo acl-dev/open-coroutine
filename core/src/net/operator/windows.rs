@@ -9,16 +9,14 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::core::{PCSTR, PSTR};
-use windows_sys::Win32::Foundation::{
-    ERROR_NETNAME_DELETED, FALSE, HANDLE, INVALID_HANDLE_VALUE, WAIT_TIMEOUT,
-};
+use windows_sys::Win32::Foundation::{FALSE, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Networking::WinSock::{
-    closesocket, AcceptEx, WSAGetLastError, WSARecv, WSASend, WSASocketW, INVALID_SOCKET, IPPROTO,
+    AcceptEx, WSAGetLastError, WSARecv, WSASend, WSASocketW, INVALID_SOCKET, IPPROTO,
     LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKADDR_IN, SOCKET,
     SOCKET_ERROR, WINSOCK_SOCKET_TYPE, WSABUF, WSA_FLAG_OVERLAPPED, WSA_IO_PENDING,
 };
 use windows_sys::Win32::System::IO::{
-    CreateIoCompletionPort, GetQueuedCompletionStatus, OVERLAPPED,
+    CreateIoCompletionPort, GetQueuedCompletionStatusEx, OVERLAPPED, OVERLAPPED_ENTRY,
 };
 
 #[repr(C)]
@@ -126,40 +124,48 @@ impl Operator<'_> {
         let timeout_time = timeout.map_or(u64::MAX, get_timeout_time);
         let mut cq = Vec::new();
         loop {
-            let mut bytes = 0;
-            let mut overlapped: Overlapped = unsafe { std::mem::zeroed() };
+            let left_ms = (timeout_time.saturating_sub(now()) / 1_000_000)
+                .try_into()
+                .expect("overflow");
+            if left_ms == 0 {
+                break;
+            }
+            let mut entries: Vec<OVERLAPPED_ENTRY> = Vec::with_capacity(1024);
+            let uninit = entries.spare_capacity_mut();
+            let mut recv_count = 0;
             let ret = unsafe {
-                GetQueuedCompletionStatus(
+                GetQueuedCompletionStatusEx(
                     self.iocp,
-                    &mut bytes,
-                    &mut self.cpu.clone(),
-                    std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
-                    1,
+                    uninit.as_mut_ptr().cast(),
+                    uninit.len().try_into().expect("overflow"),
+                    &mut recv_count,
+                    left_ms,
+                    0,
                 )
             };
             let e = Error::last_os_error();
-            let err = e.raw_os_error();
-            eprintln!("IOCP returns:{ret} bytes:{bytes} e:{e} try add cq:{overlapped}");
-            if ret == FALSE {
-                if timeout_time.saturating_sub(now()) == 0 {
-                    break;
-                }
-                if Some(WAIT_TIMEOUT.try_into().expect("overflow")) == err {
-                    continue;
-                }
-                if Some(ERROR_NETNAME_DELETED.try_into().expect("overflow")) == err {
-                    _ = unsafe { closesocket(overlapped.socket) };
-                    continue;
-                }
+            eprintln!("IOCP returns:{ret} recv_count:{recv_count} e:{e}");
+            if FALSE == ret && ErrorKind::TimedOut == e.kind() {
+                continue;
             }
-            overlapped.dw_number_of_bytes_transferred = bytes;
-            cq.push(overlapped);
+            unsafe { entries.set_len(recv_count as _) };
+            for entry in entries {
+                let overlapped = unsafe { &*entry.lpOverlapped.cast::<Overlapped>() };
+                cq.push(Overlapped {
+                    base: overlapped.base,
+                    from_fd: overlapped.from_fd,
+                    socket: overlapped.socket,
+                    token: overlapped.token,
+                    syscall: overlapped.syscall,
+                    dw_number_of_bytes_transferred: entry.dwNumberOfBytesTransferred,
+                });
+            }
             if cq.len() >= want {
                 break;
             }
         }
         let cost = Instant::now().saturating_duration_since(start_time);
-        eprintln!("IOCP do_select {}", cq.len());
+        eprintln!("IOCP do_select {cq:?}");
         Ok((cq.len(), cq, timeout.map(|t| t.saturating_sub(cost))))
     }
 
