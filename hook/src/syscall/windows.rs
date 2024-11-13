@@ -101,6 +101,11 @@ unsafe fn attach() -> std::io::Result<()> {
         value: PSTR,
         option_len: c_int
     ) -> c_int);
+    impl_hook!("ws2_32.dll", CONNECT, connect(
+        fd: SOCKET,
+        address: *const SOCKADDR,
+        len: c_int
+    ) -> c_int);
     impl_hook!("ws2_32.dll", WSARECV, WSARecv(
         fd: SOCKET,
         buf: *const WSABUF,

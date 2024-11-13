@@ -566,6 +566,7 @@ syscall_mod!(
     send;
     shutdown;
     socket;
+    connect;
     CreateFileW;
     SetFilePointerEx;
     WaitOnAddress

@@ -1,46 +1,34 @@
 use crate::net::EventLoops;
 use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
-use libc::{sockaddr, socklen_t};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
 use std::io::Error;
+use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT};
 
 #[must_use]
-pub extern "C" fn connect(
-    fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-    socket: c_int,
-    address: *const sockaddr,
-    len: socklen_t,
+pub extern "system" fn connect(
+    fn_ptr: Option<&extern "system" fn(SOCKET, *const SOCKADDR, c_int) -> c_int>,
+    socket: SOCKET,
+    address: *const SOCKADDR,
+    len: c_int,
 ) -> c_int {
-    cfg_if::cfg_if! {
-        if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-            static CHAIN: Lazy<
-                ConnectSyscallFacade<IoUringConnectSyscall<NioConnectSyscall<RawConnectSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<ConnectSyscallFacade<NioConnectSyscall<RawConnectSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
+    static CHAIN: Lazy<ConnectSyscallFacade<NioConnectSyscall<RawConnectSyscall>>> =
+        Lazy::new(Default::default);
     CHAIN.connect(fn_ptr, socket, address, len)
 }
 
 trait ConnectSyscall {
-    extern "C" fn connect(
+    extern "system" fn connect(
         &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        fd: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
+        fn_ptr: Option<&extern "system" fn(SOCKET, *const SOCKADDR, c_int) -> c_int>,
+        fd: SOCKET,
+        address: *const SOCKADDR,
+        len: c_int,
     ) -> c_int;
 }
 
 impl_facade!(ConnectSyscallFacade, ConnectSyscall,
-    connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int
-);
-
-impl_io_uring!(IoUringConnectSyscall, ConnectSyscall,
-    connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int
+    connect(fd: SOCKET, address: *const SOCKADDR, len: c_int) -> c_int
 );
 
 #[repr(C)]
@@ -50,12 +38,12 @@ struct NioConnectSyscall<I: ConnectSyscall> {
 }
 
 impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
-    extern "C" fn connect(
+    extern "system" fn connect(
         &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-        fd: c_int,
-        address: *const sockaddr,
-        len: socklen_t,
+        fn_ptr: Option<&extern "system" fn(SOCKET, *const SOCKADDR, c_int) -> c_int>,
+        fd: SOCKET,
+        address: *const SOCKADDR,
+        len: c_int,
     ) -> c_int {
         let blocking = is_blocking(fd);
         if blocking {
@@ -68,7 +56,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 break;
             }
             let errno = Error::last_os_error().raw_os_error();
-            if errno == Some(libc::EINPROGRESS) || errno == Some(libc::EALREADY) {
+            if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) {
                 //阻塞，直到写事件发生
                 if EventLoops::wait_write_event(fd, Some(crate::common::constants::SLICE)).is_err()
                 {
@@ -76,11 +64,11 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 }
                 let mut err: c_int = 0;
                 unsafe {
-                    let mut len: socklen_t = std::mem::zeroed();
-                    r = libc::getsockopt(
+                    let mut len: c_int = std::mem::zeroed();
+                    r = getsockopt(
                         fd,
-                        libc::SOL_SOCKET,
-                        libc::SO_ERROR,
+                        SOL_SOCKET,
+                        SO_ERROR,
                         std::ptr::addr_of_mut!(err).cast::<c_void>(),
                         &mut len,
                     );
@@ -97,14 +85,14 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 unsafe {
                     let mut address = std::mem::zeroed();
                     let mut address_len = std::mem::zeroed();
-                    r = libc::getpeername(fd, &mut address, &mut address_len);
+                    r = getpeername(fd, &mut address, &mut address_len);
                 }
-            } else if errno != Some(libc::EINTR) {
+            } else if errno != Some(WSAEINTR) {
                 break;
             }
         }
-        if r == -1 && Error::last_os_error().raw_os_error() == Some(libc::ETIMEDOUT) {
-            set_errno(libc::EINPROGRESS);
+        if r == -1 && Error::last_os_error().raw_os_error() == Some(WSAETIMEDOUT) {
+            set_errno(WSAEINPROGRESS);
         }
         if blocking {
             set_blocking(fd);
@@ -113,6 +101,6 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
     }
 }
 
-impl_raw!(RawConnectSyscall, ConnectSyscall,
-    connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int
+impl_raw!(RawConnectSyscall, ConnectSyscall, windows_sys::Win32::Networking::WinSock,
+    connect(fd: SOCKET, address: *const SOCKADDR, len: c_int) -> c_int
 );
