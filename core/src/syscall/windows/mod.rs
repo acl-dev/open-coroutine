@@ -43,6 +43,91 @@ macro_rules! impl_facade {
     }
 }
 
+macro_rules! impl_iocp {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(windows, feature = "iocp"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(windows, feature = "iocp"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "system" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
+                $($arg: $arg_type),*
+            ) -> $result {
+                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                match $crate::net::EventLoops::$syscall($($arg, )*) {
+                    Ok(arc) => {
+                        if let Some(co) = SchedulableCoroutine::current() {
+                            if let CoroutineState::SystemCall((), syscall, SyscallState::Executing) = co.state()
+                            {
+                                let new_state = SyscallState::Suspend(u64::MAX);
+                                if co.syscall((), syscall, new_state).is_err() {
+                                    $crate::error!(
+                                        "{} change to syscall {} {} failed !",
+                                        co.name(),
+                                        syscall,
+                                        new_state
+                                    );
+                                }
+                            }
+                        }
+                        if let Some(suspender) = SchedulableSuspender::current() {
+                            suspender.suspend();
+                            //回来的时候，系统调用已经执行完了
+                        }
+                        if let Some(co) = SchedulableCoroutine::current() {
+                            if let CoroutineState::SystemCall((), syscall, SyscallState::Callback) = co.state()
+                            {
+                                let new_state = SyscallState::Executing;
+                                if co.syscall((), syscall, new_state).is_err() {
+                                    $crate::error!(
+                                        "{} change to syscall {} {} failed !",
+                                        co.name(), syscall, new_state
+                                    );
+                                }
+                            }
+                        }
+                        let (lock, cvar) = &*arc;
+                        let syscall_result: $result = cvar
+                            .wait_while(lock.lock().expect("lock failed"),
+                                |&mut result| result.is_none()
+                            )
+                            .expect("lock failed")
+                            .expect("no syscall result")
+                            .try_into()
+                            .expect("IOCP syscall result overflow");
+                        // fixme 错误处理
+                        // if syscall_result < 0 {
+                        //     let errno: std::ffi::c_int = (-syscall_result).try_into()
+                        //         .expect("IOCP errno overflow");
+                        //     $crate::syscall::common::set_errno(errno);
+                        //     syscall_result = -1;
+                        // }
+                        syscall_result
+                    }
+                    Err(e) => {
+                        if e.kind() == std::io::ErrorKind::Other {
+                            self.inner.$syscall(fn_ptr, $($arg, )*)
+                        } else {
+                            $crate::syscall::common::set_errno(
+                                windows_sys::Win32::Networking::WinSock::WSAEWOULDBLOCK.try_into().expect("overflow")
+                            );
+                            windows_sys::Win32::Networking::WinSock::SOCKET_ERROR.try_into().expect("overflow")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 macro_rules! impl_nio_read {
     ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
         #[repr(C)]

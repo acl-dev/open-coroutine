@@ -6,6 +6,8 @@ use crate::scheduler::SchedulableCoroutine;
 use crate::{error, impl_current_for, impl_display_by_debug, info};
 use crossbeam_utils::atomic::AtomicCell;
 use dashmap::DashSet;
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
+use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t, ssize_t};
 use once_cell::sync::Lazy;
 use rand::Rng;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
@@ -18,8 +20,19 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 cfg_if::cfg_if! {
-    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-        use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
+    if #[cfg(all(windows, feature = "iocp"))] {
+        use std::ffi::c_uint;
+        use windows_sys::core::{PCSTR, PSTR};
+        use windows_sys::Win32::Networking::WinSock::{
+            setsockopt, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET, SOL_SOCKET,
+            SO_UPDATE_ACCEPT_CONTEXT, WSABUF,
+        };
+        use windows_sys::Win32::System::IO::OVERLAPPED;
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(any(all(target_os = "linux", feature = "io_uring"), all(windows, feature = "iocp")))] {
         use dashmap::DashMap;
         use std::ffi::c_longlong;
     }
@@ -33,10 +46,16 @@ pub(crate) struct EventLoop<'e> {
     stop: Arc<(Mutex<bool>, Condvar)>,
     shared_stop: Arc<(Mutex<AtomicUsize>, Condvar)>,
     cpu: usize,
-    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    #[cfg(any(
+        all(target_os = "linux", feature = "io_uring"),
+        all(windows, feature = "iocp")
+    ))]
     operator: crate::net::operator::Operator<'e>,
     #[allow(clippy::type_complexity)]
-    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    #[cfg(any(
+        all(target_os = "linux", feature = "io_uring"),
+        all(windows, feature = "iocp")
+    ))]
     syscall_wait_table: DashMap<usize, Arc<(Mutex<Option<c_longlong>>, Condvar)>>,
     selector: Poller,
     pool: CoroutinePool<'e>,
@@ -91,9 +110,15 @@ impl<'e> EventLoop<'e> {
             stop: Arc::new((Mutex::new(false), Condvar::new())),
             shared_stop,
             cpu,
-            #[cfg(all(target_os = "linux", feature = "io_uring"))]
+            #[cfg(any(
+                all(target_os = "linux", feature = "io_uring"),
+                all(windows, feature = "iocp")
+            ))]
             operator: crate::net::operator::Operator::new(cpu)?,
-            #[cfg(all(target_os = "linux", feature = "io_uring"))]
+            #[cfg(any(
+                all(target_os = "linux", feature = "io_uring"),
+                all(windows, feature = "iocp")
+            ))]
             syscall_wait_table: DashMap::new(),
             selector: Poller::new()?,
             pool: CoroutinePool::new(name, stack_size, min_size, max_size, keep_alive_time),
@@ -102,7 +127,7 @@ impl<'e> EventLoop<'e> {
     }
 
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
-    fn token(syscall: Syscall) -> usize {
+    pub(crate) fn token(syscall: Syscall) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
             let boxed: &'static mut CString = Box::leak(Box::from(
                 CString::new(co.name()).expect("build name failed!"),
@@ -227,6 +252,8 @@ impl<'e> EventLoop<'e> {
         cfg_if::cfg_if! {
             if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
                 left_time = self.adapt_io_uring(left_time)?;
+            } else if #[cfg(all(windows, feature = "iocp"))] {
+                left_time = self.adapt_iocp(left_time)?;
             }
         }
 
@@ -269,6 +296,47 @@ impl<'e> EventLoop<'e> {
             if left != left_time {
                 left_time = Some(left.unwrap_or(Duration::ZERO));
             }
+        }
+        Ok(left_time)
+    }
+
+    #[cfg(all(windows, feature = "iocp"))]
+    fn adapt_iocp(&self, mut left_time: Option<Duration>) -> std::io::Result<Option<Duration>> {
+        // use IOCP
+        let (count, mut cq, left) = self.operator.select(left_time, 0)?;
+        if count > 0 {
+            for cqe in &mut cq {
+                let token = cqe.token;
+                // resolve completed read/write tasks
+                // todo refactor IOCP impl
+                let result = match cqe.syscall {
+                    Syscall::accept => {
+                        unsafe {
+                            _ = setsockopt(
+                                cqe.socket,
+                                SOL_SOCKET,
+                                SO_UPDATE_ACCEPT_CONTEXT,
+                                std::ptr::from_ref::<SOCKET>(&cqe.from_fd).cast(),
+                                c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
+                            );
+                        };
+                        cqe.socket.try_into().expect("result overflow")
+                    }
+                    Syscall::recv | Syscall::send => cqe.dw_number_of_bytes_transferred.into(),
+                    _ => panic!("unsupported"),
+                };
+                eprintln!("IOCP finish {token} {result}");
+                if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
+                    let (lock, cvar) = &*pair;
+                    let mut pending = lock.lock().expect("lock failed");
+                    *pending = Some(result);
+                    cvar.notify_one();
+                }
+                unsafe { self.resume(token) };
+            }
+        }
+        if left != left_time {
+            left_time = Some(left.unwrap_or(Duration::ZERO));
         }
         Ok(left_time)
     }
@@ -448,6 +516,34 @@ impl_io_uring!(pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_
 impl_io_uring!(writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_io_uring!(pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
 impl_io_uring!(sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t);
+
+macro_rules! impl_iocp {
+    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[cfg(all(windows, feature = "iocp"))]
+        impl EventLoop<'_> {
+            #[allow(non_snake_case, clippy::too_many_arguments)]
+            pub(super) fn $syscall(
+                &self,
+                $($arg: $arg_type),*
+            ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
+                let token = EventLoop::token(Syscall::$syscall);
+                self.operator.$syscall(token, $($arg, )*)?;
+                let arc = Arc::new((Mutex::new(None), Condvar::new()));
+                assert!(
+                    self.syscall_wait_table.insert(token, arc.clone()).is_none(),
+                    "The previous token was not retrieved in a timely manner"
+                );
+                Ok(arc)
+            }
+        }
+    }
+}
+
+impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
+impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, lpflags : *mut c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+impl_iocp!(send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags : c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
 
 #[cfg(all(test, not(all(unix, feature = "preemptive"))))]
 mod tests {

@@ -6,26 +6,45 @@ use crate::{error, info};
 use once_cell::sync::OnceCell;
 use std::collections::VecDeque;
 use std::ffi::c_int;
+#[cfg(any(
+    all(target_os = "linux", feature = "io_uring"),
+    all(windows, feature = "iocp")
+))]
+use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-/// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(usize) -> usize;
+cfg_if::cfg_if! {
+    if #[cfg(all(windows, feature = "iocp"))] {
+        use std::ffi::c_uint;
+        use windows_sys::core::{PCSTR, PSTR};
+        use windows_sys::Win32::Networking::WinSock::{
+            LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET, WSABUF,
+        };
+        use windows_sys::Win32::System::IO::OVERLAPPED;
+    }
+}
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
-        use std::ffi::{c_longlong, c_void};
+        use std::ffi::c_void;
     }
 }
+
+/// 做C兼容时会用到
+pub type UserFunc = extern "C" fn(usize) -> usize;
 
 mod selector;
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-#[cfg(all(target_os = "linux", feature = "io_uring"))]
-mod operator;
+#[cfg(any(
+    all(target_os = "linux", feature = "io_uring"),
+    all(windows, feature = "iocp")
+))]
+pub(crate) mod operator;
 
 #[allow(missing_docs)]
 pub mod event_loop;
@@ -119,7 +138,7 @@ impl EventLoops {
     }
 
     /// Get a `EventLoop`, prefer current.
-    fn event_loop() -> &'static EventLoop<'static> {
+    pub(crate) fn event_loop() -> &'static EventLoop<'static> {
         EventLoop::current().unwrap_or_else(|| Self::round_robin())
     }
 
@@ -274,3 +293,24 @@ impl_io_uring!(pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_
 impl_io_uring!(writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_io_uring!(pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
 impl_io_uring!(sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t);
+
+macro_rules! impl_iocp {
+    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[allow(non_snake_case)]
+        #[cfg(all(windows, feature = "iocp"))]
+        impl EventLoops {
+            #[allow(missing_docs)]
+            pub fn $syscall(
+                $($arg: $arg_type),*
+            ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
+                Self::event_loop().$syscall($($arg, )*)
+            }
+        }
+    }
+}
+
+impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
+impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, lpflags : *mut c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+impl_iocp!(send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags : c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);

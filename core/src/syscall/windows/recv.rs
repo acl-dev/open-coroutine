@@ -11,8 +11,16 @@ pub extern "system" fn recv(
     len: c_int,
     flags: SEND_RECV_FLAGS,
 ) -> c_int {
-    static CHAIN: Lazy<RecvSyscallFacade<NioRecvSyscall<RawRecvSyscall>>> =
-        Lazy::new(Default::default);
+    cfg_if::cfg_if! {
+        if #[cfg(all(windows, feature = "iocp"))] {
+            static CHAIN: Lazy<
+                RecvSyscallFacade<IocpRecvSyscall<NioRecvSyscall<RawRecvSyscall>>>
+            > = Lazy::new(Default::default);
+        } else {
+            static CHAIN: Lazy<RecvSyscallFacade<NioRecvSyscall<RawRecvSyscall>>> =
+                Lazy::new(Default::default);
+        }
+    }
     CHAIN.recv(fn_ptr, fd, buf, len, flags)
 }
 
@@ -28,6 +36,10 @@ trait RecvSyscall {
 }
 
 impl_facade!(RecvSyscallFacade, RecvSyscall,
+    recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
+);
+
+impl_iocp!(IocpRecvSyscall, RecvSyscall,
     recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
 );
 

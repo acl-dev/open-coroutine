@@ -574,7 +574,6 @@ impl Operator<'_> {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn sendto(
         &self,
         user_data: usize,

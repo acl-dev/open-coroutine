@@ -23,7 +23,8 @@ macro_rules! impl_facade {
                     let new_state = $crate::common::constants::SyscallState::Executing;
                     if co.syscall((), syscall, new_state).is_err() {
                         $crate::error!("{} change to syscall {} {} failed !",
-                            co.name(), syscall, new_state);
+                            co.name(), syscall, new_state
+                        );
                     }
                 }
                 let r = self.inner.$syscall(fn_ptr, $($arg, )*);
@@ -66,9 +67,7 @@ macro_rules! impl_io_uring {
                             if co.syscall((), syscall, new_state).is_err() {
                                 $crate::error!(
                                     "{} change to syscall {} {} failed !",
-                                    co.name(),
-                                    syscall,
-                                    new_state
+                                    co.name(), syscall, new_state
                                 );
                             }
                         }
@@ -84,9 +83,7 @@ macro_rules! impl_io_uring {
                             if co.syscall((), syscall, new_state).is_err() {
                                 $crate::error!(
                                     "{} change to syscall {} {} failed !",
-                                    co.name(),
-                                    syscall,
-                                    new_state
+                                    co.name(), syscall, new_state
                                 );
                             }
                         }

@@ -22,10 +22,21 @@ jobs:
           target: ${{ matrix.target }}
           override: true
           components: rustfmt
-      - uses: actions-rs/cargo@v1
+      - name: Check code format
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
+      - name: Check clippy with default features
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all
+      - name: Check clippy with all features
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all --all-features
       - name: Run cargo deny
         if: ${{ contains(matrix.os, 'ubuntu') }}
         uses: EmbarkStudios/cargo-deny-action@v2
