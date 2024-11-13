@@ -221,6 +221,7 @@ impl Operator<'_> {
                     break;
                 }
             }
+            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -259,6 +260,7 @@ impl Operator<'_> {
                     "add recv operation failed",
                 ));
             }
+            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -300,6 +302,7 @@ impl Operator<'_> {
                     "add WSARecv operation failed",
                 ));
             }
+            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -338,6 +341,7 @@ impl Operator<'_> {
                     "add send operation failed",
                 ));
             }
+            std::mem::forget(overlapped);
         }
         Ok(())
     }
@@ -379,6 +383,7 @@ impl Operator<'_> {
                     "add WSASend operation failed",
                 ));
             }
+            std::mem::forget(overlapped);
         }
         Ok(())
     }
