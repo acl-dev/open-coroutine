@@ -46,24 +46,23 @@ pub(crate) struct Overlapped {
 #[repr(C)]
 #[derive(Debug)]
 pub(crate) struct Operator<'o> {
+    cpu: usize,
     iocp: HANDLE,
-    completion_key: usize,
     entering: AtomicBool,
     handles: DashSet<HANDLE>,
     phantom_data: PhantomData<&'o HANDLE>,
 }
 
 impl Operator<'_> {
-    pub(crate) fn new(_cpu: usize) -> std::io::Result<Self> {
+    pub(crate) fn new(cpu: usize) -> std::io::Result<Self> {
         let iocp =
-            unsafe { CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), 0, 0) };
+            unsafe { CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), cpu, 0) };
         if iocp.is_null() {
             return Err(Error::last_os_error());
         }
         Ok(Self {
+            cpu,
             iocp,
-            completion_key: unsafe { windows_sys::Win32::System::Threading::GetCurrentThread() }
-                as usize,
             entering: AtomicBool::new(false),
             handles: DashSet::default(),
             phantom_data: PhantomData,
@@ -83,7 +82,7 @@ impl Operator<'_> {
         if self.handles.contains(&handle) {
             return Ok(());
         }
-        let ret = unsafe { CreateIoCompletionPort(handle, self.iocp, self.completion_key, 0) };
+        let ret = unsafe { CreateIoCompletionPort(handle, self.iocp, self.cpu, 0) };
         if ret.is_null() {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -127,7 +126,7 @@ impl Operator<'_> {
                 GetQueuedCompletionStatus(
                     self.iocp,
                     &mut bytes,
-                    &mut self.completion_key.clone(),
+                    &mut self.cpu.clone(),
                     std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
                     1,
                 )
