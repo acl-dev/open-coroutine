@@ -1,7 +1,7 @@
 use crate::net::EventLoops;
 use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
 use once_cell::sync::Lazy;
-use std::ffi::{c_int, c_void};
+use std::ffi::c_int;
 use std::io::Error;
 use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT};
 
@@ -58,18 +58,20 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
             let errno = Error::last_os_error().raw_os_error();
             if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) {
                 //阻塞，直到写事件发生
-                if EventLoops::wait_write_event(fd, Some(crate::common::constants::SLICE)).is_err()
-                {
+                if EventLoops::wait_write_event(
+                    fd as _,
+                    Some(crate::common::constants::SLICE)
+                ).is_err() {
                     break;
                 }
-                let mut err: c_int = 0;
+                let mut err = 0;
                 unsafe {
                     let mut len: c_int = std::mem::zeroed();
                     r = getsockopt(
                         fd,
                         SOL_SOCKET,
                         SO_ERROR,
-                        std::ptr::addr_of_mut!(err).cast::<c_void>(),
+                        std::ptr::addr_of_mut!(err).cast::<u8>(),
                         &mut len,
                     );
                 }
@@ -92,7 +94,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
             }
         }
         if r == -1 && Error::last_os_error().raw_os_error() == Some(WSAETIMEDOUT) {
-            set_errno(WSAEINPROGRESS);
+            set_errno(WSAEINPROGRESS.try_into().expect("overflow"));
         }
         if blocking {
             set_blocking(fd);

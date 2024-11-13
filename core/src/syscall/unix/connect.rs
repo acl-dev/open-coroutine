@@ -74,7 +74,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 {
                     break;
                 }
-                let mut err: c_int = 0;
+                let mut err = 0;
                 unsafe {
                     let mut len: socklen_t = std::mem::zeroed();
                     r = libc::getsockopt(
