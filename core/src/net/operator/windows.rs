@@ -130,8 +130,9 @@ impl Operator<'_> {
                     1,
                 )
             };
+            let err = Error::last_os_error().raw_os_error();
+            eprintln!("IOCP try add cq {ret} {:?}", err);
             if ret == FALSE {
-                let err = Error::last_os_error().raw_os_error();
                 if Some(ERROR_NETNAME_DELETED.try_into().expect("overflow")) == err
                     || Some(WAIT_TIMEOUT.try_into().expect("overflow")) == err
                 {
@@ -144,9 +145,8 @@ impl Operator<'_> {
             }
             overlapped.token = token;
             overlapped.dw_number_of_bytes_transferred = bytes;
-            eprintln!("IOCP add cq {token} {bytes}");
             cq.push(overlapped);
-            if cq.len() >= want || timeout_time.saturating_sub(now()) == 0 {
+            if timeout_time.saturating_sub(now()) == 0 || cq.len() >= want {
                 break;
             }
         }
