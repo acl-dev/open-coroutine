@@ -114,7 +114,6 @@ impl Operator<'_> {
         result
     }
 
-    #[allow(clippy::unnecessary_wraps)]
     fn do_select(
         &self,
         timeout: Option<Duration>,
@@ -145,8 +144,11 @@ impl Operator<'_> {
             };
             let e = Error::last_os_error();
             eprintln!("IOCP returns:{ret} recv_count:{recv_count} e:{e}");
-            if FALSE == ret && ErrorKind::TimedOut == e.kind() {
-                continue;
+            if FALSE == ret {
+                if ErrorKind::TimedOut == e.kind() {
+                    continue;
+                }
+                return Err(e);
             }
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
