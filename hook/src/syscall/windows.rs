@@ -3,8 +3,8 @@ use std::io::{Error, ErrorKind};
 use windows_sys::core::{PCSTR, PCWSTR, PSTR};
 use windows_sys::Win32::Foundation::{BOOL, HANDLE, TRUE};
 use windows_sys::Win32::Networking::WinSock::{
-    IPPROTO, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET,
-    WINSOCK_SHUTDOWN_HOW, WINSOCK_SOCKET_TYPE, WSABUF, WSAPROTOCOL_INFOW,
+    FD_SET, IPPROTO, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET,
+    TIMEVAL, WINSOCK_SHUTDOWN_HOW, WINSOCK_SOCKET_TYPE, WSABUF, WSAPOLLFD, WSAPROTOCOL_INFOW,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{
@@ -88,7 +88,6 @@ unsafe fn attach() -> std::io::Result<()> {
         flags: SEND_RECV_FLAGS
     ) -> c_int);
     impl_hook!("ws2_32.dll", SHUTDOWN, shutdown(fd: SOCKET, how: WINSOCK_SHUTDOWN_HOW) -> c_int);
-    impl_hook!("kernel32.dll", SLEEP, Sleep(dw_milliseconds: u32) -> ());
     impl_hook!("ws2_32.dll", SOCKET, socket(
         domain: c_int,
         ty: WINSOCK_SOCKET_TYPE,
@@ -127,6 +126,19 @@ unsafe fn attach() -> std::io::Result<()> {
         g: c_uint,
         dw_flags: c_uint
     ) -> SOCKET);
+    impl_hook!("ws2_32.dll", SELECT, select(
+        nfds: c_int,
+        readfds: *mut FD_SET,
+        writefds: *mut FD_SET,
+        errorfds: *mut FD_SET,
+        timeout: *mut TIMEVAL
+    ) -> c_int);
+    impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(
+        fds: *mut WSAPOLLFD,
+        nfds: c_uint,
+        timeout: c_int
+    ) -> c_int);
+    impl_hook!("kernel32.dll", SLEEP, Sleep(dw_milliseconds: u32) -> ());
     impl_hook!("kernel32.dll", CREATEFILEW, CreateFileW(
         lpfilename: PCWSTR,
         dwdesiredaccess: c_uint,
@@ -142,13 +154,18 @@ unsafe fn attach() -> std::io::Result<()> {
         lpnewfilepointer : *mut c_longlong,
         dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
     ) -> BOOL);
-    // NOTE: unhook WaitOnAddress due to stack overflow or bug
+    // NOTE: unhook WaitOnAddress/connect due to stack overflow or bug
     // impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(
     //     address: *const c_void,
     //     compareaddress: *const c_void,
     //     addresssize: usize,
     //     dwmilliseconds: c_uint
     // ) -> BOOL);
+    // impl_hook!("ws2_32.dll", CONNECT, connect(
+    //     fd: SOCKET,
+    //     address: *const SOCKADDR,
+    //     len: c_int
+    // ) -> c_int);
     // Enable the hook
     minhook::MinHook::enable_all_hooks()
         .map_err(|_| Error::new(ErrorKind::Other, "init all hooks failed !"))

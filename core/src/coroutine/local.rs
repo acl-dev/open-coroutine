@@ -16,7 +16,7 @@ impl<'c> CoroutineLocal<'c> {
     pub fn put<V>(&self, key: &'c str, val: V) -> Option<V> {
         let v = Box::leak(Box::new(val));
         self.0
-            .insert(key, std::ptr::from_mut::<V>(v) as usize)
+            .insert(key, std::ptr::from_mut(v) as usize)
             .map(|ptr| unsafe { *Box::from_raw((ptr as *mut c_void).cast::<V>()) })
     }
 

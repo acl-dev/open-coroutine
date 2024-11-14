@@ -11,9 +11,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-/// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(usize) -> usize;
-
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
@@ -21,9 +18,16 @@ cfg_if::cfg_if! {
     }
 }
 
+/// 做C兼容时会用到
+pub type UserFunc = extern "C" fn(usize) -> usize;
+
 mod selector;
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 mod operator;
 

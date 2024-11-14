@@ -36,7 +36,7 @@ macro_rules! impl_facade {
                         $crate::error!("{} change to running state failed !", co.name());
                     }
                 }
-                $crate::info!("exit syscall {}", syscall);
+                $crate::info!("exit syscall {} {:?}", syscall, r);
                 r
             }
         }
@@ -473,6 +473,7 @@ syscall_mod!(
     WSARecv;
     WSASend;
     WSASocketW;
+    WSAPoll;
     setsockopt;
     accept;
     ioctlsocket;
@@ -481,6 +482,8 @@ syscall_mod!(
     send;
     shutdown;
     socket;
+    connect;
+    select;
     CreateFileW;
     SetFilePointerEx;
     WaitOnAddress
