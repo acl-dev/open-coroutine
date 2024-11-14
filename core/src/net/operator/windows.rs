@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::core::{PCSTR, PSTR};
@@ -54,7 +55,6 @@ pub(crate) struct Operator<'o> {
     iocp: HANDLE,
     entering: AtomicBool,
     handles: DashSet<HANDLE>,
-    context: DashMap<usize, Overlapped>,
     phantom_data: PhantomData<&'o HANDLE>,
 }
 
@@ -70,7 +70,6 @@ impl Operator<'_> {
             iocp,
             entering: AtomicBool::new(false),
             handles: DashSet::default(),
-            context: DashMap::default(),
             phantom_data: PhantomData,
         })
     }
@@ -154,12 +153,15 @@ impl Operator<'_> {
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
                 let overlapped = unsafe { &*entry.lpOverlapped.cast::<Overlapped>() };
+                cq.push(Overlapped {
+                    base: overlapped.base,
+                    from_fd: overlapped.from_fd,
+                    socket: overlapped.socket,
+                    token: overlapped.token,
+                    syscall: overlapped.syscall,
+                    bytes_transferred: entry.dwNumberOfBytesTransferred,
+                });
                 eprintln!("IOCP got Overlapped:{overlapped}");
-                if let Some((_, mut overlapped)) = self.context.remove(&overlapped.token) {
-                    overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
-                    eprintln!("after correct Overlapped bytes_transferred:{overlapped}");
-                    cq.push(overlapped);
-                }
             }
             if cq.len() >= want {
                 break;
@@ -198,7 +200,7 @@ impl Operator<'_> {
                 .saturating_add(16)
                 .try_into()
                 .expect("size overflow");
-            let mut overlapped: Overlapped = std::mem::zeroed();
+            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
             overlapped.from_fd = fd;
             overlapped.socket = socket;
             overlapped.token = user_data;
@@ -212,18 +214,14 @@ impl Operator<'_> {
                 size,
                 size,
                 std::ptr::null_mut(),
-                std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
+                std::ptr::from_mut(&mut overlapped).cast(),
             ) == FALSE
             {
                 if WSA_IO_PENDING == WSAGetLastError() {
                     break;
                 }
             }
-            eprintln!("add accept operation Overlapped:{overlapped}");
-            assert!(
-                self.context.insert(user_data, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
+            eprintln!("add accept operation Overlapped:{}", &*overlapped);
         }
         Ok(())
     }
@@ -238,7 +236,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
+            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::recv;
@@ -252,7 +250,7 @@ impl Operator<'_> {
                 buf.len().try_into().expect("len overflow"),
                 std::ptr::null_mut(),
                 &mut u32::try_from(flags).expect("overflow"),
-                std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
+                std::ptr::from_mut(&mut overlapped).cast(),
                 None,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -262,10 +260,6 @@ impl Operator<'_> {
                     "add recv operation failed",
                 ));
             }
-            assert!(
-                self.context.insert(user_data, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
         }
         Ok(())
     }
@@ -287,7 +281,7 @@ impl Operator<'_> {
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
+            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::WSARecv;
@@ -297,7 +291,7 @@ impl Operator<'_> {
                 dwbuffercount,
                 lpnumberofbytesrecvd,
                 lpflags,
-                std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
+                std::ptr::from_mut(&mut overlapped).cast(),
                 lpcompletionroutine,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -307,10 +301,6 @@ impl Operator<'_> {
                     "add WSARecv operation failed",
                 ));
             }
-            assert!(
-                self.context.insert(user_data, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
         }
         Ok(())
     }
@@ -325,7 +315,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
+            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::send;
@@ -339,7 +329,7 @@ impl Operator<'_> {
                 buf.len().try_into().expect("len overflow"),
                 std::ptr::null_mut(),
                 u32::try_from(flags).expect("overflow"),
-                std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
+                std::ptr::from_mut(&mut overlapped).cast(),
                 None,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -349,10 +339,6 @@ impl Operator<'_> {
                     "add send operation failed",
                 ));
             }
-            assert!(
-                self.context.insert(user_data, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
         }
         Ok(())
     }
@@ -374,7 +360,7 @@ impl Operator<'_> {
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
+            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::WSASend;
@@ -384,7 +370,7 @@ impl Operator<'_> {
                 dwbuffercount,
                 lpnumberofbytesrecvd,
                 dwflags,
-                std::ptr::from_mut::<Overlapped>(&mut overlapped).cast(),
+                std::ptr::from_mut(&mut overlapped).cast(),
                 lpcompletionroutine,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -394,10 +380,6 @@ impl Operator<'_> {
                     "add WSASend operation failed",
                 ));
             }
-            assert!(
-                self.context.insert(user_data, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
         }
         Ok(())
     }
