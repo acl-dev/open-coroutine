@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use windows_sys::core::PSTR;
 use windows_sys::Win32::Networking::WinSock::{
-    getsockopt, SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO,
+    getsockopt, SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, WSAENOTSOCK,
 };
 
 macro_rules! impl_facade {
@@ -542,7 +542,7 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
         || {
             let mut ms = 0;
             let mut len = size_of::<PSTR>() as c_int;
-            assert_eq!(0, unsafe {
+            if unsafe {
                 getsockopt(
                     fd,
                     SOL_SOCKET,
@@ -550,7 +550,15 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
                     std::ptr::from_mut(&mut ms).cast(),
                     &mut len,
                 )
-            });
+            } == -1
+            {
+                let error = std::io::Error::last_os_error();
+                if Some(WSAENOTSOCK) == error.raw_os_error() {
+                    // not a socket
+                    return u64::MAX;
+                }
+                panic!("getsockopt failed: {error}");
+            }
             let mut time_limit = (ms as u64).saturating_mul(1_000_000);
             if 0 == time_limit {
                 // 取消超时
@@ -569,7 +577,7 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
         || {
             let mut ms = 0;
             let mut len = size_of::<PSTR>() as c_int;
-            assert_eq!(0, unsafe {
+            if unsafe {
                 getsockopt(
                     fd,
                     SOL_SOCKET,
@@ -577,7 +585,15 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
                     std::ptr::from_mut(&mut ms).cast(),
                     &mut len,
                 )
-            });
+            } == -1
+            {
+                let error = std::io::Error::last_os_error();
+                if Some(WSAENOTSOCK) == error.raw_os_error() {
+                    // not a socket
+                    return u64::MAX;
+                }
+                panic!("getsockopt failed: {error}");
+            }
             let mut time_limit = (ms as u64).saturating_mul(1_000_000);
             if 0 == time_limit {
                 // 取消超时
