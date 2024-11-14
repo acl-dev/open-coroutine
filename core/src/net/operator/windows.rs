@@ -154,10 +154,10 @@ impl Operator<'_> {
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
                 let overlapped = unsafe { &*entry.lpOverlapped.cast::<Overlapped>() };
-                eprintln!("IOCP got Overlapped:{}", overlapped);
+                eprintln!("IOCP got Overlapped:{overlapped}");
                 if let Some((_, mut overlapped)) = self.context.remove(&overlapped.token) {
                     overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
-                    eprintln!("IOCP got Overlapped:{overlapped}");
+                    eprintln!("after correct Overlapped bytes_transferred:{overlapped}");
                     cq.push(overlapped);
                 }
             }
