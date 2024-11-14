@@ -131,9 +131,7 @@ macro_rules! impl_nio_read {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::recv_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
                 let mut r = -1;
                 while left_time > 0 {
                     r = self.inner.$syscall(fn_ptr, $fd, $($arg, )*);
@@ -191,9 +189,7 @@ macro_rules! impl_nio_read_buf {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::recv_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
                 let mut received = 0;
                 let mut r = 0;
                 while received < $len && left_time > 0 {
@@ -262,9 +258,7 @@ macro_rules! impl_nio_read_iovec {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::recv_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
                 let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
                 let mut length = 0;
                 let mut received = 0usize;
@@ -375,9 +369,7 @@ macro_rules! impl_nio_write_buf {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::send_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::send_time_limit($fd);
                 let mut sent = 0;
                 let mut r = 0;
                 while sent < $len && left_time > 0 {
@@ -448,9 +440,7 @@ macro_rules! impl_nio_write_iovec {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::send_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::send_time_limit($fd);
                 let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
                 let mut length = 0;
                 let mut sent = 0usize;
@@ -703,7 +693,7 @@ pub extern "C" fn send_time_limit(fd: c_int) -> u64 {
                     // not a socket
                     return u64::MAX;
                 }
-                panic!("getsockopt failed: {}", error);
+                panic!("getsockopt failed: {error}");
             }
             let mut time_limit = (tv.tv_sec as u64)
                 .saturating_mul(1_000_000_000)
@@ -738,7 +728,7 @@ pub extern "C" fn recv_time_limit(fd: c_int) -> u64 {
                     // not a socket
                     return u64::MAX;
                 }
-                panic!("getsockopt failed: {}", error);
+                panic!("getsockopt failed: {error}");
             }
             let mut time_limit = (tv.tv_sec as u64)
                 .saturating_mul(1_000_000_000)

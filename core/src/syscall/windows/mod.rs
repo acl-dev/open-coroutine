@@ -63,10 +63,8 @@ macro_rules! impl_nio_read {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::recv_time_limit($fd))
-                    .saturating_sub(start_time);
-                let mut r = -1;
+                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
+                let mut r = 0;
                 while left_time > 0 {
                     r = self.inner.$syscall(fn_ptr, $fd, $($arg, )*);
                     if r != -1 as _ {
@@ -123,9 +121,7 @@ macro_rules! impl_nio_read_buf {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::recv_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
                 let mut received = 0;
                 let mut r = 0;
                 while received < $len && left_time > 0 {
@@ -196,9 +192,7 @@ macro_rules! impl_nio_read_iovec {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::recv_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
                 let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
                 let mut length = 0;
                 let mut received = 0usize;
@@ -309,9 +303,7 @@ macro_rules! impl_nio_write_buf {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::send_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::send_time_limit($fd);
                 let mut sent = 0;
                 let mut r = 0;
                 while sent < $len && left_time > 0 {
@@ -382,9 +374,7 @@ macro_rules! impl_nio_write_iovec {
                     $crate::syscall::common::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = start_time
-                    .saturating_add($crate::syscall::common::send_time_limit($fd))
-                    .saturating_sub(start_time);
+                let mut left_time = $crate::syscall::common::send_time_limit($fd);
                 let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
                 let mut length = 0;
                 let mut sent = 0usize;
@@ -401,7 +391,7 @@ macro_rules! impl_nio_write_iovec {
                     for i in vec.iter().skip(index) {
                         arg.push(*i);
                     }
-                    while sent < length {
+                    while sent < length && left_time > 0 {
                         if 0 != offset {
                             arg[0] = windows_sys::Win32::Networking::WinSock::WSABUF {
                                 buf: (arg[0].buf as usize + offset) as windows_sys::core::PSTR,
@@ -577,7 +567,7 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
                     // not a socket
                     return u64::MAX;
                 }
-                panic!("getsockopt failed: {}", error);
+                panic!("getsockopt failed: {error}");
             }
             let mut time_limit = (ms as u64).saturating_mul(1_000_000);
             if 0 == time_limit {
@@ -612,7 +602,7 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
                     // not a socket
                     return u64::MAX;
                 }
-                panic!("getsockopt failed: {}", error);
+                panic!("getsockopt failed: {error}");
             }
             let mut time_limit = (ms as u64).saturating_mul(1_000_000);
             if 0 == time_limit {
