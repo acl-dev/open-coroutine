@@ -283,7 +283,6 @@ impl<'e> EventLoop<'e> {
                     }
                     // resolve completed read/write tasks
                     let result = c_longlong::from(cqe.result());
-                    eprintln!("io_uring finish {token} {result}");
                     if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
                         let (lock, cvar) = &*pair;
                         let mut pending = lock.lock().expect("lock failed");
@@ -332,7 +331,6 @@ impl<'e> EventLoop<'e> {
                     }
                     _ => panic!("unsupported"),
                 };
-                eprintln!("IOCP finish {token} {result}");
                 if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
                     let (lock, cvar) = &*pair;
                     let mut pending = lock.lock().expect("lock failed");

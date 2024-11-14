@@ -59,7 +59,7 @@ macro_rules! impl_iocp {
                 fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
                 $($arg: $arg_type),*
             ) -> $result {
-                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::common::constants::{CoroutineState, Syscall, SyscallState};
                 use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 
                 match $crate::net::EventLoops::$syscall($($arg, )*) {
@@ -101,10 +101,14 @@ macro_rules! impl_iocp {
                             )
                             .expect("lock failed")
                             .expect("no syscall result");
+                        eprintln!(
+                            "syscall:{} returns:{} e:{}",
+                            Syscall::$syscall, syscall_result, std::io::Error::last_os_error()
+                        );
                         if syscall_result < 0 {
                             let errno = -syscall_result;
                             $crate::syscall::common::set_errno(errno.try_into().expect("errno overflow"));
-                            if $crate::common::constants::Syscall::accept == $crate::common::constants::Syscall::$syscall {
+                            if Syscall::accept == Syscall::$syscall {
                                 syscall_result = 0;
                             } else {
                                 syscall_result = -1;
