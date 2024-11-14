@@ -6,7 +6,6 @@ use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::core::{PCSTR, PSTR};
@@ -200,7 +199,7 @@ impl Operator<'_> {
                 .saturating_add(16)
                 .try_into()
                 .expect("size overflow");
-            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
+            let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
             overlapped.socket = socket;
             overlapped.token = user_data;
@@ -221,7 +220,7 @@ impl Operator<'_> {
                     break;
                 }
             }
-            eprintln!("add accept operation Overlapped:{}", &*overlapped);
+            eprintln!("add accept operation Overlapped:{overlapped}");
         }
         Ok(())
     }
@@ -236,7 +235,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
+            let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::recv;
@@ -281,7 +280,7 @@ impl Operator<'_> {
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
+            let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::WSARecv;
@@ -315,7 +314,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
+            let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::send;
@@ -360,7 +359,7 @@ impl Operator<'_> {
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: ManuallyDrop<Overlapped> = ManuallyDrop::new(std::mem::zeroed());
+            let mut overlapped: Overlapped = std::mem::zeroed();
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::WSASend;

@@ -318,7 +318,7 @@ impl<'e> EventLoop<'e> {
                                 cqe.socket,
                                 SOL_SOCKET,
                                 SO_UPDATE_ACCEPT_CONTEXT,
-                                std::ptr::from_ref::<SOCKET>(&cqe.from_fd).cast(),
+                                std::ptr::from_ref(&cqe.from_fd).cast(),
                                 c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
                             );
                         };

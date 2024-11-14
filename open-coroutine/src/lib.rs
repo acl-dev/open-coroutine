@@ -114,14 +114,14 @@ pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(f: F, param: P) -> JoinHa
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
             let data = std::ptr::read_unaligned(ptr);
             let result: &'static mut R = Box::leak(Box::new((data.0)(data.1)));
-            std::ptr::from_mut::<R>(result).cast::<c_void>() as usize
+            std::ptr::from_mut(result).cast::<c_void>() as usize
         }
     }
     let inner = Box::leak(Box::new((f, param)));
     unsafe {
         task_crate(
             task_main::<P, R, F>,
-            std::ptr::from_mut::<(F, P)>(inner).cast::<c_void>() as usize,
+            std::ptr::from_mut(inner).cast::<c_void>() as usize,
         )
         .into()
     }
@@ -210,7 +210,7 @@ pub fn maybe_grow<R: 'static, F: FnOnce() -> R>(
             let ptr = &mut *((input as *mut c_void).cast::<F>());
             let data = std::ptr::read_unaligned(ptr);
             let result: &'static mut R = Box::leak(Box::new(data()));
-            std::ptr::from_mut::<R>(result).cast::<c_void>() as usize
+            std::ptr::from_mut(result).cast::<c_void>() as usize
         }
     }
     let inner = Box::leak(Box::new(f));
@@ -219,7 +219,7 @@ pub fn maybe_grow<R: 'static, F: FnOnce() -> R>(
             red_zone,
             stack_size,
             execute_on_stack::<R, F>,
-            std::ptr::from_mut::<F>(inner).cast::<c_void>() as usize,
+            std::ptr::from_mut(inner).cast::<c_void>() as usize,
         );
         if ptr < 0 {
             return Err(Error::new(ErrorKind::InvalidInput, "grow stack failed"));
