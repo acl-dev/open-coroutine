@@ -157,10 +157,10 @@ impl Operator<'_> {
                     let union = &(*entry.lpOverlapped).Anonymous.Anonymous;
                     (union.Offset, union.OffsetHigh)
                 };
-                eprintln!("IOCP got OVERLAPPED:{parts:?}");
+                eprintln!("IOCP got parts:{parts:?}");
                 if let Some((_, mut overlapped)) = self.context.remove(&parts) {
                     overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
-                    eprintln!("correct IOCP Overlapped:{overlapped}");
+                    eprintln!("IOCP got Overlapped:{overlapped}");
                     cq.push(overlapped);
                 }
             }
@@ -228,7 +228,7 @@ impl Operator<'_> {
                     break;
                 }
             }
-            eprintln!("add accept operation OVERLAPPED:{parts:?}");
+            eprintln!("add accept operation parts:{parts:?} Overlapped:{overlapped}");
             assert!(
                 self.context.insert(parts, overlapped).is_none(),
                 "The previous token was not retrieved in a timely manner"
@@ -277,6 +277,7 @@ impl Operator<'_> {
                     "add recv operation failed",
                 ));
             }
+            eprintln!("add recv operation parts:{parts:?} Overlapped:{overlapped}");
             assert!(
                 self.context.insert(parts, overlapped).is_none(),
                 "The previous token was not retrieved in a timely manner"
@@ -328,6 +329,7 @@ impl Operator<'_> {
                     "add WSARecv operation failed",
                 ));
             }
+            eprintln!("add WSARecv operation parts:{parts:?} Overlapped:{overlapped}");
             assert!(
                 self.context.insert(parts, overlapped).is_none(),
                 "The previous token was not retrieved in a timely manner"
@@ -376,6 +378,7 @@ impl Operator<'_> {
                     "add send operation failed",
                 ));
             }
+            eprintln!("add send operation parts:{parts:?} Overlapped:{overlapped}");
             assert!(
                 self.context.insert(parts, overlapped).is_none(),
                 "The previous token was not retrieved in a timely manner"
@@ -427,6 +430,7 @@ impl Operator<'_> {
                     "add WSASend operation failed",
                 ));
             }
+            eprintln!("add WSASend operation parts:{parts:?} Overlapped:{overlapped}");
             assert!(
                 self.context.insert(parts, overlapped).is_none(),
                 "The previous token was not retrieved in a timely manner"
