@@ -3,7 +3,7 @@ use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, 
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::io::Error;
-use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT};
+use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT, WSAEWOULDBLOCK};
 
 #[must_use]
 pub extern "system" fn connect(
@@ -56,7 +56,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 break;
             }
             let errno = Error::last_os_error().raw_os_error();
-            if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) {
+            if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) || errno == Some(WSAEWOULDBLOCK) {
                 //阻塞，直到写事件发生
                 if EventLoops::wait_write_event(
                     fd as _,
@@ -66,7 +66,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 }
                 let mut err = 0;
                 unsafe {
-                    let mut len: c_int = std::mem::zeroed();
+                    let mut len = c_int::try_from(size_of_val(&err)).expect("overflow");
                     r = getsockopt(
                         fd,
                         SOL_SOCKET,
@@ -86,7 +86,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 };
                 unsafe {
                     let mut address = std::mem::zeroed();
-                    let mut address_len = std::mem::zeroed();
+                    let mut address_len = c_int::try_from(size_of_val(&address)).expect("overflow");
                     r = getpeername(fd, &mut address, &mut address_len);
                 }
             } else if errno != Some(WSAEINTR) {
