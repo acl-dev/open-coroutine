@@ -1,5 +1,6 @@
+use crate::common::now;
 use crate::net::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_non_blocking};
+use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_non_blocking, recv_time_limit};
 use libc::{msghdr, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
@@ -62,6 +63,10 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
         if blocking {
             set_non_blocking(fd);
         }
+        let start_time = now();
+        let mut left_time = start_time
+            .saturating_add(recv_time_limit(fd))
+            .saturating_sub(start_time);
         let msghdr = unsafe { *msg };
         let vec = unsafe {
             Vec::from_raw_parts(
@@ -99,7 +104,7 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
                     });
                 }
             }
-            while received < length {
+            while received < length && left_time > 0 {
                 if 0 != offset {
                     iov[0] = libc::iovec {
                         iov_base: (iov[0].iov_base as usize + offset) as *mut c_void,
@@ -134,9 +139,12 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
                 let error_kind = Error::last_os_error().kind();
                 if error_kind == ErrorKind::WouldBlock {
                     //wait read event
-                    if EventLoops::wait_read_event(fd, Some(crate::common::constants::SLICE))
-                        .is_err()
-                    {
+                    left_time = start_time
+                        .saturating_add(recv_time_limit(fd))
+                        .saturating_sub(now());
+                    let wait_time = std::time::Duration::from_nanos(left_time)
+                        .min(crate::common::constants::SLICE);
+                    if EventLoops::wait_read_event(fd, Some(wait_time)).is_err() {
                         std::mem::forget(vec);
                         if blocking {
                             set_blocking(fd);

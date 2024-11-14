@@ -1,9 +1,10 @@
+use crate::common::now;
 use crate::net::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
+use crate::syscall::common::{is_blocking, reset_errno, send_time_limit, set_blocking, set_errno, set_non_blocking};
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::io::Error;
-use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT};
+use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT, WSAEWOULDBLOCK};
 
 #[must_use]
 pub extern "system" fn connect(
@@ -37,6 +38,7 @@ struct NioConnectSyscall<I: ConnectSyscall> {
     inner: I,
 }
 
+#[allow(warnings)]
 impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
     extern "system" fn connect(
         &self,
@@ -49,14 +51,18 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
         if blocking {
             set_non_blocking(fd);
         }
+        let start_time = now();
         let mut r = self.inner.connect(fn_ptr, fd, address, len);
-        loop {
+        while start_time
+            .saturating_add(send_time_limit(fd))
+            .saturating_sub(now()) > 0
+        {
             if r == 0 {
                 reset_errno();
                 break;
             }
             let errno = Error::last_os_error().raw_os_error();
-            if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) {
+            if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) || errno == Some(WSAEWOULDBLOCK) {
                 //阻塞，直到写事件发生
                 if EventLoops::wait_write_event(
                     fd as _,
@@ -66,7 +72,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 }
                 let mut err = 0;
                 unsafe {
-                    let mut len: c_int = std::mem::zeroed();
+                    let mut len = c_int::try_from(size_of_val(&err)).expect("overflow");
                     r = getsockopt(
                         fd,
                         SOL_SOCKET,
@@ -86,7 +92,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 };
                 unsafe {
                     let mut address = std::mem::zeroed();
-                    let mut address_len = std::mem::zeroed();
+                    let mut address_len = c_int::try_from(size_of_val(&address)).expect("overflow");
                     r = getpeername(fd, &mut address, &mut address_len);
                 }
             } else if errno != Some(WSAEINTR) {
