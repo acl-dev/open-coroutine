@@ -64,9 +64,7 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
             set_non_blocking(fd);
         }
         let start_time = now();
-        let mut left_time = start_time
-            .saturating_add(send_time_limit(fd))
-            .saturating_sub(start_time);
+        let mut left_time = send_time_limit(fd);
         let msghdr = unsafe { *msg };
         let vec = unsafe {
             Vec::from_raw_parts(
