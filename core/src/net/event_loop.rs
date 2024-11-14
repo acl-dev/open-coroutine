@@ -307,7 +307,7 @@ impl<'e> EventLoop<'e> {
         if count > 0 {
             for cqe in &mut cq {
                 let token = cqe.token;
-                let bytes_transferred = cqe.dw_number_of_bytes_transferred;
+                let bytes_transferred = cqe.bytes_transferred;
                 eprintln!("IOCP finish {token} {bytes_transferred}");
                 // resolve completed read/write tasks
                 // todo refactor IOCP impl

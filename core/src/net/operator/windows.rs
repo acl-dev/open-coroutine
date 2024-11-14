@@ -42,7 +42,7 @@ pub(crate) struct Overlapped {
     pub socket: SOCKET,
     pub token: usize,
     pub syscall: Syscall,
-    pub dw_number_of_bytes_transferred: u32,
+    pub bytes_transferred: u32,
 }
 
 impl_display_by_debug!(Overlapped);
@@ -54,6 +54,7 @@ pub(crate) struct Operator<'o> {
     iocp: HANDLE,
     entering: AtomicBool,
     handles: DashSet<HANDLE>,
+    context: DashMap<usize, Overlapped>,
     phantom_data: PhantomData<&'o HANDLE>,
 }
 
@@ -69,6 +70,7 @@ impl Operator<'_> {
             iocp,
             entering: AtomicBool::new(false),
             handles: DashSet::default(),
+            context: DashMap::default(),
             phantom_data: PhantomData,
         })
     }
@@ -143,7 +145,6 @@ impl Operator<'_> {
                 )
             };
             let e = Error::last_os_error();
-
             if FALSE == ret {
                 if ErrorKind::TimedOut == e.kind() {
                     continue;
@@ -153,21 +154,11 @@ impl Operator<'_> {
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
                 let overlapped = unsafe { &*entry.lpOverlapped.cast::<Overlapped>() };
-                cq.push(Overlapped {
-                    base: overlapped.base,
-                    from_fd: overlapped.from_fd,
-                    socket: overlapped.socket,
-                    token: overlapped.token,
-                    syscall: overlapped.syscall,
-                    dw_number_of_bytes_transferred: entry.dwNumberOfBytesTransferred,
-                });
-                eprintln!(
-                    "IOCP got OVERLAPPED:{} {} {} {}",
-                    overlapped.base.Internal,
-                    overlapped.base.InternalHigh,
-                    unsafe { overlapped.base.Anonymous.Anonymous.Offset },
-                    unsafe { overlapped.base.Anonymous.Anonymous.OffsetHigh }
-                );
+                if let Some((_, mut overlapped)) = self.context.remove(&overlapped.token) {
+                    overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
+                    eprintln!("IOCP got Overlapped:{overlapped}");
+                    cq.push(overlapped);
+                }
             }
             if cq.len() >= want {
                 break;
@@ -227,12 +218,10 @@ impl Operator<'_> {
                     break;
                 }
             }
-            eprintln!(
-                "add accept operation OVERLAPPED:{} {} {} {}",
-                overlapped.base.Internal,
-                overlapped.base.InternalHigh,
-                overlapped.base.Anonymous.Anonymous.Offset,
-                overlapped.base.Anonymous.Anonymous.OffsetHigh
+            eprintln!("add accept operation Overlapped:{overlapped}");
+            assert!(
+                self.context.insert(user_data, overlapped).is_none(),
+                "The previous token was not retrieved in a timely manner"
             );
         }
         Ok(())
@@ -272,6 +261,10 @@ impl Operator<'_> {
                     "add recv operation failed",
                 ));
             }
+            assert!(
+                self.context.insert(user_data, overlapped).is_none(),
+                "The previous token was not retrieved in a timely manner"
+            );
         }
         Ok(())
     }
@@ -313,6 +306,10 @@ impl Operator<'_> {
                     "add WSARecv operation failed",
                 ));
             }
+            assert!(
+                self.context.insert(user_data, overlapped).is_none(),
+                "The previous token was not retrieved in a timely manner"
+            );
         }
         Ok(())
     }
@@ -351,6 +348,10 @@ impl Operator<'_> {
                     "add send operation failed",
                 ));
             }
+            assert!(
+                self.context.insert(user_data, overlapped).is_none(),
+                "The previous token was not retrieved in a timely manner"
+            );
         }
         Ok(())
     }
@@ -392,6 +393,10 @@ impl Operator<'_> {
                     "add WSASend operation failed",
                 ));
             }
+            assert!(
+                self.context.insert(user_data, overlapped).is_none(),
+                "The previous token was not retrieved in a timely manner"
+            );
         }
         Ok(())
     }
