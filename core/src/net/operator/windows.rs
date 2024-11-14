@@ -153,6 +153,10 @@ impl Operator<'_> {
             }
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
+                eprintln!(
+                    "IOCP got lpCompletionKey:{} dwNumberOfBytesTransferred{}",
+                    entry.lpCompletionKey, entry.dwNumberOfBytesTransferred
+                );
                 let overlapped = unsafe { &*entry.lpOverlapped.cast::<Overlapped>() };
                 if let Some((_, mut overlapped)) = self.context.remove(&overlapped.token) {
                     overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
@@ -282,7 +286,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         assert!(
             lpoverlapped.is_null(),
-            "the WSARecv in Operator should be called without lpoverlapped! Correct your code!"
+            "the WSARecv in Operator should be called without lpoverlapped! Please report bug to open-coroutine!"
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
@@ -369,7 +373,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         assert!(
             lpoverlapped.is_null(),
-            "the WSASend in Operator should be called without lpoverlapped! Correct your code!"
+            "the WSASend in Operator should be called without lpoverlapped! Please report bug to open-coroutine!"
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {

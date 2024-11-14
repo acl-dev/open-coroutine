@@ -2,6 +2,9 @@ use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use windows_sys::Win32::Networking::WinSock::{LPWSAOVERLAPPED_COMPLETION_ROUTINE, SOCKET, WSABUF};
 use windows_sys::Win32::System::IO::OVERLAPPED;
+use crate::common::constants::{CoroutineState, Syscall, SyscallState};
+use crate::{error, info};
+use crate::scheduler::SchedulableCoroutine;
 
 #[must_use]
 pub extern "system" fn WSASend(
@@ -70,17 +73,62 @@ trait WSASendSyscall {
     ) -> c_int;
 }
 
-impl_facade!(WSASendSyscallFacade, WSASendSyscall,
-    WSASend(
+#[repr(C)]
+#[derive(Debug, Default)]
+struct WSASendSyscallFacade<I: WSASendSyscall> {
+    inner: I,
+}
+
+impl<I: WSASendSyscall> WSASendSyscall for WSASendSyscallFacade<I> {
+    extern "system" fn WSASend(
+        &self,
+        fn_ptr: Option<
+            &extern "system" fn(
+                SOCKET,
+                *const WSABUF,
+                c_uint,
+                *mut c_uint,
+                c_uint,
+                *mut OVERLAPPED,
+                LPWSAOVERLAPPED_COMPLETION_ROUTINE,
+            ) -> c_int,
+        >,
         fd: SOCKET,
         buf: *const WSABUF,
         dwbuffercount: c_uint,
         lpnumberofbytesrecvd: *mut c_uint,
-        dwflags : c_uint,
+        dwflags: c_uint,
         lpoverlapped: *mut OVERLAPPED,
-        lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE
-    ) -> c_int
-);
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
+    ) -> c_int {
+        let syscall = Syscall::WSASend;
+        info!("enter syscall {}", syscall);
+        if let Some(co) = SchedulableCoroutine::current() {
+            _ = co.syscall((), syscall, SyscallState::Executing);
+        }
+        let r = self.inner.WSASend(
+            fn_ptr,
+            fd,
+            buf,
+            dwbuffercount,
+            lpnumberofbytesrecvd,
+            dwflags,
+            lpoverlapped,
+            lpcompletionroutine,
+        );
+        if let Some(co) = SchedulableCoroutine::current() {
+            if let CoroutineState::SystemCall((), Syscall::WSASend, SyscallState::Executing) =
+                co.state()
+            {
+                if co.running().is_err() {
+                    error!("{} change to running state failed !", co.name());
+                }
+            }
+        }
+        info!("exit syscall {}", syscall);
+        r
+    }
+}
 
 #[cfg(all(windows, feature = "iocp"))]
 #[repr(C)]
@@ -113,9 +161,8 @@ impl<I: WSASendSyscall> WSASendSyscall for IocpWSASendSyscall<I> {
         lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
     ) -> c_int {
         use windows_sys::Win32::Networking::WinSock::{SOCKET_ERROR, WSAEWOULDBLOCK};
-        use crate::common::constants::{CoroutineState, SyscallState};
         use crate::net::EventLoops;
-        use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+        use crate::scheduler::SchedulableSuspender;
 
         if !lpoverlapped.is_null() {
             return RawWSASendSyscall::default().WSASend(
@@ -136,7 +183,7 @@ impl<I: WSASendSyscall> WSASendSyscall for IocpWSASendSyscall<I> {
                     {
                         let new_state = SyscallState::Suspend(u64::MAX);
                         if co.syscall((), syscall, new_state).is_err() {
-                            crate::error!(
+                            error!(
                                 "{} change to syscall {} {} failed !",
                                 co.name(), syscall, new_state
                             );
@@ -152,7 +199,7 @@ impl<I: WSASendSyscall> WSASendSyscall for IocpWSASendSyscall<I> {
                     {
                         let new_state = SyscallState::Executing;
                         if co.syscall((), syscall, new_state).is_err() {
-                            crate::error!(
+                            error!(
                                 "{} change to syscall {} {} failed !",
                                 co.name(), syscall, new_state
                             );
