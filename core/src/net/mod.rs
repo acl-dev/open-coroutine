@@ -11,15 +11,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-/// 做C兼容时会用到
-pub type UserFunc = extern "C" fn(usize) -> usize;
-
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
         use std::ffi::{c_longlong, c_void};
     }
 }
+
+/// 做C兼容时会用到
+pub type UserFunc = extern "C" fn(usize) -> usize;
 
 mod selector;
 
