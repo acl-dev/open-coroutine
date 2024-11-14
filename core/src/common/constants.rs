@@ -125,6 +125,8 @@ pub enum Syscall {
     SetFilePointerEx,
     #[cfg(windows)]
     WaitOnAddress,
+    #[cfg(windows)]
+    WSAPoll,
 }
 
 impl Syscall {

@@ -33,7 +33,7 @@ macro_rules! impl_facade {
                         $crate::error!("{} change to running state failed !", co.name());
                     }
                 }
-                $crate::info!("exit syscall {}", syscall);
+                $crate::info!("exit syscall {} {:?}", syscall, r);
                 r
             }
         }
