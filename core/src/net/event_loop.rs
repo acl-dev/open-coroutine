@@ -306,23 +306,22 @@ impl<'e> EventLoop<'e> {
         let (count, mut cq, left) = self.operator.select(left_time, 0)?;
         if count > 0 {
             for cqe in &mut cq {
-                let token = cqe.token;
+                let token = *cqe.token;
                 let bytes_transferred = cqe.bytes_transferred;
-                eprintln!("IOCP finish {token} {bytes_transferred}");
                 // resolve completed read/write tasks
                 // todo refactor IOCP impl
-                let result = match cqe.syscall {
+                let result = match *cqe.syscall {
                     Syscall::accept => {
                         unsafe {
                             _ = setsockopt(
-                                cqe.socket,
+                                *cqe.socket,
                                 SOL_SOCKET,
                                 SO_UPDATE_ACCEPT_CONTEXT,
                                 std::ptr::from_ref(&cqe.from_fd).cast(),
                                 c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
                             );
                         };
-                        cqe.socket.try_into().expect("result overflow")
+                        (*cqe.socket).try_into().expect("result overflow")
                     }
                     Syscall::recv | Syscall::WSARecv | Syscall::send | Syscall::WSASend => {
                         bytes_transferred.into()

@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::core::{PCSTR, PSTR};
@@ -38,10 +39,10 @@ pub(crate) struct Overlapped {
     /// The base [`OVERLAPPED`].
     #[educe(Debug(ignore))]
     pub base: OVERLAPPED,
-    pub from_fd: SOCKET,
-    pub socket: SOCKET,
-    pub token: usize,
-    pub syscall: Syscall,
+    pub from_fd: ManuallyDrop<SOCKET>,
+    pub socket: ManuallyDrop<SOCKET>,
+    pub token: ManuallyDrop<usize>,
+    pub syscall: ManuallyDrop<Syscall>,
     pub bytes_transferred: u32,
 }
 
@@ -200,10 +201,10 @@ impl Operator<'_> {
                 .try_into()
                 .expect("size overflow");
             let mut overlapped: Overlapped = std::mem::zeroed();
-            overlapped.from_fd = fd;
-            overlapped.socket = socket;
-            overlapped.token = user_data;
-            overlapped.syscall = Syscall::accept;
+            overlapped.from_fd = ManuallyDrop::new(fd);
+            overlapped.socket = ManuallyDrop::new(socket);
+            overlapped.token = ManuallyDrop::new(user_data);
+            overlapped.syscall = ManuallyDrop::new(Syscall::accept);
             let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
             while AcceptEx(
                 fd,
@@ -236,9 +237,9 @@ impl Operator<'_> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall = Syscall::recv;
+            overlapped.from_fd = ManuallyDrop::new(fd);
+            overlapped.token = ManuallyDrop::new(user_data);
+            overlapped.syscall = ManuallyDrop::new(Syscall::recv);
             let buf = [WSABUF {
                 len: len.try_into().expect("len overflow"),
                 buf: buf.cast(),
@@ -281,9 +282,9 @@ impl Operator<'_> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall = Syscall::WSARecv;
+            overlapped.from_fd = ManuallyDrop::new(fd);
+            overlapped.token = ManuallyDrop::new(user_data);
+            overlapped.syscall = ManuallyDrop::new(Syscall::WSARecv);
             if WSARecv(
                 fd,
                 buf,
@@ -315,9 +316,9 @@ impl Operator<'_> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall = Syscall::send;
+            overlapped.from_fd = ManuallyDrop::new(fd);
+            overlapped.token = ManuallyDrop::new(user_data);
+            overlapped.syscall = ManuallyDrop::new(Syscall::send);
             let buf = [WSABUF {
                 len: len.try_into().expect("len overflow"),
                 buf: buf.cast_mut(),
@@ -360,9 +361,9 @@ impl Operator<'_> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
             let mut overlapped: Overlapped = std::mem::zeroed();
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall = Syscall::WSASend;
+            overlapped.from_fd = ManuallyDrop::new(fd);
+            overlapped.token = ManuallyDrop::new(user_data);
+            overlapped.syscall = ManuallyDrop::new(Syscall::WSASend);
             if WSASend(
                 fd,
                 buf,
