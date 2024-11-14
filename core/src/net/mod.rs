@@ -23,7 +23,11 @@ pub type UserFunc = extern "C" fn(usize) -> usize;
 
 mod selector;
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
 mod operator;
 

@@ -149,11 +149,11 @@ unsafe fn attach() -> std::io::Result<()> {
     //     addresssize: usize,
     //     dwmilliseconds: c_uint
     // ) -> BOOL);
-    // impl_hook!("ws2_32.dll", CONNECT, connect(
-    //     fd: SOCKET,
-    //     address: *const SOCKADDR,
-    //     len: c_int
-    // ) -> c_int);
+    impl_hook!("ws2_32.dll", CONNECT, connect(
+        fd: SOCKET,
+        address: *const SOCKADDR,
+        len: c_int
+    ) -> c_int);
     // Enable the hook
     minhook::MinHook::enable_all_hooks()
         .map_err(|_| Error::new(ErrorKind::Other, "init all hooks failed !"))

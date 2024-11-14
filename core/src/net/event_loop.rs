@@ -123,7 +123,7 @@ impl<'e> EventLoop<'e> {
             let syscall_mask = <Syscall as Into<&str>>::into(syscall).as_ptr() as usize;
             let token = thread_id as usize ^ syscall_mask;
             if Syscall::nio() != syscall {
-                eprintln!("{syscall} {token}");
+                eprintln!("generate token:{token} for {syscall}");
             }
             token
         }
@@ -255,8 +255,7 @@ impl<'e> EventLoop<'e> {
                         continue;
                     }
                     // resolve completed read/write tasks
-                    let result = cqe.result() as c_longlong;
-                    eprintln!("io_uring finish {token} {result}");
+                    let result = c_longlong::from(cqe.result());
                     if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
                         let (lock, cvar) = &*pair;
                         let mut pending = lock.lock().expect("lock failed");
