@@ -319,8 +319,6 @@ impl<'e> EventLoop<'e> {
                             c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
                         ) == 0
                         {
-                            #[cfg(feature = "syscall")]
-                            crate::syscall::common::reset_errno();
                             cqe.socket.try_into().expect("result overflow")
                         } else {
                             -c_longlong::from(windows_sys::Win32::Foundation::GetLastError())

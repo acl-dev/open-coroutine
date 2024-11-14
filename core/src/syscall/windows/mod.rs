@@ -105,7 +105,9 @@ macro_rules! impl_iocp {
                             "syscall:{} returns:{} e:{}",
                             Syscall::$syscall, syscall_result, std::io::Error::last_os_error()
                         );
-                        if syscall_result < 0 {
+                        if syscall_result >= 0 {
+                            $crate::syscall::common::reset_errno();
+                        } else {
                             let errno = -syscall_result;
                             $crate::syscall::common::set_errno(errno.try_into().expect("errno overflow"));
                             if Syscall::accept == Syscall::$syscall {
