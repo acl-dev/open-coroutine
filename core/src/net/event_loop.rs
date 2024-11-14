@@ -311,18 +311,22 @@ impl<'e> EventLoop<'e> {
                 // resolve completed read/write tasks
                 // todo refactor IOCP impl
                 let result = match cqe.syscall {
-                    Syscall::accept => {
-                        unsafe {
-                            _ = setsockopt(
-                                cqe.socket,
-                                SOL_SOCKET,
-                                SO_UPDATE_ACCEPT_CONTEXT,
-                                std::ptr::from_ref(&cqe.from_fd).cast(),
-                                c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
-                            );
-                        };
-                        cqe.socket.try_into().expect("result overflow")
-                    }
+                    Syscall::accept => unsafe {
+                        if setsockopt(
+                            cqe.socket,
+                            SOL_SOCKET,
+                            SO_UPDATE_ACCEPT_CONTEXT,
+                            std::ptr::from_ref(&cqe.from_fd).cast(),
+                            c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
+                        ) == 0
+                        {
+                            #[cfg(feature = "syscall")]
+                            crate::syscall::common::reset_errno();
+                            cqe.socket.try_into().expect("result overflow")
+                        } else {
+                            -c_longlong::from(windows_sys::Win32::Foundation::GetLastError())
+                        }
+                    },
                     Syscall::recv | Syscall::WSARecv | Syscall::send | Syscall::WSASend => {
                         bytes_transferred.into()
                     }

@@ -95,22 +95,22 @@ macro_rules! impl_iocp {
                             }
                         }
                         let (lock, cvar) = &*arc;
-                        let syscall_result: $result = cvar
+                        let mut syscall_result = cvar
                             .wait_while(lock.lock().expect("lock failed"),
                                 |&mut result| result.is_none()
                             )
                             .expect("lock failed")
-                            .expect("no syscall result")
-                            .try_into()
-                            .expect("IOCP syscall result overflow");
-                        // fixme 错误处理
-                        // if syscall_result < 0 {
-                        //     let errno: std::ffi::c_int = (-syscall_result).try_into()
-                        //         .expect("IOCP errno overflow");
-                        //     $crate::syscall::common::set_errno(errno);
-                        //     syscall_result = -1;
-                        // }
-                        syscall_result
+                            .expect("no syscall result");
+                        if syscall_result < 0 {
+                            let errno = -syscall_result;
+                            $crate::syscall::common::set_errno(errno.try_into().expect("errno overflow"));
+                            if $crate::common::constants::Syscall::accept == $crate::common::constants::Syscall::$syscall {
+                                syscall_result = 0;
+                            } else {
+                                syscall_result = -1;
+                            }
+                        }
+                        <$result>::try_from(syscall_result).expect("overflow")
                     }
                     Err(e) => {
                         if e.kind() == std::io::ErrorKind::Other {
