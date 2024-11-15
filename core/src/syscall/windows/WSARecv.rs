@@ -27,16 +27,18 @@ pub extern "system" fn WSARecv(
     lpoverlapped: *mut OVERLAPPED,
     lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
 ) -> c_int {
-    cfg_if::cfg_if! {
-        if #[cfg(all(windows, feature = "iocp"))] {
-            static CHAIN: Lazy<
-                WSARecvSyscallFacade<IocpWSARecvSyscall<NioWSARecvSyscall<RawWSARecvSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<WSARecvSyscallFacade<NioWSARecvSyscall<RawWSARecvSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
+    // cfg_if::cfg_if! {
+    //     if #[cfg(all(windows, feature = "iocp"))] {
+    //         static CHAIN: Lazy<
+    //             WSARecvSyscallFacade<IocpWSARecvSyscall<NioWSARecvSyscall<RawWSARecvSyscall>>>
+    //         > = Lazy::new(Default::default);
+    //     } else {
+    //         static CHAIN: Lazy<WSARecvSyscallFacade<NioWSARecvSyscall<RawWSARecvSyscall>>> =
+    //             Lazy::new(Default::default);
+    //     }
+    // }
+    static CHAIN: Lazy<WSARecvSyscallFacade<NioWSARecvSyscall<RawWSARecvSyscall>>> =
+        Lazy::new(Default::default);
     CHAIN.WSARecv(
         fn_ptr,
         fd,

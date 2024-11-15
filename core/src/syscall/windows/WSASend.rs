@@ -27,16 +27,18 @@ pub extern "system" fn WSASend(
     lpoverlapped: *mut OVERLAPPED,
     lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
 ) -> c_int {
-    cfg_if::cfg_if! {
-        if #[cfg(all(windows, feature = "iocp"))] {
-            static CHAIN: Lazy<
-                WSASendSyscallFacade<IocpWSASendSyscall<NioWSASendSyscall<RawWSASendSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<WSASendSyscallFacade<NioWSASendSyscall<RawWSASendSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
+    // cfg_if::cfg_if! {
+    //     if #[cfg(all(windows, feature = "iocp"))] {
+    //         static CHAIN: Lazy<
+    //             WSASendSyscallFacade<IocpWSASendSyscall<NioWSASendSyscall<RawWSASendSyscall>>>
+    //         > = Lazy::new(Default::default);
+    //     } else {
+    //         static CHAIN: Lazy<WSASendSyscallFacade<NioWSASendSyscall<RawWSASendSyscall>>> =
+    //             Lazy::new(Default::default);
+    //     }
+    // }
+    static CHAIN: Lazy<WSASendSyscallFacade<NioWSASendSyscall<RawWSASendSyscall>>> =
+        Lazy::new(Default::default);
     CHAIN.WSASend(
         fn_ptr,
         fd,
