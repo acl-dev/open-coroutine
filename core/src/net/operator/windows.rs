@@ -45,6 +45,25 @@ pub(crate) struct Overlapped {
     pub bytes_transferred: u32,
 }
 
+impl Default for Overlapped {
+    fn default() -> Self {
+        unsafe { std::mem::zeroed() }
+    }
+}
+
+impl From<&Overlapped> for Overlapped {
+    fn from(val: &Overlapped) -> Self {
+        Self {
+            base: val.base.clone(),
+            from_fd: val.from_fd,
+            socket: val.socket,
+            token: val.token,
+            syscall: val.syscall,
+            bytes_transferred: val.bytes_transferred,
+        }
+    }
+}
+
 impl_display_by_debug!(Overlapped);
 
 #[repr(C)]
@@ -54,11 +73,10 @@ pub(crate) struct Operator<'o> {
     iocp: HANDLE,
     entering: AtomicBool,
     handles: DashSet<HANDLE>,
-    context: DashMap<(u32, u32), Overlapped>,
-    phantom_data: PhantomData<&'o HANDLE>,
+    phantom_data: PhantomData<&'o Overlapped>,
 }
 
-impl Operator<'_> {
+impl<'o> Operator<'o> {
     pub(crate) fn new(cpu: usize) -> std::io::Result<Self> {
         let iocp =
             unsafe { CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), 0, 0) };
@@ -70,7 +88,6 @@ impl Operator<'_> {
             iocp,
             entering: AtomicBool::new(false),
             handles: DashSet::default(),
-            context: DashMap::default(),
             phantom_data: PhantomData,
         })
     }
@@ -153,16 +170,11 @@ impl Operator<'_> {
             }
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
-                let parts = unsafe {
-                    let union = &(*entry.lpOverlapped).Anonymous.Anonymous;
-                    (union.Offset, union.OffsetHigh)
-                };
-                eprintln!("IOCP got parts:{parts:?}");
-                if let Some((_, mut overlapped)) = self.context.remove(&parts) {
-                    overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
-                    eprintln!("IOCP got Overlapped:{overlapped}");
-                    cq.push(overlapped);
-                }
+                let mut overlapped =
+                    Overlapped::from(unsafe { &*entry.lpOverlapped.cast::<Overlapped>() });
+                overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
+                eprintln!("IOCP got Overlapped:{overlapped}");
+                cq.push(overlapped);
             }
             if cq.len() >= want {
                 break;
@@ -201,13 +213,7 @@ impl Operator<'_> {
                 .saturating_add(16)
                 .try_into()
                 .expect("size overflow");
-            let mut overlapped: Overlapped = std::mem::zeroed();
-            let parts = (
-                (user_data as u64 & 0xFFFF_FFFF) as u32,
-                (user_data as u64 >> 32) as u32,
-            );
-            overlapped.base.Anonymous.Anonymous.Offset = parts.0;
-            overlapped.base.Anonymous.Anonymous.OffsetHigh = parts.1;
+            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
             overlapped.from_fd = fd;
             overlapped.socket = socket;
             overlapped.token = user_data;
@@ -221,18 +227,14 @@ impl Operator<'_> {
                 size,
                 size,
                 std::ptr::null_mut(),
-                std::ptr::from_mut(&mut overlapped).cast(),
+                std::ptr::from_mut(overlapped).cast(),
             ) == FALSE
             {
                 if WSA_IO_PENDING == WSAGetLastError() {
                     break;
                 }
             }
-            eprintln!("add accept operation parts:{parts:?} Overlapped:{overlapped}");
-            assert!(
-                self.context.insert(parts, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
+            eprintln!("add accept operation Overlapped:{overlapped}");
         }
         Ok(())
     }
@@ -247,13 +249,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
-            let parts = (
-                (user_data as u64 & 0xFFFF_FFFF) as u32,
-                (user_data as u64 >> 32) as u32,
-            );
-            overlapped.base.Anonymous.Anonymous.Offset = parts.0;
-            overlapped.base.Anonymous.Anonymous.OffsetHigh = parts.1;
+            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::recv;
@@ -267,7 +263,7 @@ impl Operator<'_> {
                 buf.len().try_into().expect("len overflow"),
                 std::ptr::null_mut(),
                 &mut u32::try_from(flags).expect("overflow"),
-                std::ptr::from_mut(&mut overlapped).cast(),
+                std::ptr::from_mut(overlapped).cast(),
                 None,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -277,11 +273,7 @@ impl Operator<'_> {
                     "add recv operation failed",
                 ));
             }
-            eprintln!("add recv operation parts:{parts:?} Overlapped:{overlapped}");
-            assert!(
-                self.context.insert(parts, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
+            eprintln!("add recv operation Overlapped:{overlapped}");
         }
         Ok(())
     }
@@ -303,13 +295,7 @@ impl Operator<'_> {
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
-            let parts = (
-                (user_data as u64 & 0xFFFF_FFFF) as u32,
-                (user_data as u64 >> 32) as u32,
-            );
-            overlapped.base.Anonymous.Anonymous.Offset = parts.0;
-            overlapped.base.Anonymous.Anonymous.OffsetHigh = parts.1;
+            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::WSARecv;
@@ -319,7 +305,7 @@ impl Operator<'_> {
                 dwbuffercount,
                 lpnumberofbytesrecvd,
                 lpflags,
-                std::ptr::from_mut(&mut overlapped).cast(),
+                std::ptr::from_mut(overlapped).cast(),
                 lpcompletionroutine,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -329,11 +315,7 @@ impl Operator<'_> {
                     "add WSARecv operation failed",
                 ));
             }
-            eprintln!("add WSARecv operation parts:{parts:?} Overlapped:{overlapped}");
-            assert!(
-                self.context.insert(parts, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
+            eprintln!("add WSARecv operation Overlapped:{overlapped}");
         }
         Ok(())
     }
@@ -348,13 +330,7 @@ impl Operator<'_> {
     ) -> std::io::Result<()> {
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
-            let parts = (
-                (user_data as u64 & 0xFFFF_FFFF) as u32,
-                (user_data as u64 >> 32) as u32,
-            );
-            overlapped.base.Anonymous.Anonymous.Offset = parts.0;
-            overlapped.base.Anonymous.Anonymous.OffsetHigh = parts.1;
+            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::send;
@@ -368,7 +344,7 @@ impl Operator<'_> {
                 buf.len().try_into().expect("len overflow"),
                 std::ptr::null_mut(),
                 u32::try_from(flags).expect("overflow"),
-                std::ptr::from_mut(&mut overlapped).cast(),
+                std::ptr::from_mut(overlapped).cast(),
                 None,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -378,11 +354,7 @@ impl Operator<'_> {
                     "add send operation failed",
                 ));
             }
-            eprintln!("add send operation parts:{parts:?} Overlapped:{overlapped}");
-            assert!(
-                self.context.insert(parts, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
+            eprintln!("add send operation Overlapped:{overlapped}");
         }
         Ok(())
     }
@@ -404,13 +376,7 @@ impl Operator<'_> {
         );
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let mut overlapped: Overlapped = std::mem::zeroed();
-            let parts = (
-                (user_data as u64 & 0xFFFF_FFFF) as u32,
-                (user_data as u64 >> 32) as u32,
-            );
-            overlapped.base.Anonymous.Anonymous.Offset = parts.0;
-            overlapped.base.Anonymous.Anonymous.OffsetHigh = parts.1;
+            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall = Syscall::WSASend;
@@ -420,7 +386,7 @@ impl Operator<'_> {
                 dwbuffercount,
                 lpnumberofbytesrecvd,
                 dwflags,
-                std::ptr::from_mut(&mut overlapped).cast(),
+                std::ptr::from_mut(overlapped).cast(),
                 lpcompletionroutine,
             ) == SOCKET_ERROR
                 && WSA_IO_PENDING != WSAGetLastError()
@@ -430,11 +396,7 @@ impl Operator<'_> {
                     "add WSASend operation failed",
                 ));
             }
-            eprintln!("add WSASend operation parts:{parts:?} Overlapped:{overlapped}");
-            assert!(
-                self.context.insert(parts, overlapped).is_none(),
-                "The previous token was not retrieved in a timely manner"
-            );
+            eprintln!("add WSASend operation Overlapped:{overlapped}");
         }
         Ok(())
     }

@@ -48,7 +48,7 @@ mod selector;
     all(target_os = "linux", feature = "io_uring"),
     all(windows, feature = "iocp")
 ))]
-mod operator;
+pub(crate) mod operator;
 
 #[allow(missing_docs)]
 pub mod event_loop;
