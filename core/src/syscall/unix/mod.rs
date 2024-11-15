@@ -33,7 +33,7 @@ macro_rules! impl_facade {
                         $crate::error!("{} change to running state failed !", co.name());
                     }
                 }
-                $crate::info!("exit syscall {} {:?}", syscall, r);
+                $crate::info!("exit syscall {} {:?} {}", syscall, r, std::io::Error::last_os_error());
                 r
             }
         }
@@ -259,7 +259,13 @@ macro_rules! impl_nio_read_iovec {
                 }
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::common::recv_time_limit($fd);
-                let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
+                let vec = unsafe {
+                    Vec::from_raw_parts(
+                        $iov.cast_mut(),
+                        $iovcnt as usize,
+                        $iovcnt as usize
+                    )
+                };
                 let mut length = 0;
                 let mut received = 0usize;
                 let mut r = 0;
@@ -441,7 +447,13 @@ macro_rules! impl_nio_write_iovec {
                 }
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::common::send_time_limit($fd);
-                let vec = unsafe { Vec::from_raw_parts($iov.cast_mut(), $iovcnt as usize, $iovcnt as usize) };
+                let vec = unsafe {
+                    Vec::from_raw_parts(
+                        $iov.cast_mut(),
+                        $iovcnt as usize,
+                        $iovcnt as usize
+                    )
+                };
                 let mut length = 0;
                 let mut sent = 0usize;
                 let mut r = 0;

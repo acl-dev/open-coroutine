@@ -1,5 +1,6 @@
+use crate::common::now;
 use crate::net::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking};
+use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking, send_time_limit};
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::io::Error;
@@ -49,8 +50,10 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
         if blocking {
             set_non_blocking(fd);
         }
+        let start_time = now();
+        let mut left_time = send_time_limit(fd);
         let mut r = self.inner.connect(fn_ptr, fd, address, len);
-        loop {
+        while left_time > 0 {
             if r == 0 {
                 reset_errno();
                 break;
@@ -58,9 +61,14 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
             let errno = Error::last_os_error().raw_os_error();
             if errno == Some(WSAEINPROGRESS) || errno == Some(WSAEALREADY) || errno == Some(WSAEWOULDBLOCK) {
                 //阻塞，直到写事件发生
+                left_time = start_time
+                    .saturating_add(send_time_limit(fd))
+                    .saturating_sub(now());
+                let wait_time = std::time::Duration::from_nanos(left_time)
+                    .min(crate::common::constants::SLICE);
                 if EventLoops::wait_write_event(
                     fd as _,
-                    Some(crate::common::constants::SLICE)
+                    Some(wait_time)
                 ).is_err() {
                     break;
                 }
