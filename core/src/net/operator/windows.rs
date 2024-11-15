@@ -51,19 +51,6 @@ impl Default for Overlapped {
     }
 }
 
-impl From<&Overlapped> for Overlapped {
-    fn from(val: &Overlapped) -> Self {
-        Self {
-            base: val.base.clone(),
-            from_fd: val.from_fd,
-            socket: val.socket,
-            token: val.token,
-            syscall: val.syscall,
-            bytes_transferred: val.bytes_transferred,
-        }
-    }
-}
-
 impl_display_by_debug!(Overlapped);
 
 #[repr(C)]
@@ -171,7 +158,7 @@ impl<'o> Operator<'o> {
             unsafe { entries.set_len(recv_count as _) };
             for entry in entries {
                 let mut overlapped =
-                    Overlapped::from(unsafe { &*entry.lpOverlapped.cast::<Overlapped>() });
+                    unsafe { *Box::from_raw(entry.lpOverlapped.cast::<Overlapped>()) };
                 overlapped.bytes_transferred = entry.dwNumberOfBytesTransferred;
                 eprintln!("IOCP got Overlapped:{overlapped}");
                 cq.push(overlapped);
