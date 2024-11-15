@@ -3,7 +3,7 @@ use crate::common::{get_timeout_time, now};
 use crate::impl_display_by_debug;
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
-use std::ffi::{c_int, c_uint};
+use std::ffi::{c_int, c_uint, c_void};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
