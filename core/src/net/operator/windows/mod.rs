@@ -19,6 +19,9 @@ use windows_sys::Win32::System::IO::{
     CreateIoCompletionPort, GetQueuedCompletionStatusEx, OVERLAPPED, OVERLAPPED_ENTRY,
 };
 
+#[cfg(test)]
+mod tests;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(crate) struct SocketContext {
