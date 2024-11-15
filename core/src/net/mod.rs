@@ -39,12 +39,16 @@ pub type UserFunc = extern "C" fn(usize) -> usize;
 
 mod selector;
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
 #[cfg(any(
     all(target_os = "linux", feature = "io_uring"),
     all(windows, feature = "iocp")
 ))]
-pub(crate) mod operator;
+mod operator;
 
 #[allow(missing_docs)]
 pub mod event_loop;
@@ -138,7 +142,7 @@ impl EventLoops {
     }
 
     /// Get a `EventLoop`, prefer current.
-    pub(crate) fn event_loop() -> &'static EventLoop<'static> {
+    fn event_loop() -> &'static EventLoop<'static> {
         EventLoop::current().unwrap_or_else(|| Self::round_robin())
     }
 

@@ -42,16 +42,34 @@ trait RecvfromSyscall {
 }
 
 impl_facade!(RecvfromSyscallFacade, RecvfromSyscall,
-    recvfrom(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int,
-        addr: *mut sockaddr, addrlen: *mut socklen_t) -> ssize_t
+    recvfrom(
+        fd: c_int,
+        buf: *mut c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *mut sockaddr,
+        addrlen: *mut socklen_t
+    ) -> ssize_t
 );
 
 impl_nio_read_buf!(NioRecvfromSyscall, RecvfromSyscall,
-    recvfrom(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int,
-        addr: *mut sockaddr, addrlen: *mut socklen_t) -> ssize_t
+    recvfrom(
+        fd: c_int,
+        buf: *mut c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *mut sockaddr,
+        addrlen: *mut socklen_t
+    ) -> ssize_t
 );
 
 impl_raw!(RawRecvfromSyscall, RecvfromSyscall,
-    recvfrom(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int,
-        addr: *mut sockaddr, addrlen: *mut socklen_t) -> ssize_t
+    recvfrom(
+        fd: c_int,
+        buf: *mut c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *mut sockaddr,
+        addrlen: *mut socklen_t
+    ) -> ssize_t
 );
