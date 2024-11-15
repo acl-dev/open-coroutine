@@ -9,18 +9,16 @@ pub extern "system" fn accept(
     address: *mut SOCKADDR,
     address_len: *mut c_int,
 ) -> SOCKET {
-    // cfg_if::cfg_if! {
-    //     if #[cfg(feature = "iocp")] {
-    //         static CHAIN: Lazy<
-    //             AcceptSyscallFacade<IocpAcceptSyscall<NioAcceptSyscall<RawAcceptSyscall>>>
-    //         > = Lazy::new(Default::default);
-    //     } else {
-    //         static CHAIN: Lazy<AcceptSyscallFacade<NioAcceptSyscall<RawAcceptSyscall>>> =
-    //             Lazy::new(Default::default);
-    //     }
-    // }
-    static CHAIN: Lazy<AcceptSyscallFacade<NioAcceptSyscall<RawAcceptSyscall>>> =
-        Lazy::new(Default::default);
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "iocp")] {
+            static CHAIN: Lazy<
+                AcceptSyscallFacade<IocpAcceptSyscall<NioAcceptSyscall<RawAcceptSyscall>>>
+            > = Lazy::new(Default::default);
+        } else {
+            static CHAIN: Lazy<AcceptSyscallFacade<NioAcceptSyscall<RawAcceptSyscall>>> =
+                Lazy::new(Default::default);
+        }
+    }
     CHAIN.accept(fn_ptr, fd, address, address_len)
 }
 
@@ -38,9 +36,9 @@ impl_facade!(AcceptSyscallFacade, AcceptSyscall,
     accept(fd: SOCKET, address: *mut SOCKADDR, address_len: *mut c_int) -> SOCKET
 );
 
-// impl_iocp!(IocpAcceptSyscall, AcceptSyscall,
-//     accept(fd: SOCKET, address: *mut SOCKADDR, address_len: *mut c_int) -> SOCKET
-// );
+impl_iocp!(IocpAcceptSyscall, AcceptSyscall,
+    accept(fd: SOCKET, address: *mut SOCKADDR, address_len: *mut c_int) -> SOCKET
+);
 
 impl_nio_read!(NioAcceptSyscall, AcceptSyscall,
     accept(fd: SOCKET, address: *mut SOCKADDR, address_len: *mut c_int) -> SOCKET

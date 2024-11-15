@@ -346,6 +346,47 @@ impl<'o> Operator<'o> {
         Ok(())
     }
 
+    pub(crate) fn write(
+        &self,
+        user_data: usize,
+        fd: c_int,
+        buf: *const c_void,
+        count: c_uint,
+    ) -> std::io::Result<()> {
+        self.add_handle(fd as HANDLE)?;
+        unsafe {
+            if SOCKET_CONTEXT.get(&(fd as SOCKET)).is_some() {
+                let overlapped: &'o mut Overlapped = Box::leak(Box::default());
+                overlapped.from_fd = fd as _;
+                overlapped.token = user_data;
+                overlapped.syscall = Syscall::write;
+                let buf = [WSABUF {
+                    len: count,
+                    buf: buf.cast_mut().cast(),
+                }];
+                if WSASend(
+                    fd as _,
+                    buf.as_ptr(),
+                    buf.len().try_into().expect("len overflow"),
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::from_mut(overlapped).cast(),
+                    None,
+                ) == SOCKET_ERROR
+                    && WSA_IO_PENDING != WSAGetLastError()
+                {
+                    return Err(Error::new(
+                        ErrorKind::WouldBlock,
+                        "add write operation failed",
+                    ));
+                }
+                eprintln!("add write operation Overlapped:{overlapped}");
+                return Ok(());
+            }
+        }
+        todo!()
+    }
+
     pub(crate) fn WSASend(
         &self,
         user_data: usize,

@@ -143,7 +143,6 @@ unsafe fn attach() -> std::io::Result<()> {
         nfds: c_uint,
         timeout: c_int
     ) -> c_int);
-    #[cfg(not(feature = "iocp"))]
     impl_hook!("kernel32.dll", SLEEP, Sleep(dw_milliseconds: u32) -> ());
     impl_hook!("kernel32.dll", CREATEFILEW, CreateFileW(
         lpfilename: PCWSTR,
@@ -160,18 +159,13 @@ unsafe fn attach() -> std::io::Result<()> {
         lpnewfilepointer : *mut c_longlong,
         dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
     ) -> BOOL);
-    // NOTE: unhook WaitOnAddress/connect due to stack overflow or bug
+    // NOTE: unhook WaitOnAddress due to stack overflow or bug
     // impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(
     //     address: *const c_void,
     //     compareaddress: *const c_void,
     //     addresssize: usize,
     //     dwmilliseconds: c_uint
     // ) -> BOOL);
-    // impl_hook!("ws2_32.dll", CONNECT, connect(
-    //     fd: SOCKET,
-    //     address: *const SOCKADDR,
-    //     len: c_int
-    // ) -> c_int);
     // Enable the hook
     minhook::MinHook::enable_all_hooks()
         .map_err(|_| Error::new(ErrorKind::Other, "init all hooks failed !"))
