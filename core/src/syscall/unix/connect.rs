@@ -63,11 +63,9 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
             set_non_blocking(fd);
         }
         let start_time = now();
+        let mut left_time = send_time_limit(fd);
         let mut r = self.inner.connect(fn_ptr, fd, address, len);
-        while start_time
-            .saturating_add(send_time_limit(fd))
-            .saturating_sub(now()) > 0
-        {
+        while left_time > 0 {
             if r == 0 {
                 reset_errno();
                 break;
@@ -75,7 +73,12 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
             let errno = Error::last_os_error().raw_os_error();
             if errno == Some(libc::EINPROGRESS) || errno == Some(libc::EALREADY) || errno == Some(libc::EWOULDBLOCK) {
                 //阻塞，直到写事件发生
-                if EventLoops::wait_write_event(fd, Some(crate::common::constants::SLICE)).is_err()
+                left_time = start_time
+                    .saturating_add(send_time_limit(fd))
+                    .saturating_sub(now());
+                let wait_time = std::time::Duration::from_nanos(left_time)
+                    .min(crate::common::constants::SLICE);
+                if EventLoops::wait_write_event(fd, Some(wait_time)).is_err()
                 {
                     break;
                 }
