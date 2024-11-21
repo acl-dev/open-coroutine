@@ -89,6 +89,12 @@ net = ["korosensei", "polling", "mio", "crossbeam-utils", "core_affinity"]
 # Provide io_uring adaptation, this feature only works in linux.
 io_uring = ["net", "io-uring"]
 
+# Provide IOCP adaptation, this feature only works in windows.
+iocp = ["net"]
+
+# Provide completion IOCP adaptation
+completion_io = ["io_uring", "iocp"]
+
 # Provide syscall implementation.
 syscall = ["net"]
 

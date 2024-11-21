@@ -143,6 +143,7 @@ unsafe fn attach() -> std::io::Result<()> {
         nfds: c_uint,
         timeout: c_int
     ) -> c_int);
+    #[cfg(not(feature = "iocp"))]
     impl_hook!("kernel32.dll", SLEEP, Sleep(dw_milliseconds: u32) -> ());
     impl_hook!("kernel32.dll", CREATEFILEW, CreateFileW(
         lpfilename: PCWSTR,
