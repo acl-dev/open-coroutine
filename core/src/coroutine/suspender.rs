@@ -18,13 +18,21 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
     /// Delay the execution of the coroutine with an arg until `timestamp`.
     pub fn until_with(&self, arg: Yield, timestamp: u64) -> Param {
         TIMESTAMP.with(|s| {
-            s.borrow_mut().push_front(timestamp);
+            s.try_borrow_mut()
+                .unwrap_or_else(|_| panic!("init TIMESTAMP current failed"))
+                .push_front(timestamp);
         });
         self.suspend_with(arg)
     }
 
     pub(crate) fn timestamp() -> u64 {
-        TIMESTAMP.with(|s| s.borrow_mut().pop_front()).unwrap_or(0)
+        TIMESTAMP
+            .with(|s| {
+                s.try_borrow_mut()
+                    .unwrap_or_else(|_| panic!("get TIMESTAMP current failed"))
+                    .pop_front()
+            })
+            .unwrap_or(0)
     }
 }
 

@@ -113,7 +113,16 @@ pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(f: F, param: P) -> JoinHa
         unsafe {
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
             let data = std::ptr::read_unaligned(ptr);
-            let result: &'static mut R = Box::leak(Box::new((data.0)(data.1)));
+            let result: &'static mut std::io::Result<R> = Box::leak(Box::new(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (data.0)(data.1)))
+                    .map_err(|e| {
+                        Error::new(
+                            ErrorKind::Other,
+                            e.downcast_ref::<&'static str>()
+                                .map_or("task failed without message", |msg| *msg),
+                        )
+                    }),
+            ));
             std::ptr::from_mut(result).cast::<c_void>() as usize
         }
     }
@@ -140,7 +149,7 @@ impl<R> JoinHandle<R> {
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "timeout join failed")),
                 Ordering::Equal => Ok(None),
-                Ordering::Greater => Ok(Some(std::ptr::read_unaligned(ptr as *mut R))),
+                Ordering::Greater => Ok(Some((*Box::from_raw(ptr as *mut std::io::Result<R>))?)),
             }
         }
     }
@@ -151,7 +160,7 @@ impl<R> JoinHandle<R> {
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "join failed")),
                 Ordering::Equal => Ok(None),
-                Ordering::Greater => Ok(Some(std::ptr::read_unaligned(ptr as *mut R))),
+                Ordering::Greater => Ok(Some((*Box::from_raw(ptr as *mut std::io::Result<R>))?)),
             }
         }
     }
