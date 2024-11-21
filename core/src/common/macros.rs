@@ -98,7 +98,8 @@ macro_rules! impl_current_for {
             /// Init the current.
             pub(crate) fn init_current(current: &Self) {
                 $name.with(|s| {
-                    s.borrow_mut()
+                    s.try_borrow_mut()
+                        .unwrap_or_else(|_| panic!("init {} current failed", stringify!($name)))
                         .push_front(core::ptr::from_ref(current).cast::<std::ffi::c_void>());
                 });
             }
@@ -108,7 +109,8 @@ macro_rules! impl_current_for {
             #[allow(unreachable_pub)]
             pub fn current<'current>() -> Option<&'current Self> {
                 $name.with(|s| {
-                    s.borrow()
+                    s.try_borrow()
+                        .unwrap_or_else(|_| panic!("get {} current failed", stringify!($name)))
                         .front()
                         .map(|ptr| unsafe { &*(*ptr).cast::<Self>() })
                 })
@@ -116,7 +118,11 @@ macro_rules! impl_current_for {
 
             /// Clean the current.
             pub(crate) fn clean_current() {
-                $name.with(|s| _ = s.borrow_mut().pop_front());
+                $name.with(|s| {
+                    _ = s.try_borrow_mut()
+                        .unwrap_or_else(|_| panic!("clean {} current failed", stringify!($name)))
+                        .pop_front();
+                });
             }
         }
     };
