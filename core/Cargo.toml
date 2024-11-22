@@ -35,13 +35,13 @@ crossbeam-utils = { workspace = true, optional = true }
 psm.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-libc.workspace = true
-nix = { workspace = true, features = ["signal"] }
 mio = { workspace = true, features = [
     "net",
     "os-poll",
     "os-ext",
 ], default-features = false, optional = true }
+nix = { workspace = true, features = ["signal"] }
+libc.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { workspace = true, optional = true }
@@ -72,9 +72,14 @@ slab.workspace = true
 backtrace.workspace = true
 
 [features]
+default = ["log", "syscall"]
+
 # Print some help log.
 # Enable for default.
 log = ["tracing", "tracing-subscriber", "time"]
+
+# This feature only used in open-coroutine inner, don't use it in your project.
+ci = []
 
 # low-level raw coroutine
 korosensei = ["corosensei", "uuid", "nix/pthread", "educe"]
@@ -91,5 +96,3 @@ io_uring = ["net", "io-uring"]
 
 # Provide syscall implementation.
 syscall = ["net"]
-
-default = ["log", "syscall"]

@@ -3,6 +3,10 @@ use std::ffi::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// CI tools.
+#[cfg(feature = "ci")]
+pub mod ci;
+
 /// Constants.
 pub mod constants;
 
