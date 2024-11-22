@@ -19,7 +19,13 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
     pub fn until_with(&self, arg: Yield, timestamp: u64) -> Param {
         TIMESTAMP.with(|s| {
             s.try_borrow_mut()
-                .unwrap_or_else(|_| panic!("init TIMESTAMP current failed"))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "thread:{} init TIMESTAMP current failed with {}",
+                        std::thread::current().name().unwrap_or("unknown"),
+                        e
+                    )
+                })
                 .push_front(timestamp);
         });
         self.suspend_with(arg)
@@ -29,7 +35,13 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
         TIMESTAMP
             .with(|s| {
                 s.try_borrow_mut()
-                    .unwrap_or_else(|_| panic!("get TIMESTAMP current failed"))
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "thread:{} get TIMESTAMP current failed with {}",
+                            std::thread::current().name().unwrap_or("unknown"),
+                            e
+                        )
+                    })
                     .pop_front()
             })
             .unwrap_or(0)

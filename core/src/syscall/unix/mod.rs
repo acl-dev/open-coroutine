@@ -191,7 +191,7 @@ macro_rules! impl_nio_read_buf {
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::common::recv_time_limit($fd);
                 let mut received = 0;
-                let mut r = 0;
+                let mut r = -1;
                 while received < $len && left_time > 0 {
                     r = self.inner.$syscall(
                         fn_ptr,
@@ -220,6 +220,7 @@ macro_rules! impl_nio_read_buf {
                             $fd,
                             Some(wait_time)
                         ).is_err() {
+                            r = received as ssize_t;
                             break;
                         }
                     } else if error_kind != std::io::ErrorKind::Interrupted {
@@ -268,7 +269,7 @@ macro_rules! impl_nio_read_iovec {
                 };
                 let mut length = 0;
                 let mut received = 0usize;
-                let mut r = 0;
+                let mut r = -1;
                 let mut index = 0;
                 for iovec in &vec {
                     let mut offset = received.saturating_sub(length);
@@ -298,6 +299,7 @@ macro_rules! impl_nio_read_iovec {
                             $($arg, )*
                         );
                         if r == 0 {
+                            r = received as ssize_t;
                             std::mem::forget(vec);
                             if blocking {
                                 $crate::syscall::common::set_blocking($fd);
@@ -324,6 +326,7 @@ macro_rules! impl_nio_read_iovec {
                                 $fd,
                                 Some(wait_time)
                             ).is_err() {
+                                r = received as ssize_t;
                                 std::mem::forget(vec);
                                 if blocking {
                                     $crate::syscall::common::set_blocking($fd);
@@ -377,7 +380,7 @@ macro_rules! impl_nio_write_buf {
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::common::send_time_limit($fd);
                 let mut sent = 0;
-                let mut r = 0;
+                let mut r = -1;
                 while sent < $len && left_time > 0 {
                     r = self.inner.$syscall(
                         fn_ptr,
@@ -405,9 +408,8 @@ macro_rules! impl_nio_write_buf {
                         if $crate::net::EventLoops::wait_write_event(
                             $fd,
                             Some(wait_time),
-                        )
-                        .is_err()
-                        {
+                        ).is_err() {
+                            r = sent as ssize_t;
                             break;
                         }
                     } else if error_kind != std::io::ErrorKind::Interrupted {
@@ -456,7 +458,7 @@ macro_rules! impl_nio_write_iovec {
                 };
                 let mut length = 0;
                 let mut sent = 0usize;
-                let mut r = 0;
+                let mut r = -1;
                 let mut index = 0;
                 for iovec in &vec {
                     let mut offset = sent.saturating_sub(length);
@@ -506,6 +508,7 @@ macro_rules! impl_nio_write_iovec {
                                 $fd,
                                 Some(wait_time)
                             ).is_err() {
+                                r = sent as ssize_t;
                                 std::mem::forget(vec);
                                 if blocking {
                                     $crate::syscall::common::set_blocking($fd);
