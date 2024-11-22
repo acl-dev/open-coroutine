@@ -17,20 +17,20 @@ export RUST_BACKTRACE=1
 
 # test open-coroutine-core mod
 cd "${PROJECT_DIR}"/core
-"${CARGO}" test --target "${TARGET}"
-"${CARGO}" test --target "${TARGET}" --release
+"${CARGO}" test --target "${TARGET}" --features ci
+"${CARGO}" test --target "${TARGET}" --features ci --release
 
 # test open-coroutine
 cd "${PROJECT_DIR}"/open-coroutine
-"${CARGO}" test --target "${TARGET}"
-"${CARGO}" test --target "${TARGET}" --release
+"${CARGO}" test --target "${TARGET}" --features ci
+"${CARGO}" test --target "${TARGET}" --features ci --release
 
 # test io_uring
 if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then
     cd "${PROJECT_DIR}"/core
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring --release
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,ci
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,ci --release
     cd "${PROJECT_DIR}"/open-coroutine
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring --release
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,ci
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,ci --release
 fi

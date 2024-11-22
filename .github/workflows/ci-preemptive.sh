@@ -17,20 +17,20 @@ export RUST_BACKTRACE=1
 
 # test open-coroutine-core mod
 cd "${PROJECT_DIR}"/core
-"${CARGO}" test --target "${TARGET}" --features preemptive
-"${CARGO}" test --target "${TARGET}" --features preemptive --release
+"${CARGO}" test --target "${TARGET}" --features preemptive,ci
+"${CARGO}" test --target "${TARGET}" --features preemptive,ci --release
 
 # test open-coroutine
 cd "${PROJECT_DIR}"/open-coroutine
-"${CARGO}" test --target "${TARGET}" --features preemptive
-"${CARGO}" test --target "${TARGET}" --features preemptive --release
+"${CARGO}" test --target "${TARGET}" --features preemptive,ci
+"${CARGO}" test --target "${TARGET}" --features preemptive,ci --release
 
 # test io_uring
 if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then
     cd "${PROJECT_DIR}"/core
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive --release
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive,ci
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive,ci --release
     cd "${PROJECT_DIR}"/open-coroutine
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive --release
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive,ci
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive,ci --release
 fi

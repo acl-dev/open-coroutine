@@ -60,6 +60,8 @@ impl EventLoops {
     /// Init the `EventLoops`.
     pub fn init(config: &Config) {
         _ = INSTANCE.get_or_init(|| {
+            #[cfg(feature = "ci")]
+            crate::common::ci::init();
             let loops = Self::new(
                 config.event_loop_size(),
                 config.stack_size(),

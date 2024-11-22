@@ -92,6 +92,8 @@ pub fn init(config: Config) {
         unsafe { open_coroutine_init(config) },
         "open-coroutine init failed !"
     );
+    #[cfg(feature = "ci")]
+    open_coroutine_core::common::ci::init();
 }
 
 /// Shutdown the open-coroutine.

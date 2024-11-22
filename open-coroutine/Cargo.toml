@@ -45,6 +45,9 @@ default = ["open-coroutine-hook/default", "open-coroutine-core/default"]
 # Enable for default.
 log = ["open-coroutine-hook/log", "open-coroutine-core/log"]
 
+# This feature only used in open-coroutine inner, don't use it in your project.
+ci = ["open-coroutine-hook/ci", "open-coroutine-core/ci"]
+
 # Provide preemptive scheduling implementation.
 # Enable for default.
 preemptive = ["open-coroutine-hook/preemptive", "open-coroutine-core/preemptive"]
