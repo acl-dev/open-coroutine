@@ -272,7 +272,6 @@ impl<'e> EventLoop<'e> {
         Ok(left_time)
     }
 
-    #[allow(clippy::unused_self)]
     unsafe fn resume(&self, token: usize) {
         if COROUTINE_TOKENS.remove(&token).is_none() {
             return;

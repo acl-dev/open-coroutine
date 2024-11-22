@@ -89,7 +89,8 @@ macro_rules! impl_current_for {
         ),+)?
     ) => {
         thread_local! {
-            static $name: std::cell::RefCell<std::collections::VecDeque<*const std::ffi::c_void>> = const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
+            static $name: std::cell::RefCell<std::collections::VecDeque<*const std::ffi::c_void>> =
+                const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
         }
 
         impl$(<$($generic1 $( : $trait_tt1 $( + $trait_tt2)*)?),+>)? $struct_name$(<$($generic1),+>)?
@@ -99,7 +100,14 @@ macro_rules! impl_current_for {
             pub(crate) fn init_current(current: &Self) {
                 $name.with(|s| {
                     s.try_borrow_mut()
-                        .unwrap_or_else(|_| panic!("init {} current failed", stringify!($name)))
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "thread:{} init {} current failed with {}",
+                                std::thread::current().name().unwrap_or("unknown"),
+                                stringify!($name),
+                                e
+                            )
+                        })
                         .push_front(core::ptr::from_ref(current).cast::<std::ffi::c_void>());
                 });
             }
@@ -110,7 +118,14 @@ macro_rules! impl_current_for {
             pub fn current<'current>() -> Option<&'current Self> {
                 $name.with(|s| {
                     s.try_borrow()
-                        .unwrap_or_else(|_| panic!("get {} current failed", stringify!($name)))
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "thread:{} get {} current failed with {}",
+                                std::thread::current().name().unwrap_or("unknown"),
+                                stringify!($name),
+                                e
+                            )
+                        })
                         .front()
                         .map(|ptr| unsafe { &*(*ptr).cast::<Self>() })
                 })
@@ -120,7 +135,14 @@ macro_rules! impl_current_for {
             pub(crate) fn clean_current() {
                 $name.with(|s| {
                     _ = s.try_borrow_mut()
-                        .unwrap_or_else(|_| panic!("clean {} current failed", stringify!($name)))
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "thread:{} clean {} current failed with {}",
+                                std::thread::current().name().unwrap_or("unknown"),
+                                stringify!($name),
+                                e
+                            )
+                        })
                         .pop_front();
                 });
             }
