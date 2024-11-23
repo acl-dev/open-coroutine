@@ -65,7 +65,11 @@ impl<I: SelectSyscall> SelectSyscall for NioSelectSyscall<I> {
         let mut t = if timeout.is_null() {
             c_uint::MAX
         } else {
-            unsafe { ((*timeout).tv_sec as c_uint) * 1_000_000 + (*timeout).tv_usec as c_uint }
+            unsafe {
+                c_uint::try_from((*timeout).tv_sec).expect("overflow")
+                    .saturating_mul(1_000_000)
+                    .saturating_add(c_uint::try_from((*timeout).tv_usec).expect("overflow"))
+            }
         };
         let mut o = timeval {
             tv_sec: 0,

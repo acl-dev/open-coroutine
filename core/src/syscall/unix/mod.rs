@@ -201,9 +201,9 @@ macro_rules! impl_nio_read_buf {
                     );
                     if r != -1 {
                         $crate::syscall::reset_errno();
-                        received += r as size_t;
+                        received += libc::size_t::try_from(r).expect("r overflow");
                         if received >= $len || r == 0 {
-                            r = received as ssize_t;
+                            r = received.try_into().expect("received overflow");
                             break;
                         }
                     }
@@ -219,7 +219,7 @@ macro_rules! impl_nio_read_buf {
                             $fd,
                             Some(wait_time)
                         ).is_err() {
-                            r = received as ssize_t;
+                            r = received.try_into().expect("received overflow");
                             break;
                         }
                     } else if error_kind != std::io::ErrorKind::Interrupted {
@@ -262,8 +262,8 @@ macro_rules! impl_nio_read_iovec {
                 let vec = unsafe {
                     Vec::from_raw_parts(
                         $iov.cast_mut(),
-                        $iovcnt as usize,
-                        $iovcnt as usize
+                        $iovcnt.try_into().expect("overflow"),
+                        $iovcnt.try_into().expect("overflow"),
                     )
                 };
                 let mut length = 0;
@@ -298,7 +298,7 @@ macro_rules! impl_nio_read_iovec {
                             $($arg, )*
                         );
                         if r == 0 {
-                            r = received as ssize_t;
+                            r = received.try_into().expect("received overflow");
                             std::mem::forget(vec);
                             if blocking {
                                 $crate::syscall::set_blocking($fd);
@@ -306,9 +306,9 @@ macro_rules! impl_nio_read_iovec {
                             return r;
                         } else if r != -1 {
                             $crate::syscall::reset_errno();
-                            received += r as usize;
+                            received += libc::size_t::try_from(r).expect("r overflow");
                             if received >= length {
-                                r = received as ssize_t;
+                                r = received.try_into().expect("received overflow");
                                 break;
                             }
                             offset = received.saturating_sub(length);
@@ -325,7 +325,7 @@ macro_rules! impl_nio_read_iovec {
                                 $fd,
                                 Some(wait_time)
                             ).is_err() {
-                                r = received as ssize_t;
+                                r = received.try_into().expect("received overflow");
                                 std::mem::forget(vec);
                                 if blocking {
                                     $crate::syscall::set_blocking($fd);
@@ -390,9 +390,9 @@ macro_rules! impl_nio_write_buf {
                     );
                     if r != -1 {
                         $crate::syscall::reset_errno();
-                        sent += r as size_t;
+                        sent += libc::size_t::try_from(r).expect("r overflow");
                         if sent >= $len {
-                            r = sent as ssize_t;
+                            r = sent.try_into().expect("sent overflow");
                             break;
                         }
                     }
@@ -408,7 +408,7 @@ macro_rules! impl_nio_write_buf {
                             $fd,
                             Some(wait_time),
                         ).is_err() {
-                            r = sent as ssize_t;
+                            r = sent.try_into().expect("sent overflow");
                             break;
                         }
                     } else if error_kind != std::io::ErrorKind::Interrupted {
@@ -451,8 +451,8 @@ macro_rules! impl_nio_write_iovec {
                 let vec = unsafe {
                     Vec::from_raw_parts(
                         $iov.cast_mut(),
-                        $iovcnt as usize,
-                        $iovcnt as usize
+                        $iovcnt.try_into().expect("overflow"),
+                        $iovcnt.try_into().expect("overflow"),
                     )
                 };
                 let mut length = 0;
@@ -488,9 +488,9 @@ macro_rules! impl_nio_write_iovec {
                         );
                         if r != -1 {
                             $crate::syscall::reset_errno();
-                            sent += r as usize;
+                            sent += libc::size_t::try_from(r).expect("r overflow");
                             if sent >= length {
-                                r = sent as ssize_t;
+                                r = sent.try_into().expect("sent overflow");
                                 break;
                             }
                             offset = sent.saturating_sub(length);
@@ -507,7 +507,7 @@ macro_rules! impl_nio_write_iovec {
                                 $fd,
                                 Some(wait_time)
                             ).is_err() {
-                                r = sent as ssize_t;
+                                r = sent.try_into().expect("sent overflow");
                                 std::mem::forget(vec);
                                 if blocking {
                                     $crate::syscall::set_blocking($fd);
@@ -697,7 +697,7 @@ pub extern "C" fn send_time_limit(fd: c_int) -> u64 {
     SEND_TIME_LIMIT.get(&fd).map_or_else(
         || unsafe {
             let mut tv: libc::timeval = std::mem::zeroed();
-            let mut len = size_of::<libc::timeval>() as libc::socklen_t;
+            let mut len = libc::socklen_t::try_from(size_of::<libc::timeval>()).expect("overflow");
             if libc::getsockopt(
                 fd,
                 libc::SOL_SOCKET,
@@ -713,9 +713,14 @@ pub extern "C" fn send_time_limit(fd: c_int) -> u64 {
                 }
                 panic!("getsockopt failed: {error}");
             }
-            let mut time_limit = (tv.tv_sec as u64)
+            let mut time_limit = u64::try_from(tv.tv_sec)
+                .expect("overflow")
                 .saturating_mul(1_000_000_000)
-                .saturating_add((tv.tv_usec as u64).saturating_mul(1_000));
+                .saturating_add(
+                    u64::try_from(tv.tv_usec)
+                        .expect("overflow")
+                        .saturating_mul(1_000),
+                );
             if 0 == time_limit {
                 // 取消超时
                 time_limit = u64::MAX;
@@ -732,7 +737,7 @@ pub extern "C" fn recv_time_limit(fd: c_int) -> u64 {
     RECV_TIME_LIMIT.get(&fd).map_or_else(
         || unsafe {
             let mut tv: libc::timeval = std::mem::zeroed();
-            let mut len = size_of::<libc::timeval>() as libc::socklen_t;
+            let mut len = libc::socklen_t::try_from(size_of::<libc::timeval>()).expect("overflow");
             if libc::getsockopt(
                 fd,
                 libc::SOL_SOCKET,
@@ -748,9 +753,14 @@ pub extern "C" fn recv_time_limit(fd: c_int) -> u64 {
                 }
                 panic!("getsockopt failed: {error}");
             }
-            let mut time_limit = (tv.tv_sec as u64)
+            let mut time_limit = u64::try_from(tv.tv_sec)
+                .expect("overflow")
                 .saturating_mul(1_000_000_000)
-                .saturating_add((tv.tv_usec as u64).saturating_mul(1_000));
+                .saturating_add(
+                    u64::try_from(tv.tv_usec)
+                        .expect("overflow")
+                        .saturating_mul(1_000),
+                );
             if 0 == time_limit {
                 // 取消超时
                 time_limit = u64::MAX;

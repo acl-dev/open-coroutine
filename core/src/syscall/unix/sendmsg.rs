@@ -69,8 +69,8 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
         let vec = unsafe {
             Vec::from_raw_parts(
                 msghdr.msg_iov,
-                msghdr.msg_iovlen as usize,
-                msghdr.msg_iovlen as usize,
+                msghdr.msg_iovlen.try_into().expect("overflow"),
+                msghdr.msg_iovlen.try_into().expect("overflow"),
             )
         };
         let mut length = 0;
@@ -121,9 +121,9 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
                 r = self.inner.sendmsg(fn_ptr, fd, &arg, flags);
                 if r != -1 {
                     reset_errno();
-                    sent += r as usize;
+                    sent += libc::size_t::try_from(r).expect("r overflow");
                     if sent >= length {
-                        r = sent as ssize_t;
+                        r = sent.try_into().expect("sent overflow");
                         break;
                     }
                     offset = sent.saturating_sub(length);

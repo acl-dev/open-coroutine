@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use crate::net::EventLoops;
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
@@ -53,7 +54,7 @@ impl<I: PollSyscall> PollSyscall for NioPollSyscall<I> {
             if r != 0 || t == 0 {
                 break;
             }
-            _ = EventLoops::wait_event(Some(Duration::from_millis(t.min(x) as u64)));
+            _ = EventLoops::wait_event(Some(Duration::from_millis(t.min(x).try_into().expect("overflow"))));
             if t != c_int::MAX {
                 t = if t > x { t - x } else { 0 };
             }

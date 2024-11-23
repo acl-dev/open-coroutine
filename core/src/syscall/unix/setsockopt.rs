@@ -53,9 +53,9 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
         if 0 == r && libc::SOL_SOCKET == level {
             if libc::SO_SNDTIMEO == name {
                 let tv = unsafe { &*value.cast::<libc::timeval>() };
-                let mut time_limit = (tv.tv_sec as u64)
+                let mut time_limit = u64::try_from(tv.tv_sec).expect("overflow")
                     .saturating_mul(1_000_000_000)
-                    .saturating_add((tv.tv_usec as u64).saturating_mul(1_000));
+                    .saturating_add(u64::try_from(tv.tv_usec).expect("overflow").saturating_mul(1_000));
                 if 0 == time_limit {
                     // 取消超时
                     time_limit = u64::MAX;
@@ -63,9 +63,9 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
                 assert!(SEND_TIME_LIMIT.insert(socket, time_limit).is_none());
             } else if libc::SO_RCVTIMEO == name {
                 let tv = unsafe { &*value.cast::<libc::timeval>() };
-                let mut time_limit = (tv.tv_sec as u64)
+                let mut time_limit = u64::try_from(tv.tv_sec).expect("overflow")
                     .saturating_mul(1_000_000_000)
-                    .saturating_add((tv.tv_usec as u64).saturating_mul(1_000));
+                    .saturating_add(u64::try_from(tv.tv_usec).expect("overflow").saturating_mul(1_000));
                 if 0 == time_limit {
                     // 取消超时
                     time_limit = u64::MAX;
