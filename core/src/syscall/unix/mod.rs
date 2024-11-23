@@ -1,4 +1,3 @@
-use crate::syscall_mod;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
@@ -100,7 +99,7 @@ macro_rules! impl_io_uring {
                     if syscall_result < 0 {
                         let errno: std::ffi::c_int = (-syscall_result).try_into()
                             .expect("io_uring errno overflow");
-                        $crate::syscall::common::set_errno(errno);
+                        $crate::syscall::set_errno(errno);
                         syscall_result = -1;
                     }
                     return syscall_result;
@@ -126,24 +125,24 @@ macro_rules! impl_nio_read {
                 $fd: $fd_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                let blocking = $crate::syscall::common::is_blocking($fd);
+                let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
-                    $crate::syscall::common::set_non_blocking($fd);
+                    $crate::syscall::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
+                let mut left_time = $crate::syscall::recv_time_limit($fd);
                 let mut r = -1;
                 while left_time > 0 {
                     r = self.inner.$syscall(fn_ptr, $fd, $($arg, )*);
                     if r != -1 {
-                        $crate::syscall::common::reset_errno();
+                        $crate::syscall::reset_errno();
                         break;
                     }
                     let error_kind = std::io::Error::last_os_error().kind();
                     if error_kind == std::io::ErrorKind::WouldBlock {
                         //wait read event
                         left_time = start_time
-                            .saturating_add($crate::syscall::common::recv_time_limit($fd))
+                            .saturating_add($crate::syscall::recv_time_limit($fd))
                             .saturating_sub($crate::common::now());
                         let wait_time = std::time::Duration::from_nanos(left_time)
                             .min($crate::common::constants::SLICE);
@@ -158,7 +157,7 @@ macro_rules! impl_nio_read {
                     }
                 }
                 if blocking {
-                    $crate::syscall::common::set_blocking($fd);
+                    $crate::syscall::set_blocking($fd);
                 }
                 r
             }
@@ -184,12 +183,12 @@ macro_rules! impl_nio_read_buf {
                 $len: $len_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                let blocking = $crate::syscall::common::is_blocking($fd);
+                let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
-                    $crate::syscall::common::set_non_blocking($fd);
+                    $crate::syscall::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
+                let mut left_time = $crate::syscall::recv_time_limit($fd);
                 let mut received = 0;
                 let mut r = -1;
                 while received < $len && left_time > 0 {
@@ -201,7 +200,7 @@ macro_rules! impl_nio_read_buf {
                         $($arg, )*
                     );
                     if r != -1 {
-                        $crate::syscall::common::reset_errno();
+                        $crate::syscall::reset_errno();
                         received += r as size_t;
                         if received >= $len || r == 0 {
                             r = received as ssize_t;
@@ -212,7 +211,7 @@ macro_rules! impl_nio_read_buf {
                     if error_kind == std::io::ErrorKind::WouldBlock {
                         //wait read event
                         left_time = start_time
-                            .saturating_add($crate::syscall::common::recv_time_limit($fd))
+                            .saturating_add($crate::syscall::recv_time_limit($fd))
                             .saturating_sub($crate::common::now());
                         let wait_time = std::time::Duration::from_nanos(left_time)
                             .min($crate::common::constants::SLICE);
@@ -228,7 +227,7 @@ macro_rules! impl_nio_read_buf {
                     }
                 }
                 if blocking {
-                    $crate::syscall::common::set_blocking($fd);
+                    $crate::syscall::set_blocking($fd);
                 }
                 r
             }
@@ -254,12 +253,12 @@ macro_rules! impl_nio_read_iovec {
                 $iovcnt: $iovcnt_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                let blocking = $crate::syscall::common::is_blocking($fd);
+                let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
-                    $crate::syscall::common::set_non_blocking($fd);
+                    $crate::syscall::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = $crate::syscall::common::recv_time_limit($fd);
+                let mut left_time = $crate::syscall::recv_time_limit($fd);
                 let vec = unsafe {
                     Vec::from_raw_parts(
                         $iov.cast_mut(),
@@ -302,11 +301,11 @@ macro_rules! impl_nio_read_iovec {
                             r = received as ssize_t;
                             std::mem::forget(vec);
                             if blocking {
-                                $crate::syscall::common::set_blocking($fd);
+                                $crate::syscall::set_blocking($fd);
                             }
                             return r;
                         } else if r != -1 {
-                            $crate::syscall::common::reset_errno();
+                            $crate::syscall::reset_errno();
                             received += r as usize;
                             if received >= length {
                                 r = received as ssize_t;
@@ -318,7 +317,7 @@ macro_rules! impl_nio_read_iovec {
                         if error_kind == std::io::ErrorKind::WouldBlock {
                             //wait read event
                             left_time = start_time
-                                .saturating_add($crate::syscall::common::recv_time_limit($fd))
+                                .saturating_add($crate::syscall::recv_time_limit($fd))
                                 .saturating_sub($crate::common::now());
                             let wait_time = std::time::Duration::from_nanos(left_time)
                                 .min($crate::common::constants::SLICE);
@@ -329,14 +328,14 @@ macro_rules! impl_nio_read_iovec {
                                 r = received as ssize_t;
                                 std::mem::forget(vec);
                                 if blocking {
-                                    $crate::syscall::common::set_blocking($fd);
+                                    $crate::syscall::set_blocking($fd);
                                 }
                                 return r;
                             }
                         } else if error_kind != std::io::ErrorKind::Interrupted {
                             std::mem::forget(vec);
                             if blocking {
-                                $crate::syscall::common::set_blocking($fd);
+                                $crate::syscall::set_blocking($fd);
                             }
                             return r;
                         }
@@ -347,7 +346,7 @@ macro_rules! impl_nio_read_iovec {
                 }
                 std::mem::forget(vec);
                 if blocking {
-                    $crate::syscall::common::set_blocking($fd);
+                    $crate::syscall::set_blocking($fd);
                 }
                 r
             }
@@ -373,12 +372,12 @@ macro_rules! impl_nio_write_buf {
                 $len: $len_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                let blocking = $crate::syscall::common::is_blocking($fd);
+                let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
-                    $crate::syscall::common::set_non_blocking($fd);
+                    $crate::syscall::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = $crate::syscall::common::send_time_limit($fd);
+                let mut left_time = $crate::syscall::send_time_limit($fd);
                 let mut sent = 0;
                 let mut r = -1;
                 while sent < $len && left_time > 0 {
@@ -390,7 +389,7 @@ macro_rules! impl_nio_write_buf {
                         $($arg, )*
                     );
                     if r != -1 {
-                        $crate::syscall::common::reset_errno();
+                        $crate::syscall::reset_errno();
                         sent += r as size_t;
                         if sent >= $len {
                             r = sent as ssize_t;
@@ -401,7 +400,7 @@ macro_rules! impl_nio_write_buf {
                     if error_kind == std::io::ErrorKind::WouldBlock {
                         //wait write event
                         left_time = start_time
-                            .saturating_add($crate::syscall::common::send_time_limit($fd))
+                            .saturating_add($crate::syscall::send_time_limit($fd))
                             .saturating_sub($crate::common::now());
                         let wait_time = std::time::Duration::from_nanos(left_time)
                             .min($crate::common::constants::SLICE);
@@ -417,7 +416,7 @@ macro_rules! impl_nio_write_buf {
                     }
                 }
                 if blocking {
-                    $crate::syscall::common::set_blocking($fd);
+                    $crate::syscall::set_blocking($fd);
                 }
                 r
             }
@@ -443,12 +442,12 @@ macro_rules! impl_nio_write_iovec {
                 $iovcnt: $iovcnt_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                let blocking = $crate::syscall::common::is_blocking($fd);
+                let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
-                    $crate::syscall::common::set_non_blocking($fd);
+                    $crate::syscall::set_non_blocking($fd);
                 }
                 let start_time = $crate::common::now();
-                let mut left_time = $crate::syscall::common::send_time_limit($fd);
+                let mut left_time = $crate::syscall::send_time_limit($fd);
                 let vec = unsafe {
                     Vec::from_raw_parts(
                         $iov.cast_mut(),
@@ -488,7 +487,7 @@ macro_rules! impl_nio_write_iovec {
                             $($arg, )*
                         );
                         if r != -1 {
-                            $crate::syscall::common::reset_errno();
+                            $crate::syscall::reset_errno();
                             sent += r as usize;
                             if sent >= length {
                                 r = sent as ssize_t;
@@ -500,7 +499,7 @@ macro_rules! impl_nio_write_iovec {
                         if error_kind == std::io::ErrorKind::WouldBlock {
                             //wait write event
                             left_time = start_time
-                                .saturating_add($crate::syscall::common::send_time_limit($fd))
+                                .saturating_add($crate::syscall::send_time_limit($fd))
                                 .saturating_sub($crate::common::now());
                             let wait_time = std::time::Duration::from_nanos(left_time)
                                 .min($crate::common::constants::SLICE);
@@ -511,14 +510,14 @@ macro_rules! impl_nio_write_iovec {
                                 r = sent as ssize_t;
                                 std::mem::forget(vec);
                                 if blocking {
-                                    $crate::syscall::common::set_blocking($fd);
+                                    $crate::syscall::set_blocking($fd);
                                 }
                                 return r;
                             }
                         } else if error_kind != std::io::ErrorKind::Interrupted {
                             std::mem::forget(vec);
                             if blocking {
-                                $crate::syscall::common::set_blocking($fd);
+                                $crate::syscall::set_blocking($fd);
                             }
                             return r;
                         }
@@ -529,7 +528,7 @@ macro_rules! impl_nio_write_iovec {
                 }
                 std::mem::forget(vec);
                 if blocking {
-                    $crate::syscall::common::set_blocking($fd);
+                    $crate::syscall::set_blocking($fd);
                 }
                 r
             }
@@ -639,6 +638,10 @@ extern "C" {
     )]
     #[cfg_attr(target_os = "haiku", link_name = "_errnop")]
     fn errno_location() -> *mut c_int;
+}
+
+pub extern "C" fn reset_errno() {
+    set_errno(0);
 }
 
 pub extern "C" fn set_errno(errno: c_int) {
