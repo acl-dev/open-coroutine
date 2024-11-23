@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use windows_sys::Win32::Foundation::{BOOL, ERROR_TIMEOUT, FALSE, TRUE};
 use crate::common::{get_timeout_time, now};
 use crate::net::EventLoops;
-use crate::syscall::common::reset_errno;
+use crate::syscall::reset_errno;
 use crate::syscall::set_errno;
 
 #[must_use]

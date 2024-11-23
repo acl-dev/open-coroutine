@@ -96,6 +96,22 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         self.stack_infos.borrow().clone()
     }
 
+    /// Checks whether the stack pointer at the point where a trap occurred is
+    /// within the coroutine that this `CoroutineTrapHandler` was produced from.
+    /// This check includes any guard pages on the stack and will therefore
+    /// still return true in the case of a stack overflow.
+    ///
+    /// The result of this function is only meaningful if the coroutine has not
+    /// been dropped yet.
+    pub fn stack_ptr_in_bounds(&self, stack_ptr: u64) -> bool {
+        for info in self.stack_infos.borrow().iter() {
+            if info.stack_bottom as u64 <= stack_ptr && stack_ptr < info.stack_top as u64 {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Grows the call stack if necessary.
     ///
     /// This function is intended to be called at manually instrumented points in a program where

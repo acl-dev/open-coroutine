@@ -1,6 +1,6 @@
 use crate::common::now;
 use crate::net::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, send_time_limit, set_blocking, set_errno, set_non_blocking};
+use crate::syscall::{is_blocking, reset_errno, send_time_limit, set_blocking, set_errno, set_non_blocking};
 use libc::{sockaddr, socklen_t};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};

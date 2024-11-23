@@ -1,5 +1,5 @@
 use crate::net::EventLoops;
-use crate::syscall::common::set_errno;
+use crate::syscall::set_errno;
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
 
