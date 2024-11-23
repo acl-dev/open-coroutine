@@ -80,9 +80,7 @@ pub mod net;
     clippy::similar_names,
     clippy::not_unsafe_ptr_arg_deref,
     clippy::many_single_char_names,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
+    clippy::useless_conversion,
     clippy::unnecessary_cast,
     trivial_numeric_casts
 )]

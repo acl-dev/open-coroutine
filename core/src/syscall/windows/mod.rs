@@ -26,7 +26,8 @@ macro_rules! impl_facade {
                     let new_state = $crate::common::constants::SyscallState::Executing;
                     if co.syscall((), syscall, new_state).is_err() {
                         $crate::error!("{} change to syscall {} {} failed !",
-                            co.name(), syscall, new_state);
+                            co.name(), syscall, new_state
+                        );
                     }
                 }
                 let r = self.inner.$syscall(fn_ptr, $($arg, )*);
@@ -63,10 +64,10 @@ macro_rules! impl_nio_read {
                 }
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::recv_time_limit($fd);
-                let mut r = 0;
+                let mut r = windows_sys::Win32::Networking::WinSock::INVALID_SOCKET;
                 while left_time > 0 {
                     r = self.inner.$syscall(fn_ptr, $fd, $($arg, )*);
-                    if r != -1 as _ {
+                    if r != windows_sys::Win32::Networking::WinSock::INVALID_SOCKET {
                         $crate::syscall::reset_errno();
                         break;
                     }
@@ -79,7 +80,7 @@ macro_rules! impl_nio_read {
                         let wait_time = std::time::Duration::from_nanos(left_time)
                             .min($crate::common::constants::SLICE);
                         if $crate::net::EventLoops::wait_read_event(
-                            $fd as _,
+                            $fd.try_into().expect("overflow"),
                             Some(wait_time),
                         ).is_err() {
                             break;
@@ -127,7 +128,7 @@ macro_rules! impl_nio_read_buf {
                     r = self.inner.$syscall(
                         fn_ptr,
                         $fd,
-                        ($buf as usize + received as usize) as windows_sys::core::PSTR,
+                        ($buf as usize + usize::try_from(received).expect("overflow")) as windows_sys::core::PSTR,
                         $len - received,
                         $($arg, )*
                     );
@@ -148,7 +149,7 @@ macro_rules! impl_nio_read_buf {
                         let wait_time = std::time::Duration::from_nanos(left_time)
                             .min($crate::common::constants::SLICE);
                         if $crate::net::EventLoops::wait_read_event(
-                            $fd as _,
+                            $fd.try_into().expect("overflow"),
                             Some(wait_time),
                         ).is_err() {
                             r = received;
@@ -194,8 +195,8 @@ macro_rules! impl_nio_read_iovec {
                 let vec = unsafe {
                     Vec::from_raw_parts(
                         $iov.cast_mut(),
-                        $iovcnt as usize,
-                        $iovcnt as usize
+                        $iovcnt.try_into().expect("overflow"),
+                        $iovcnt.try_into().expect("overflow"),
                     )
                 };
                 let mut length = 0;
@@ -217,7 +218,7 @@ macro_rules! impl_nio_read_iovec {
                         if 0 != offset {
                             arg[0] = windows_sys::Win32::Networking::WinSock::WSABUF {
                                 buf: (arg[0].buf as usize + offset) as windows_sys::core::PSTR,
-                                len: arg[0].len - offset as u32,
+                                len: arg[0].len - u32::try_from(offset).expect("overflow"),
                             };
                         }
                         r = self.inner.$syscall(
@@ -238,7 +239,7 @@ macro_rules! impl_nio_read_iovec {
                             return r;
                         } else if r != -1 {
                             $crate::syscall::reset_errno();
-                            received += r as usize;
+                            received += usize::try_from(r).expect("overflow");
                             if received >= length {
                                 r = received.try_into().expect("overflow");
                                 break;
@@ -254,7 +255,7 @@ macro_rules! impl_nio_read_iovec {
                             let wait_time = std::time::Duration::from_nanos(left_time)
                                 .min($crate::common::constants::SLICE);
                             if $crate::net::EventLoops::wait_read_event(
-                                $fd as _,
+                                $fd.try_into().expect("overflow"),
                                 Some(wait_time)
                             ).is_err() {
                                 r = received.try_into().expect("overflow");
@@ -316,7 +317,7 @@ macro_rules! impl_nio_write_buf {
                     r = self.inner.$syscall(
                         fn_ptr,
                         $fd,
-                        ($buf as usize + sent as usize) as windows_sys::core::PSTR,
+                        ($buf as usize + usize::try_from(sent).expect("overflow")) as windows_sys::core::PSTR,
                         $len - sent,
                         $($arg, )*
                     );
@@ -337,7 +338,7 @@ macro_rules! impl_nio_write_buf {
                         let wait_time = std::time::Duration::from_nanos(left_time)
                             .min($crate::common::constants::SLICE);
                         if $crate::net::EventLoops::wait_write_event(
-                            $fd as _,
+                            $fd.try_into().expect("overflow"),
                             Some(wait_time),
                         ).is_err() {
                             r = sent;
@@ -383,8 +384,8 @@ macro_rules! impl_nio_write_iovec {
                 let vec = unsafe {
                     Vec::from_raw_parts(
                         $iov.cast_mut(),
-                        $iovcnt as usize,
-                        $iovcnt as usize
+                        $iovcnt.try_into().expect("overflow"),
+                        $iovcnt.try_into().expect("overflow"),
                     )
                 };
                 let mut length = 0;
@@ -406,7 +407,7 @@ macro_rules! impl_nio_write_iovec {
                         if 0 != offset {
                             arg[0] = windows_sys::Win32::Networking::WinSock::WSABUF {
                                 buf: (arg[0].buf as usize + offset) as windows_sys::core::PSTR,
-                                len: arg[0].len - offset as u32,
+                                len: arg[0].len - u32::try_from(offset).expect("overflow"),
                             };
                         }
                         r = self.inner.$syscall(
@@ -420,7 +421,7 @@ macro_rules! impl_nio_write_iovec {
                         );
                         if r != -1 {
                             $crate::syscall::reset_errno();
-                            sent += r as usize;
+                            sent += usize::try_from(r).expect("overflow");
                             if sent >= length {
                                 r = sent.try_into().expect("overflow");
                                 break;
@@ -436,7 +437,7 @@ macro_rules! impl_nio_write_iovec {
                             let wait_time = std::time::Duration::from_nanos(left_time)
                                 .min($crate::common::constants::SLICE);
                             if $crate::net::EventLoops::wait_write_event(
-                                $fd as _,
+                                $fd.try_into().expect("overflow"),
                                 Some(wait_time)
                             ).is_err() {
                                 r = sent.try_into().expect("overflow");
@@ -492,6 +493,7 @@ macro_rules! impl_raw {
 
 syscall_mod!(
     Sleep;
+    WSAAccept;
     WSARecv;
     WSASend;
     WSASocketW;
@@ -567,7 +569,7 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
     SEND_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;
-            let mut len = size_of::<PSTR>() as c_int;
+            let mut len = c_int::try_from(size_of::<PSTR>()).expect("overflow");
             if unsafe {
                 getsockopt(
                     fd,
@@ -585,7 +587,9 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
                 }
                 panic!("getsockopt failed: {error}");
             }
-            let mut time_limit = (ms as u64).saturating_mul(1_000_000);
+            let mut time_limit = u64::try_from(ms)
+                .expect("overflow")
+                .saturating_mul(1_000_000);
             if 0 == time_limit {
                 // 取消超时
                 time_limit = u64::MAX;
@@ -602,7 +606,7 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
     RECV_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;
-            let mut len = size_of::<PSTR>() as c_int;
+            let mut len = c_int::try_from(size_of::<PSTR>()).expect("overflow");
             if unsafe {
                 getsockopt(
                     fd,
@@ -620,7 +624,9 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
                 }
                 panic!("getsockopt failed: {error}");
             }
-            let mut time_limit = (ms as u64).saturating_mul(1_000_000);
+            let mut time_limit = u64::try_from(ms)
+                .expect("overflow")
+                .saturating_mul(1_000_000);
             if 0 == time_limit {
                 // 取消超时
                 time_limit = u64::MAX;

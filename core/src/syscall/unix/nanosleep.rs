@@ -44,7 +44,10 @@ impl NanosleepSyscall for NioNanosleepSyscall {
             set_errno(libc::EINVAL);
             return -1;
         }
-        let time = Duration::new(rqtp.tv_sec as u64, rqtp.tv_nsec as u32);
+        let time = Duration::new(
+            rqtp.tv_sec.try_into().expect("overflow"),
+            rqtp.tv_nsec.try_into().expect("overflow")
+        );
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
             let syscall = crate::common::constants::Syscall::nanosleep;
             let new_state = crate::common::constants::SyscallState::Suspend(

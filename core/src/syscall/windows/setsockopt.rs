@@ -12,7 +12,7 @@ pub extern "system" fn setsockopt(
     name: c_int,
     value: PSTR,
     option_len: c_int
-) -> c_int{
+) -> c_int {
     static CHAIN: Lazy<SetsockoptSyscallFacade<NioSetsockoptSyscall<RawSetsockoptSyscall>>> =
         Lazy::new(Default::default);
     CHAIN.setsockopt(fn_ptr, socket, level, name, value, option_len)
@@ -55,7 +55,9 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
         if 0 == r && SOL_SOCKET == level {
             if SO_SNDTIMEO == name {
                 let ms = unsafe { *value.cast::<c_int>() };
-                let mut time_limit = (ms as u64).saturating_mul(1_000_000);
+                let mut time_limit = u64::try_from(ms)
+                    .expect("overflow")
+                    .saturating_mul(1_000_000);
                 if 0 == time_limit {
                     // 取消超时
                     time_limit = u64::MAX;
@@ -63,7 +65,9 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
                 assert!(SEND_TIME_LIMIT.insert(socket, time_limit).is_none());
             } else if SO_RCVTIMEO == name {
                 let ms = unsafe { *value.cast::<c_int>() };
-                let mut time_limit = (ms as u64).saturating_mul(1_000_000);
+                let mut time_limit = u64::try_from(ms)
+                    .expect("overflow")
+                    .saturating_mul(1_000_000);
                 if 0 == time_limit {
                     // 取消超时
                     time_limit = u64::MAX;

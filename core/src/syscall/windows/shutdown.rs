@@ -40,7 +40,7 @@ impl<I: ShutdownSyscall> ShutdownSyscall for NioShutdownSyscall<I> {
         how: WINSOCK_SHUTDOWN_HOW,
     ) -> c_int {
         {
-            let fd = fd as _;
+            let fd = fd.try_into().expect("overflow");
             _ = match how {
                 windows_sys::Win32::Networking::WinSock::SD_RECEIVE => {
                     EventLoops::del_read_event(fd)
@@ -48,7 +48,7 @@ impl<I: ShutdownSyscall> ShutdownSyscall for NioShutdownSyscall<I> {
                 windows_sys::Win32::Networking::WinSock::SD_SEND => EventLoops::del_write_event(fd),
                 windows_sys::Win32::Networking::WinSock::SD_BOTH => EventLoops::del_event(fd),
                 _ => {
-                    set_errno(windows_sys::Win32::Networking::WinSock::WSAEINVAL as _);
+                    set_errno(windows_sys::Win32::Networking::WinSock::WSAEINVAL.try_into().expect("overflow"));
                     return -1;
                 }
             };

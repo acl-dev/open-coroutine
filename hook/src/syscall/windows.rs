@@ -3,8 +3,9 @@ use std::io::{Error, ErrorKind};
 use windows_sys::core::{PCSTR, PCWSTR, PSTR};
 use windows_sys::Win32::Foundation::{BOOL, HANDLE, TRUE};
 use windows_sys::Win32::Networking::WinSock::{
-    FD_SET, IPPROTO, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET,
-    TIMEVAL, WINSOCK_SHUTDOWN_HOW, WINSOCK_SOCKET_TYPE, WSABUF, WSAPOLLFD, WSAPROTOCOL_INFOW,
+    FD_SET, IPPROTO, LPCONDITIONPROC, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS,
+    SOCKADDR, SOCKET, TIMEVAL, WINSOCK_SHUTDOWN_HOW, WINSOCK_SOCKET_TYPE, WSABUF, WSAPOLLFD,
+    WSAPROTOCOL_INFOW,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{
@@ -63,11 +64,35 @@ pub unsafe extern "system" fn DllMain(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 unsafe fn attach() -> std::io::Result<()> {
+    impl_hook!("kernel32.dll", SLEEP, Sleep(dw_milliseconds: u32) -> ());
+    impl_hook!("kernel32.dll", CREATEFILEW, CreateFileW(
+        lpfilename: PCWSTR,
+        dwdesiredaccess: c_uint,
+        dwsharemode: FILE_SHARE_MODE,
+        lpsecurityattributes: *const SECURITY_ATTRIBUTES,
+        dwcreationdisposition: FILE_CREATION_DISPOSITION,
+        dwflagsandattributes: FILE_FLAGS_AND_ATTRIBUTES,
+        htemplatefile: HANDLE
+    ) -> HANDLE);
+    impl_hook!("kernel32.dll", SETFILEPOINTEREX, SetFilePointerEx(
+        hfile: HANDLE,
+        lidistancetomove: c_longlong,
+        lpnewfilepointer : *mut c_longlong,
+        dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
+    ) -> BOOL);
     impl_hook!("ws2_32.dll", ACCEPT, accept(
         fd: SOCKET,
         address: *mut SOCKADDR,
         address_len: *mut c_int
+    ) -> SOCKET);
+    impl_hook!("ws2_32.dll", WSAACCEPT, WSAAccept(
+        fd: SOCKET,
+        address: *mut SOCKADDR,
+        address_len: *mut c_int,
+        lpfncondition: LPCONDITIONPROC,
+        dwcallbackdata: usize
     ) -> SOCKET);
     impl_hook!("ws2_32.dll", CONNECT, connect(
         fd: SOCKET,
@@ -143,22 +168,6 @@ unsafe fn attach() -> std::io::Result<()> {
         nfds: c_uint,
         timeout: c_int
     ) -> c_int);
-    impl_hook!("kernel32.dll", SLEEP, Sleep(dw_milliseconds: u32) -> ());
-    impl_hook!("kernel32.dll", CREATEFILEW, CreateFileW(
-        lpfilename: PCWSTR,
-        dwdesiredaccess: c_uint,
-        dwsharemode: FILE_SHARE_MODE,
-        lpsecurityattributes: *const SECURITY_ATTRIBUTES,
-        dwcreationdisposition: FILE_CREATION_DISPOSITION,
-        dwflagsandattributes: FILE_FLAGS_AND_ATTRIBUTES,
-        htemplatefile: HANDLE
-    ) -> HANDLE);
-    impl_hook!("kernel32.dll", SETFILEPOINTEREX, SetFilePointerEx(
-        hfile: HANDLE,
-        lidistancetomove: c_longlong,
-        lpnewfilepointer : *mut c_longlong,
-        dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
-    ) -> BOOL);
     // NOTE: unhook WaitOnAddress due to stack overflow or bug
     // impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(
     //     address: *const c_void,

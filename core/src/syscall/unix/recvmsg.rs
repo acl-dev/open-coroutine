@@ -69,8 +69,8 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
         let vec = unsafe {
             Vec::from_raw_parts(
                 msghdr.msg_iov,
-                msghdr.msg_iovlen as usize,
-                msghdr.msg_iovlen as usize,
+                msghdr.msg_iovlen.try_into().expect("overflow"),
+                msghdr.msg_iovlen.try_into().expect("overflow"),
             )
         };
         let mut length = 0;
@@ -127,9 +127,9 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
                     return r;
                 } else if r != -1 {
                     reset_errno();
-                    received += r as usize;
+                    received += libc::size_t::try_from(r).expect("r overflow");
                     if received >= length {
-                        r = received as ssize_t;
+                        r = received.try_into().expect("received overflow");
                         break;
                     }
                     offset = received.saturating_sub(length);

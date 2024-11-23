@@ -88,6 +88,8 @@ pub enum Syscall {
     connect,
     listen,
     accept,
+    #[cfg(windows)]
+    WSAAccept,
     shutdown,
     close,
     socket,
