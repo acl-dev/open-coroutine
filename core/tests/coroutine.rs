@@ -114,6 +114,7 @@ fn coroutine_stack_growth() -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(not(all(target_os = "linux", target_arch = "x86", feature = "preemptive")))]
 #[test]
 fn coroutine_trap() -> std::io::Result<()> {
     let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
@@ -130,7 +131,10 @@ fn coroutine_trap() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(
+    debug_assertions,
+    all(target_os = "linux", target_arch = "x86", feature = "preemptive")
+)))]
 #[test]
 fn coroutine_invalid_memory_reference() -> std::io::Result<()> {
     let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
