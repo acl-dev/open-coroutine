@@ -56,6 +56,48 @@ pub mod timer;
 ///
 pub mod work_steal;
 
+/// Suppose a thread in a work-stealing scheduler is idle and looking for the next task to run. To
+/// find an available task, it might do the following:
+///
+/// 1. Try popping one task from the local worker queue.
+/// 2. Try popping and stealing tasks from another local worker queue.
+/// 3. Try popping and stealing a batch of tasks from the global injector queue.
+///
+/// A queue implementation of work-stealing strategy:
+///
+/// # Examples
+///
+/// ```
+/// use open_coroutine_core::common::ordered_work_steal::OrderedWorkStealQueue;
+///
+/// let queue = OrderedWorkStealQueue::new(2, 64);
+/// for i in 6..8 {
+///     queue.push_with_priority(i, i);
+/// }
+/// let local0 = queue.local_queue();
+/// for i in 2..6 {
+///    local0.push_with_priority(i, i);
+/// }
+/// let local1 = queue.local_queue();
+/// for i in 0..2 {
+///     local1.push_with_priority(i, i);
+/// }
+/// for i in 0..2 {
+///     assert_eq!(local1.pop_front(), Some(i));
+/// }
+/// for i in (2..6).rev() {
+///     assert_eq!(local1.pop_front(), Some(i));
+/// }
+/// for i in 6..8 {
+///     assert_eq!(local1.pop_front(), Some(i));
+/// }
+/// assert_eq!(local0.pop_front(), None);
+/// assert_eq!(local1.pop_front(), None);
+/// assert_eq!(queue.pop(), None);
+/// ```
+///
+pub mod ordered_work_steal;
+
 #[cfg(target_os = "linux")]
 extern "C" {
     fn linux_version_code() -> c_int;

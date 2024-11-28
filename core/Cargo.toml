@@ -11,13 +11,6 @@ license.workspace = true
 readme.workspace = true
 
 [dependencies]
-cfg-if.workspace = true
-once_cell.workspace = true
-dashmap.workspace = true
-num_cpus.workspace = true
-rand.workspace = true
-st3.workspace = true
-crossbeam-deque.workspace = true
 tracing = { workspace = true, default-features = false, optional = true }
 tracing-subscriber = { workspace = true, features = [
     "fmt",
@@ -32,6 +25,14 @@ uuid = { workspace = true, features = [
 educe = { workspace = true, optional = true }
 core_affinity = { workspace = true, optional = true }
 crossbeam-utils = { workspace = true, optional = true }
+cfg-if.workspace = true
+once_cell.workspace = true
+dashmap.workspace = true
+num_cpus.workspace = true
+rand.workspace = true
+st3.workspace = true
+crossbeam-deque.workspace = true
+crossbeam-skiplist.workspace = true
 psm.workspace = true
 
 [target.'cfg(unix)'.dependencies]
