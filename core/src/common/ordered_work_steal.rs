@@ -255,7 +255,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
         for _ in 0..count {
             for entry in self.queue.iter().rev() {
                 if let Some(item) = entry.value().pop() {
-                    self.shared.push_with_priority(entry.key().clone(), item);
+                    self.shared.push_with_priority(*entry.key(), item);
                 }
             }
         }
@@ -350,7 +350,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
                             //其他队列为空
                             continue;
                         }
-                        let into_entry = self.queue.get_or_insert_with(entry.key().clone(), || {
+                        let into_entry = self.queue.get_or_insert_with(*entry.key(), || {
                             Worker::new(self.shared.local_capacity)
                         });
                         let into_queue = into_entry.value();
