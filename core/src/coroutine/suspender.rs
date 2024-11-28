@@ -49,7 +49,7 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
 }
 
 #[allow(clippy::must_use_candidate)]
-impl<'s, Param> Suspender<'s, Param, ()> {
+impl<Param> Suspender<'_, Param, ()> {
     /// see the `suspend_with` documents.
     pub fn suspend(&self) -> Param {
         self.suspend_with(())

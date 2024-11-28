@@ -56,7 +56,8 @@ impl<T: Debug> WorkStealQueue<T> {
     pub fn push(&self, item: T) {
         self.shared_queue.push(item);
         //add count
-        self.len.store(self.len() + 1, Ordering::Release);
+        self.len
+            .store(self.len().saturating_add(1), Ordering::Release);
     }
 
     /// Pop an element from the global queue.
@@ -69,7 +70,8 @@ impl<T: Debug> WorkStealQueue<T> {
             match self.shared_queue.steal() {
                 Steal::Success(item) => {
                     // Decrement the count.
-                    self.len.store(self.len() - 1, Ordering::Release);
+                    self.len
+                        .store(self.len().saturating_sub(1), Ordering::Release);
                     return Some(item);
                 }
                 Steal::Retry => continue,
@@ -81,7 +83,7 @@ impl<T: Debug> WorkStealQueue<T> {
     /// Get a local queue, this method should be called up to `local_queue_size` times.
     ///
     /// # Panics
-    /// should never happens
+    /// should never happen
     pub fn local_queue(&self) -> LocalQueue<'_, T> {
         let mut index = self.index.fetch_add(1, Ordering::Relaxed);
         if index == usize::MAX {
@@ -160,9 +162,23 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
         self.queue.spare_capacity() == 0
     }
 
+    fn max_steal(&self) -> usize {
+        self.queue
+            .capacity()
+            .saturating_add(1)
+            .saturating_div(2)
+            .saturating_sub(self.len())
+    }
+
+    fn can_steal(&self) -> bool {
+        self.queue.spare_capacity() >= self.queue.capacity().saturating_add(1).saturating_div(2)
+    }
+
     /// Returns the number of elements in the queue.
     pub fn len(&self) -> usize {
-        self.queue.capacity() - self.queue.spare_capacity()
+        self.queue
+            .capacity()
+            .saturating_sub(self.queue.spare_capacity())
     }
 
     fn try_lock(&self) -> bool {
@@ -215,7 +231,7 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
             self.tick.store(0, Ordering::Release);
             return 0;
         }
-        val + 1
+        val.saturating_add(1)
     }
 
     /// If the queue is empty, first try steal from global,
@@ -248,9 +264,11 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     /// local0.push_back(3);
     /// local0.push_back(4);
     /// local0.push_back(5);
+    /// assert_eq!(local0.len(), 4);
     /// let local1 = queue.local_queue();
     /// local1.push_back(0);
     /// local1.push_back(1);
+    /// assert_eq!(local1.len(), 2);
     /// for i in 0..6 {
     ///     assert_eq!(local1.pop_front(), Some(i));
     /// }
@@ -277,6 +295,10 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
             for i in 0..num {
                 let i = (start + i) % num;
                 if let Some(another) = local_queues.get(i) {
+                    if !self.can_steal() {
+                        //本地队列超过一半，不再steal
+                        break;
+                    }
                     if std::ptr::eq(&another, &self.queue) {
                         //不能偷自己
                         continue;
@@ -285,17 +307,19 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
                         //其他队列为空
                         continue;
                     }
-                    if self.queue.spare_capacity() == 0 {
-                        //本地队列已满
-                        continue;
-                    }
                     if another
                         .stealer()
                         .steal(self.queue, |n| {
-                            //可偷取的最大长度与本地队列空闲长度做比较
-                            n.min(self.queue.spare_capacity())
+                            //可偷取的最大长度与本地队列可偷长度做比较
+                            n.min(self.max_steal())
                                 //与其他队列当前长度的一半做比较
-                                .min(((another.capacity() - another.spare_capacity()) + 1) / 2)
+                                .min(
+                                    another
+                                        .capacity()
+                                        .saturating_sub(another.spare_capacity())
+                                        .saturating_add(1)
+                                        .saturating_div(2),
+                                )
                         })
                         .is_ok()
                     {

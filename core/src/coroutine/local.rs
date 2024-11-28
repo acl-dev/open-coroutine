@@ -4,7 +4,6 @@ use std::ffi::c_void;
 use std::fmt::Debug;
 
 /// todo provide macro like [`std::thread_local`]
-
 /// A struct for coroutines handles local args.
 #[repr(C)]
 #[derive(Debug, Default)]

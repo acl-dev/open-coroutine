@@ -97,7 +97,7 @@ impl<I: SelectSyscall> SelectSyscall for NioSelectSyscall<I> {
             }
             _ = EventLoops::wait_event(Some(Duration::from_millis(u64::from(t.min(x)))));
             if t != c_uint::MAX {
-                t = if t > x { t - x } else { 0 };
+                t = t.saturating_sub(x);
             }
             if x < 16 {
                 x <<= 1;
