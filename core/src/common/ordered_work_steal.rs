@@ -7,16 +7,19 @@ use std::ffi::c_longlong;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
+/// The highest precedence.
+pub const HIGHEST_PRECEDENCE: c_longlong = c_longlong::MIN;
+
+/// The lowest precedence.
+pub const LOWEST_PRECEDENCE: c_longlong = c_longlong::MAX;
+
+/// The default precedence.
+pub const DEFAULT_PRECEDENCE: c_longlong = 0;
+
 /// Ordered trait for user's datastructures.
 pub trait Ordered {
-    /// The highest precedence.
-    const HIGHEST_PRECEDENCE: c_longlong = c_longlong::MIN;
-    /// The lowest precedence.
-    const LOWEST_PRECEDENCE: c_longlong = c_longlong::MAX;
-    /// The default precedence.
-    const DEFAULT_PRECEDENCE: c_longlong = 0;
     /// Get the priority of the element.
-    fn priority(&self) -> c_longlong;
+    fn priority(&self) -> Option<c_longlong>;
 }
 
 /// Work stealing global queue, shared by multiple threads.
@@ -48,7 +51,7 @@ impl<T: Debug> Drop for OrderedWorkStealQueue<T> {
 impl<T: Debug + Ordered> OrderedWorkStealQueue<T> {
     /// Push an element to the global queue.
     pub fn push(&self, item: T) {
-        self.push_with_priority(item.priority(), item);
+        self.push_with_priority(item.priority().unwrap_or(DEFAULT_PRECEDENCE), item);
     }
 }
 
@@ -159,7 +162,7 @@ impl<T: Debug + Ordered> OrderedLocalQueue<'_, T> {
     /// If the queue is full, first push half to global,
     /// then push the item to global.
     pub fn push(&self, item: T) {
-        self.push_with_priority(item.priority(), item);
+        self.push_with_priority(item.priority().unwrap_or(DEFAULT_PRECEDENCE), item);
     }
 }
 
@@ -196,10 +199,10 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     ///     local.push_with_priority(i, i);
     /// }
     /// assert!(local.is_full());
-    /// assert_eq!(local.pop_front(), Some(0));
+    /// assert_eq!(local.pop(), Some(0));
     /// assert_eq!(local.len(), 1);
-    /// assert_eq!(local.pop_front(), Some(1));
-    /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(local.pop(), Some(1));
+    /// assert_eq!(local.pop(), None);
     /// assert!(local.is_empty());
     /// ```
     pub fn is_full(&self) -> bool {
@@ -253,9 +256,9 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     ///     local.push_with_priority(i, i);
     /// }
     /// for i in 0..4 {
-    ///     assert_eq!(local.pop_front(), Some(i));
+    ///     assert_eq!(local.pop(), Some(i));
     /// }
-    /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(local.pop(), None);
     /// ```
     pub fn push_with_priority(&self, priority: c_longlong, item: T) {
         if self.is_full() {
@@ -314,9 +317,9 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     /// }
     /// let local = queue.local_queue();
     /// for i in 0..4 {
-    ///     assert_eq!(local.pop_front(), Some(i));
+    ///     assert_eq!(local.pop(), Some(i));
     /// }
-    /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(local.pop(), None);
     /// assert_eq!(queue.pop(), None);
     /// ```
     ///
@@ -336,23 +339,23 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     /// }
     /// assert_eq!(local1.len(), 2);
     /// for i in 0..2 {
-    ///     assert_eq!(local1.pop_front(), Some(i));
+    ///     assert_eq!(local1.pop(), Some(i));
     /// }
     /// for i in (2..6).rev() {
-    ///     assert_eq!(local1.pop_front(), Some(i));
+    ///     assert_eq!(local1.pop(), Some(i));
     /// }
-    /// assert_eq!(local0.pop_front(), None);
-    /// assert_eq!(local1.pop_front(), None);
+    /// assert_eq!(local0.pop(), None);
+    /// assert_eq!(local1.pop(), None);
     /// assert_eq!(queue.pop(), None);
     /// ```
-    pub fn pop_front(&self) -> Option<T> {
+    pub fn pop(&self) -> Option<T> {
         //每从本地弹出61次，就从全局队列弹出
         if self.tick() % 61 == 0 {
             if let Some(val) = self.shared.pop() {
                 return Some(val);
             }
         }
-        if let Some(val) = self.pop() {
+        if let Some(val) = self.pop_local() {
             return Some(val);
         }
         if self.try_lock() {
@@ -398,7 +401,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
                             .is_ok()
                         {
                             self.release_lock();
-                            return self.pop();
+                            return self.pop_local();
                         }
                     }
                 }
@@ -409,7 +412,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
         self.shared.pop()
     }
 
-    fn pop(&self) -> Option<T> {
+    fn pop_local(&self) -> Option<T> {
         //从本地队列弹出元素
         for entry in self.queue {
             if let Some(val) = entry.value().pop() {

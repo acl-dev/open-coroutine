@@ -5,7 +5,7 @@ use crate::net::join::JoinHandle;
 use crate::{error, info};
 use once_cell::sync::OnceCell;
 use std::collections::VecDeque;
-use std::ffi::c_int;
+use std::ffi::{c_int, c_longlong};
 use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -14,7 +14,7 @@ use std::time::Duration;
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
-        use std::ffi::{c_longlong, c_void};
+        use std::ffi::c_void;
     }
 }
 
@@ -133,12 +133,15 @@ impl EventLoops {
         name: Option<String>,
         func: impl FnOnce(Option<usize>) -> Option<usize> + 'static,
         param: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> JoinHandle {
         let event_loop = Self::round_robin();
-        event_loop.submit_task(name, func, param).map_or_else(
-            |_| JoinHandle::err(event_loop),
-            |n| JoinHandle::new(event_loop, n.as_str()),
-        )
+        event_loop
+            .submit_task(name, func, param, priority)
+            .map_or_else(
+                |_| JoinHandle::err(event_loop),
+                |n| JoinHandle::new(event_loop, n.as_str()),
+            )
     }
 
     /// Submit a new coroutine to event-loop.
@@ -148,8 +151,9 @@ impl EventLoops {
     pub fn submit_co(
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + 'static,
         stack_size: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> std::io::Result<()> {
-        Self::round_robin().submit_co(f, stack_size)
+        Self::round_robin().submit_co(f, stack_size, priority)
     }
 
     /// Waiting for read or write events to occur.

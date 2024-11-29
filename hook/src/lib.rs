@@ -91,8 +91,13 @@ pub extern "C" fn open_coroutine_stop(secs: c_uint) -> c_int {
 
 ///创建任务
 #[no_mangle]
-pub extern "C" fn task_crate(f: UserTaskFunc, param: usize) -> JoinHandle {
-    EventLoops::submit_task(None, move |p| Some(f(p.unwrap_or(0))), Some(param))
+pub extern "C" fn task_crate(f: UserTaskFunc, param: usize, priority: c_longlong) -> JoinHandle {
+    EventLoops::submit_task(
+        None,
+        move |p| Some(f(p.unwrap_or(0))),
+        Some(param),
+        Some(priority),
+    )
 }
 
 ///等待任务完成

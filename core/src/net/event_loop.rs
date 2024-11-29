@@ -456,13 +456,14 @@ mod tests {
     fn test_simple() -> std::io::Result<()> {
         let mut event_loop = EventLoop::default();
         event_loop.set_max_size(1);
-        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None)?;
+        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None, None)?;
         _ = event_loop.submit_task(
             None,
             |_| {
                 println!("2");
                 Some(2)
             },
+            None,
             None,
         )?;
         event_loop.stop_sync(Duration::from_secs(3))
@@ -473,13 +474,14 @@ mod tests {
     fn test_simple_auto() -> std::io::Result<()> {
         let event_loop = EventLoop::default().start()?;
         event_loop.set_max_size(1);
-        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None)?;
+        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None, None)?;
         _ = event_loop.submit_task(
             None,
             |_| {
                 println!("2");
                 Some(2)
             },
+            None,
             None,
         )?;
         event_loop.stop(Duration::from_secs(3))

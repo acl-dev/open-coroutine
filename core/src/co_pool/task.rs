@@ -1,4 +1,6 @@
 use crate::catch;
+use crate::common::ordered_work_steal::Ordered;
+use std::ffi::c_longlong;
 
 /// 做C兼容时会用到
 pub type UserTaskFunc = extern "C" fn(usize) -> usize;
@@ -12,6 +14,7 @@ pub struct Task<'t> {
     #[educe(Debug(ignore))]
     func: Box<dyn FnOnce(Option<usize>) -> Option<usize> + 't>,
     param: Option<usize>,
+    priority: Option<c_longlong>,
 }
 
 impl<'t> Task<'t> {
@@ -20,11 +23,13 @@ impl<'t> Task<'t> {
         name: String,
         func: impl FnOnce(Option<usize>) -> Option<usize> + 't,
         param: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> Self {
         Task {
             name,
             func: Box::new(func),
             param,
+            priority,
         }
     }
 
@@ -44,6 +49,12 @@ impl<'t> Task<'t> {
     }
 }
 
+impl Ordered for Task<'_> {
+    fn priority(&self) -> Option<c_longlong> {
+        self.priority
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::co_pool::task::Task;
@@ -57,6 +68,7 @@ mod tests {
                 p
             },
             None,
+            None,
         );
         assert_eq!((String::from("test"), Ok(None)), task.run());
     }
@@ -68,6 +80,7 @@ mod tests {
             |_| {
                 panic!("test panic, just ignore it");
             },
+            None,
             None,
         );
         assert_eq!(
