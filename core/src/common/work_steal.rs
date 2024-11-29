@@ -149,13 +149,13 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     /// let local = queue.local_queue();
     /// assert!(local.is_empty());
     /// for i in 0..2 {
-    ///     local.push_back(i);
+    ///     local.push(i);
     /// }
     /// assert!(local.is_full());
-    /// assert_eq!(local.pop_front(), Some(0));
+    /// assert_eq!(local.pop(), Some(0));
     /// assert_eq!(local.len(), 1);
-    /// assert_eq!(local.pop_front(), Some(1));
-    /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(local.pop(), Some(1));
+    /// assert_eq!(local.pop(), None);
     /// assert!(local.is_empty());
     /// ```
     pub fn is_full(&self) -> bool {
@@ -202,15 +202,15 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     /// let queue = WorkStealQueue::new(1, 2);
     /// let local = queue.local_queue();
     /// for i in 0..4 {
-    ///     local.push_back(i);
+    ///     local.push(i);
     /// }
-    /// assert_eq!(local.pop_front(), Some(1));
-    /// assert_eq!(local.pop_front(), Some(3));
-    /// assert_eq!(local.pop_front(), Some(0));
-    /// assert_eq!(local.pop_front(), Some(2));
-    /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(local.pop(), Some(1));
+    /// assert_eq!(local.pop(), Some(3));
+    /// assert_eq!(local.pop(), Some(0));
+    /// assert_eq!(local.pop(), Some(2));
+    /// assert_eq!(local.pop(), None);
     /// ```
-    pub fn push_back(&self, item: T) {
+    pub fn push(&self, item: T) {
         if let Err(item) = self.queue.push(item) {
             //把本地队列的一半放到全局队列
             let count = self.len() / 2;
@@ -248,9 +248,9 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     /// }
     /// let local = queue.local_queue();
     /// for i in 0..4 {
-    ///     assert_eq!(local.pop_front(), Some(i));
+    ///     assert_eq!(local.pop(), Some(i));
     /// }
-    /// assert_eq!(local.pop_front(), None);
+    /// assert_eq!(local.pop(), None);
     /// assert_eq!(queue.pop(), None);
     /// ```
     ///
@@ -260,23 +260,23 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
     ///
     /// let queue = WorkStealQueue::new(2, 64);
     /// let local0 = queue.local_queue();
-    /// local0.push_back(2);
-    /// local0.push_back(3);
-    /// local0.push_back(4);
-    /// local0.push_back(5);
+    /// local0.push(2);
+    /// local0.push(3);
+    /// local0.push(4);
+    /// local0.push(5);
     /// assert_eq!(local0.len(), 4);
     /// let local1 = queue.local_queue();
-    /// local1.push_back(0);
-    /// local1.push_back(1);
+    /// local1.push(0);
+    /// local1.push(1);
     /// assert_eq!(local1.len(), 2);
     /// for i in 0..6 {
-    ///     assert_eq!(local1.pop_front(), Some(i));
+    ///     assert_eq!(local1.pop(), Some(i));
     /// }
-    /// assert_eq!(local0.pop_front(), None);
-    /// assert_eq!(local1.pop_front(), None);
+    /// assert_eq!(local0.pop(), None);
+    /// assert_eq!(local1.pop(), None);
     /// assert_eq!(queue.pop(), None);
     /// ```
-    pub fn pop_front(&self) -> Option<T> {
+    pub fn pop(&self) -> Option<T> {
         //每从本地弹出61次，就从全局队列弹出
         if self.tick() % 61 == 0 {
             if let Some(val) = self.shared.pop() {

@@ -38,19 +38,19 @@ pub mod timer;
 /// queue.push(7);
 ///
 /// let local0 = queue.local_queue();
-/// local0.push_back(2);
-/// local0.push_back(3);
-/// local0.push_back(4);
-/// local0.push_back(5);
+/// local0.push(2);
+/// local0.push(3);
+/// local0.push(4);
+/// local0.push(5);
 ///
 /// let local1 = queue.local_queue();
-/// local1.push_back(0);
-/// local1.push_back(1);
+/// local1.push(0);
+/// local1.push(1);
 /// for i in 0..8 {
-///     assert_eq!(local1.pop_front(), Some(i));
+///     assert_eq!(local1.pop(), Some(i));
 /// }
-/// assert_eq!(local0.pop_front(), None);
-/// assert_eq!(local1.pop_front(), None);
+/// assert_eq!(local0.pop(), None);
+/// assert_eq!(local1.pop(), None);
 /// assert_eq!(queue.pop(), None);
 /// ```
 ///
@@ -83,16 +83,16 @@ pub mod work_steal;
 ///     local1.push_with_priority(i, i);
 /// }
 /// for i in 0..2 {
-///     assert_eq!(local1.pop_front(), Some(i));
+///     assert_eq!(local1.pop(), Some(i));
 /// }
 /// for i in (2..6).rev() {
-///     assert_eq!(local1.pop_front(), Some(i));
+///     assert_eq!(local1.pop(), Some(i));
 /// }
 /// for i in 6..8 {
-///     assert_eq!(local1.pop_front(), Some(i));
+///     assert_eq!(local1.pop(), Some(i));
 /// }
-/// assert_eq!(local0.pop_front(), None);
-/// assert_eq!(local1.pop_front(), None);
+/// assert_eq!(local0.pop(), None);
+/// assert_eq!(local1.pop(), None);
 /// assert_eq!(queue.pop(), None);
 /// ```
 ///

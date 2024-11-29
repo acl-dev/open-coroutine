@@ -2,13 +2,14 @@ use crate::co_pool::creator::CoroutineCreator;
 use crate::co_pool::task::Task;
 use crate::common::beans::BeanFactory;
 use crate::common::constants::PoolState;
-use crate::common::work_steal::{LocalQueue, WorkStealQueue};
+use crate::common::ordered_work_steal::{OrderedLocalQueue, OrderedWorkStealQueue};
 use crate::common::{get_timeout_time, now, CondvarBlocker};
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::{SchedulableCoroutine, Scheduler};
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named, trace};
 use dashmap::DashMap;
 use std::cell::Cell;
+use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -31,7 +32,7 @@ pub struct CoroutinePool<'p> {
     //协程池状态
     state: Cell<PoolState>,
     //任务队列
-    task_queue: LocalQueue<'p, Task<'p>>,
+    task_queue: OrderedLocalQueue<'p, Task<'p>>,
     //工作协程组
     workers: Scheduler<'p>,
     //当前协程数
@@ -128,7 +129,7 @@ impl<'p> CoroutinePool<'p> {
             pop_fail_times: AtomicUsize::new(0),
             min_size: AtomicUsize::new(min_size),
             max_size: AtomicUsize::new(max_size),
-            task_queue: BeanFactory::get_or_default::<WorkStealQueue<Task<'p>>>(
+            task_queue: BeanFactory::get_or_default::<OrderedWorkStealQueue<Task<'p>>>(
                 crate::common::constants::TASK_GLOBAL_QUEUE_BEAN,
             )
             .local_queue(),
@@ -210,6 +211,7 @@ impl<'p> CoroutinePool<'p> {
         name: Option<String>,
         func: impl FnOnce(Option<usize>) -> Option<usize> + 'p,
         param: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> std::io::Result<String> {
         match self.state() {
             PoolState::Running => {}
@@ -221,7 +223,7 @@ impl<'p> CoroutinePool<'p> {
             }
         }
         let name = name.unwrap_or(format!("{}@{}", self.name(), uuid::Uuid::new_v4()));
-        self.submit_raw_task(Task::new(name.clone(), func, param));
+        self.submit_raw_task(Task::new(name.clone(), func, param, priority));
         Ok(name)
     }
 
@@ -230,7 +232,7 @@ impl<'p> CoroutinePool<'p> {
     /// Allow multiple threads to concurrently submit task to the pool,
     /// but only allow one thread to execute scheduling.
     pub(crate) fn submit_raw_task(&self, task: Task<'p>) {
-        self.task_queue.push_back(task);
+        self.task_queue.push(task);
         self.blocker.notify();
     }
 
@@ -338,6 +340,7 @@ impl<'p> CoroutinePool<'p> {
                 }
             },
             None,
+            None,
         )
     }
 
@@ -349,6 +352,7 @@ impl<'p> CoroutinePool<'p> {
         &self,
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + 'static,
         stack_size: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> std::io::Result<()> {
         if self.get_running_size() >= self.get_max_size() {
             trace!(
@@ -360,7 +364,7 @@ impl<'p> CoroutinePool<'p> {
                 "The coroutine pool has reached its maximum size !",
             ));
         }
-        self.deref().submit_co(f, stack_size).map(|()| {
+        self.deref().submit_co(f, stack_size, priority).map(|()| {
             _ = self.running.fetch_add(1, Ordering::Release);
         })
     }
@@ -370,7 +374,7 @@ impl<'p> CoroutinePool<'p> {
     }
 
     fn try_run(&self) -> Option<()> {
-        self.task_queue.pop_front().map(|task| {
+        self.task_queue.pop().map(|task| {
             let (task_name, result) = task.run();
             assert!(
                 self.results.insert(task_name.clone(), result).is_none(),

@@ -10,12 +10,14 @@ fn scheduler_basic() -> std::io::Result<()> {
             None
         },
         None,
+        None,
     )?;
     _ = scheduler.submit_co(
         |_, _| {
             println!("2");
             None
         },
+        None,
         None,
     )?;
     scheduler.try_schedule()
@@ -25,12 +27,13 @@ fn scheduler_basic() -> std::io::Result<()> {
 #[test]
 fn scheduler_backtrace() -> std::io::Result<()> {
     let mut scheduler = Scheduler::default();
-    _ = scheduler.submit_co(|_, _| None, None)?;
+    _ = scheduler.submit_co(|_, _| None, None, None)?;
     _ = scheduler.submit_co(
         |_, _| {
             println!("{:?}", backtrace::Backtrace::new());
             None
         },
+        None,
         None,
     )?;
     scheduler.try_schedule()
@@ -47,6 +50,7 @@ fn scheduler_suspend() -> std::io::Result<()> {
             None
         },
         None,
+        None,
     )?;
     _ = scheduler.submit_co(
         |suspender, _| {
@@ -55,6 +59,7 @@ fn scheduler_suspend() -> std::io::Result<()> {
             println!("[coroutine2] back");
             None
         },
+        None,
         None,
     )?;
     scheduler.try_schedule()
@@ -70,6 +75,7 @@ fn scheduler_delay() -> std::io::Result<()> {
             println!("[coroutine] back");
             None
         },
+        None,
         None,
     )?;
     scheduler.try_schedule()?;
@@ -111,12 +117,13 @@ fn scheduler_listener() -> std::io::Result<()> {
 
     let mut scheduler = Scheduler::default();
     scheduler.add_listener(TestListener::default());
-    scheduler.submit_co(|_, _| panic!("test panic, just ignore it"), None)?;
+    scheduler.submit_co(|_, _| panic!("test panic, just ignore it"), None, None)?;
     scheduler.submit_co(
         |_, _| {
             println!("2");
             None
         },
+        None,
         None,
     )?;
     scheduler.try_schedule()

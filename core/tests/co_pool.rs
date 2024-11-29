@@ -9,6 +9,7 @@ fn co_pool_basic() -> std::io::Result<()> {
         Some(String::from("test_panic")),
         |_| panic!("test panic, just ignore it"),
         None,
+        None,
     )?;
     assert!(!pool.is_empty());
     pool.submit_task(
@@ -17,6 +18,7 @@ fn co_pool_basic() -> std::io::Result<()> {
             println!("2");
             Some(2)
         },
+        None,
         None,
     )?;
     pool.try_schedule_task()
@@ -39,6 +41,7 @@ fn co_pool_suspend() -> std::io::Result<()> {
             param
         },
         None,
+        None,
     )?;
     _ = pool.submit_task(
         None,
@@ -46,6 +49,7 @@ fn co_pool_suspend() -> std::io::Result<()> {
             println!("middle");
             Some(1)
         },
+        None,
         None,
     )?;
     pool.try_schedule_task()?;
@@ -58,13 +62,14 @@ fn co_pool_suspend() -> std::io::Result<()> {
 fn co_pool_stop() -> std::io::Result<()> {
     let pool = open_coroutine_core::co_pool::CoroutinePool::default();
     pool.set_max_size(1);
-    _ = pool.submit_task(None, |_| panic!("test panic, just ignore it"), None)?;
+    _ = pool.submit_task(None, |_| panic!("test panic, just ignore it"), None, None)?;
     pool.submit_task(
         None,
         |_| {
             println!("2");
             Some(2)
         },
+        None,
         None,
     )
     .map(|_| ())

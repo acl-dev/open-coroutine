@@ -9,6 +9,7 @@ use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+use std::ffi::c_longlong;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 
@@ -31,6 +32,7 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     pub(crate) stack_infos: RefCell<VecDeque<StackInfo>>,
     pub(crate) listeners: VecDeque<&'c dyn Listener<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
+    pub(crate) priority: Option<c_longlong>,
 }
 
 impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
@@ -97,11 +99,11 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                                     target_arch = "x86_64",
                                 ))] {
                                 let TrapHandlerRegs { rip, rsp, rbp, rdi, rsi } = regs;
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RIP).expect("overflow")] = std::ffi::c_longlong::try_from(rip).expect("overflow");
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RSP).expect("overflow")] = std::ffi::c_longlong::try_from(rsp).expect("overflow");
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RBP).expect("overflow")] = std::ffi::c_longlong::try_from(rbp).expect("overflow");
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RDI).expect("overflow")] = std::ffi::c_longlong::try_from(rdi).expect("overflow");
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RSI).expect("overflow")] = std::ffi::c_longlong::try_from(rsi).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RIP).expect("overflow")] = c_longlong::try_from(rip).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RSP).expect("overflow")] = c_longlong::try_from(rsp).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RBP).expect("overflow")] = c_longlong::try_from(rbp).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RDI).expect("overflow")] = c_longlong::try_from(rdi).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RSI).expect("overflow")] = c_longlong::try_from(rsi).expect("overflow");
                             } else if #[cfg(all(
                                 any(target_os = "linux", target_os = "android"),
                                 target_arch = "x86",
@@ -345,7 +347,12 @@ where
     ///
     ///# Errors
     /// if stack allocate failed.
-    pub fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
+    pub fn new<F>(
+        name: String,
+        f: F,
+        stack_size: usize,
+        priority: Option<c_longlong>,
+    ) -> std::io::Result<Self>
     where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return + 'static,
     {
@@ -378,6 +385,7 @@ where
             state: Cell::new(CoroutineState::Ready),
             listeners: VecDeque::default(),
             local: CoroutineLocal::default(),
+            priority,
         };
         #[cfg(all(unix, feature = "preemptive"))]
         co.add_listener(crate::monitor::MonitorListener::default());

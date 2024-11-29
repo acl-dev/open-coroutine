@@ -75,7 +75,11 @@ extern "C" {
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn task_crate(f: UserTaskFunc, param: usize) -> open_coroutine_core::net::join::JoinHandle;
+    fn task_crate(
+        f: UserTaskFunc,
+        param: usize,
+        priority: c_longlong,
+    ) -> open_coroutine_core::net::join::JoinHandle;
 
     fn task_join(handle: &open_coroutine_core::net::join::JoinHandle) -> c_longlong;
 
@@ -104,13 +108,24 @@ pub fn shutdown() {
 /// Create a task.
 #[macro_export]
 macro_rules! task {
+    ( $f: expr , $param:expr , $priority: expr $(,)? ) => {
+        $crate::task($f, $param, $priority)
+    };
     ( $f: expr , $param:expr $(,)? ) => {
-        $crate::task($f, $param)
+        $crate::task(
+            $f,
+            $param,
+            open_coroutine_core::common::ordered_work_steal::DEFAULT_PRECEDENCE,
+        )
     };
 }
 
 /// Create a task.
-pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(f: F, param: P) -> JoinHandle<R> {
+pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(
+    f: F,
+    param: P,
+    priority: c_longlong,
+) -> JoinHandle<R> {
     extern "C" fn task_main<P: 'static, R: 'static, F: FnOnce(P) -> R>(input: usize) -> usize {
         unsafe {
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
@@ -133,6 +148,7 @@ pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(f: F, param: P) -> JoinHa
         task_crate(
             task_main::<P, R, F>,
             std::ptr::from_mut(inner).cast::<c_void>() as usize,
+            priority,
         )
         .into()
     }

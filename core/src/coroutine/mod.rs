@@ -3,6 +3,7 @@ use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
 use std::collections::VecDeque;
+use std::ffi::c_longlong;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 
@@ -15,29 +16,48 @@ pub mod local;
 /// Coroutine listener abstraction and impl.
 pub mod listener;
 
+use crate::common::ordered_work_steal::Ordered;
 #[cfg(feature = "korosensei")]
 pub use korosensei::Coroutine;
+
 #[cfg(feature = "korosensei")]
 mod korosensei;
 
 /// Create a new coroutine.
 #[macro_export]
 macro_rules! co {
+    ($name:expr, $f:expr, $size:expr, $priority:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new($name, $f, $size, $priority)
+    };
+    ($f:expr, $size:literal, $priority:literal $(,)?) => {
+        $crate::coroutine::Coroutine::new(
+            uuid::Uuid::new_v4().to_string(),
+            $f,
+            $size,
+            Some($priority),
+        )
+    };
+    ($name:expr, $f:expr, $size:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new($name, $f, $size, None)
+    };
     ($f:expr, $size:literal $(,)?) => {
-        $crate::coroutine::Coroutine::new(uuid::Uuid::new_v4().to_string(), $f, $size)
+        $crate::coroutine::Coroutine::new(uuid::Uuid::new_v4().to_string(), $f, $size, None)
+    };
+    ($name:expr, $f:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(
+            $name,
+            $f,
+            $crate::common::constants::DEFAULT_STACK_SIZE,
+            None,
+        )
     };
     ($f:expr $(,)?) => {
         $crate::coroutine::Coroutine::new(
             uuid::Uuid::new_v4().to_string(),
             $f,
             $crate::common::constants::DEFAULT_STACK_SIZE,
+            None,
         )
-    };
-    ($name:expr, $f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new($name, $f, $size)
-    };
-    ($name:expr, $f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new($name, $f, $crate::common::constants::DEFAULT_STACK_SIZE)
     };
 }
 
@@ -190,6 +210,12 @@ impl<'c, Param, Yield, Return> Deref for Coroutine<'c, Param, Yield, Return> {
 
     fn deref(&self) -> &Self::Target {
         &self.local
+    }
+}
+
+impl<Param, Yield, Return> Ordered for Coroutine<'_, Param, Yield, Return> {
+    fn priority(&self) -> Option<c_longlong> {
+        self.priority
     }
 }
 

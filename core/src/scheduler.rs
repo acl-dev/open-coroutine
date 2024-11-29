@@ -1,7 +1,7 @@
 use crate::common::beans::BeanFactory;
 use crate::common::constants::{CoroutineState, SyscallState};
+use crate::common::ordered_work_steal::{OrderedLocalQueue, OrderedWorkStealQueue};
 use crate::common::timer::TimerList;
-use crate::common::work_steal::{LocalQueue, WorkStealQueue};
 use crate::common::{get_timeout_time, now};
 use crate::coroutine::listener::Listener;
 use crate::coroutine::suspender::Suspender;
@@ -9,6 +9,7 @@ use crate::coroutine::Coroutine;
 use crate::{co, impl_current_for, impl_display_by_debug, impl_for_named};
 use dashmap::DashMap;
 use std::collections::VecDeque;
+use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -29,7 +30,7 @@ pub struct Scheduler<'s> {
     name: String,
     stack_size: AtomicUsize,
     listeners: VecDeque<&'s dyn Listener<(), Option<usize>>>,
-    ready: LocalQueue<'s, SchedulableCoroutine<'s>>,
+    ready: OrderedLocalQueue<'s, SchedulableCoroutine<'s>>,
     suspend: TimerList<SchedulableCoroutine<'s>>,
     syscall: DashMap<&'s str, SchedulableCoroutine<'s>>,
     syscall_suspend: TimerList<&'s str>,
@@ -85,7 +86,7 @@ impl<'s> Scheduler<'s> {
             name,
             stack_size: AtomicUsize::new(stack_size),
             listeners: VecDeque::new(),
-            ready: BeanFactory::get_or_default::<WorkStealQueue<SchedulableCoroutine>>(
+            ready: BeanFactory::get_or_default::<OrderedWorkStealQueue<SchedulableCoroutine>>(
                 crate::common::constants::COROUTINE_GLOBAL_QUEUE_BEAN,
             )
             .local_queue(),
@@ -118,11 +119,13 @@ impl<'s> Scheduler<'s> {
         &self,
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + 'static,
         stack_size: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> std::io::Result<()> {
         let mut co = co!(
             format!("{}@{}", self.name(), uuid::Uuid::new_v4()),
             f,
             stack_size.unwrap_or(self.stack_size()),
+            priority
         )?;
         for listener in self.listeners.clone() {
             co.add_raw_listener(listener);
@@ -141,7 +144,7 @@ impl<'s> Scheduler<'s> {
     /// Allow multiple threads to concurrently submit coroutine to the scheduler,
     /// but only allow one thread to execute scheduling.
     pub fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'s>) -> std::io::Result<()> {
-        self.ready.push_back(coroutine);
+        self.ready.push(coroutine);
         Ok(())
     }
 
@@ -161,7 +164,7 @@ impl<'s> Scheduler<'s> {
                 }
                 _ => unreachable!("try_resume unexpect CoroutineState"),
             }
-            self.ready.push_back(co);
+            self.ready.push(co);
         }
     }
 
@@ -211,7 +214,7 @@ impl<'s> Scheduler<'s> {
             }
             self.check_ready()?;
             // schedule coroutines
-            if let Some(mut coroutine) = self.ready.pop_front() {
+            if let Some(mut coroutine) = self.ready.pop() {
                 match coroutine.resume()? {
                     CoroutineState::SystemCall((), _, state) => {
                         //挂起协程到系统调用表
@@ -228,7 +231,7 @@ impl<'s> Scheduler<'s> {
                             self.suspend.insert(timestamp, coroutine);
                         } else {
                             //放入就绪队列尾部
-                            self.ready.push_back(coroutine);
+                            self.ready.push(coroutine);
                         }
                     }
                     CoroutineState::Complete(result) => {
@@ -268,7 +271,7 @@ impl<'s> Scheduler<'s> {
                 if let Some((_, mut entry)) = self.suspend.pop_front() {
                     while let Some(coroutine) = entry.pop_front() {
                         coroutine.ready()?;
-                        self.ready.push_back(coroutine);
+                        self.ready.push(coroutine);
                     }
                 }
             }
@@ -289,7 +292,7 @@ impl<'s> Scheduler<'s> {
                                     SyscallState::Suspend(_),
                                 ) => {
                                     co.syscall(val, syscall, SyscallState::Timeout)?;
-                                    self.ready.push_back(co);
+                                    self.ready.push(co);
                                 }
                                 _ => unreachable!("check_ready should never execute to here"),
                             }
