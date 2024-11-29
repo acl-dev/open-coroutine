@@ -7,6 +7,18 @@ use std::ffi::c_longlong;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
+/// Ordered trait for user's datastructures.
+pub trait Ordered {
+    /// The highest precedence.
+    const HIGHEST_PRECEDENCE: c_longlong = c_longlong::MIN;
+    /// The lowest precedence.
+    const LOWEST_PRECEDENCE: c_longlong = c_longlong::MAX;
+    /// The default precedence.
+    const DEFAULT_PRECEDENCE: c_longlong = 0;
+    /// Get the priority of the element.
+    fn priority(&self) -> c_longlong;
+}
+
 /// Work stealing global queue, shared by multiple threads.
 #[repr(C)]
 #[derive(Debug)]
@@ -30,6 +42,13 @@ impl<T: Debug> Drop for OrderedWorkStealQueue<T> {
             }
             assert!(self.pop().is_none(), "global queue not empty");
         }
+    }
+}
+
+impl<T: Debug + Ordered> OrderedWorkStealQueue<T> {
+    /// Push an element to the global queue.
+    pub fn push(&self, item: T) {
+        self.push_with_priority(item.priority(), item);
     }
 }
 
@@ -133,6 +152,14 @@ impl<T: Debug> Drop for OrderedLocalQueue<'_, T> {
                 assert!(entry.value().pop().is_none(), "local queue not empty");
             }
         }
+    }
+}
+
+impl<T: Debug + Ordered> OrderedLocalQueue<'_, T> {
+    /// If the queue is full, first push half to global,
+    /// then push the item to global.
+    pub fn push(&self, item: T) {
+        self.push_with_priority(item.priority(), item);
     }
 }
 
