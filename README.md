@@ -201,6 +201,7 @@ nanosleep hooked
 
 ### 0.6.x
 
+- [x] support custom task and coroutine priority.
 - [x] support scalable stack
 
 ### 0.5.x
