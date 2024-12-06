@@ -16,9 +16,6 @@ pub(crate) mod macros;
 /// `BeanFactory` impls.
 pub mod beans;
 
-/// `TimerList` impls.
-pub mod timer;
-
 /// Suppose a thread in a work-stealing scheduler is idle and looking for the next task to run. To
 /// find an available task, it might do the following:
 ///

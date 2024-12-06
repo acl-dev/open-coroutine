@@ -1,14 +1,13 @@
 use crate::common::beans::BeanFactory;
 use crate::common::constants::{CoroutineState, SyscallState};
 use crate::common::ordered_work_steal::{OrderedLocalQueue, OrderedWorkStealQueue};
-use crate::common::timer::TimerList;
 use crate::common::{get_timeout_time, now};
 use crate::coroutine::listener::Listener;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
 use crate::{co, impl_current_for, impl_display_by_debug, impl_for_named};
 use dashmap::DashMap;
-use std::collections::VecDeque;
+use std::collections::{BinaryHeap, VecDeque};
 use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,6 +22,62 @@ pub type SchedulableCoroutine<'s> = Coroutine<'s, (), (), Option<usize>>;
 /// A type for Scheduler.
 pub type SchedulableSuspender<'s> = Suspender<'s, (), ()>;
 
+#[repr(C)]
+#[derive(Debug)]
+struct SuspendItem<'s> {
+    timestamp: u64,
+    coroutine: SchedulableCoroutine<'s>,
+}
+
+impl PartialEq<Self> for SuspendItem<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.timestamp.eq(&other.timestamp)
+    }
+}
+
+impl Eq for SuspendItem<'_> {}
+
+impl PartialOrd<Self> for SuspendItem<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SuspendItem<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // BinaryHeap defaults to a large top heap, but we need a small top heap
+        other.timestamp.cmp(&self.timestamp)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct SyscallSuspendItem<'s> {
+    timestamp: u64,
+    co_name: &'s str,
+}
+
+impl PartialEq<Self> for SyscallSuspendItem<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.timestamp.eq(&other.timestamp)
+    }
+}
+
+impl Eq for SyscallSuspendItem<'_> {}
+
+impl PartialOrd<Self> for SyscallSuspendItem<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SyscallSuspendItem<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // BinaryHeap defaults to a large top heap, but we need a small top heap
+        other.timestamp.cmp(&self.timestamp)
+    }
+}
+
 /// The scheduler impls.
 #[repr(C)]
 #[derive(Debug)]
@@ -31,9 +86,9 @@ pub struct Scheduler<'s> {
     stack_size: AtomicUsize,
     listeners: VecDeque<&'s dyn Listener<(), Option<usize>>>,
     ready: OrderedLocalQueue<'s, SchedulableCoroutine<'s>>,
-    suspend: TimerList<SchedulableCoroutine<'s>>,
+    suspend: BinaryHeap<SuspendItem<'s>>,
     syscall: DashMap<&'s str, SchedulableCoroutine<'s>>,
-    syscall_suspend: TimerList<&'s str>,
+    syscall_suspend: BinaryHeap<SyscallSuspendItem<'s>>,
     results: DashMap<&'s str, Result<Option<usize>, &'s str>>,
 }
 
@@ -90,9 +145,9 @@ impl<'s> Scheduler<'s> {
                 crate::common::constants::COROUTINE_GLOBAL_QUEUE_BEAN,
             )
             .local_queue(),
-            suspend: TimerList::default(),
+            suspend: BinaryHeap::default(),
             syscall: DashMap::default(),
-            syscall_suspend: TimerList::default(),
+            syscall_suspend: BinaryHeap::default(),
             results: DashMap::default(),
         }
     }
@@ -222,13 +277,17 @@ impl<'s> Scheduler<'s> {
                         //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
                         _ = self.syscall.insert(co_name, coroutine);
                         if let SyscallState::Suspend(timestamp) = state {
-                            self.syscall_suspend.insert(timestamp, co_name);
+                            self.syscall_suspend
+                                .push(SyscallSuspendItem { timestamp, co_name });
                         }
                     }
                     CoroutineState::Suspend((), timestamp) => {
                         if timestamp > now() {
                             //挂起协程到时间轮
-                            self.suspend.insert(timestamp, coroutine);
+                            self.suspend.push(SuspendItem {
+                                timestamp,
+                                coroutine,
+                            });
                         } else {
                             //放入就绪队列尾部
                             self.ready.push(coroutine);
@@ -263,44 +322,50 @@ impl<'s> Scheduler<'s> {
 
     fn check_ready(&mut self) -> std::io::Result<()> {
         // Check if the elements in the suspend queue are ready
-        for _ in 0..self.suspend.entry_len() {
-            if let Some((exec_time, _)) = self.suspend.front() {
-                if now() < *exec_time {
-                    break;
-                }
-                if let Some((_, mut entry)) = self.suspend.pop_front() {
-                    while let Some(coroutine) = entry.pop_front() {
-                        coroutine.ready()?;
-                        self.ready.push(coroutine);
-                    }
+        if let Some(item) = self.suspend.peek() {
+            if now() >= item.timestamp {
+                if let Some(item) = self.suspend.pop() {
+                    item.coroutine.ready()?;
+                    self.ready.push(item.coroutine);
                 }
             }
         }
         // Check if the elements in the syscall suspend queue are ready
-        for _ in 0..self.syscall_suspend.entry_len() {
-            if let Some((exec_time, _)) = self.syscall_suspend.front() {
-                if now() < *exec_time {
-                    break;
-                }
-                if let Some((_, mut entry)) = self.syscall_suspend.pop_front() {
-                    while let Some(co_name) = entry.pop_front() {
-                        if let Some((_, co)) = self.syscall.remove(&co_name) {
-                            match co.state() {
-                                CoroutineState::SystemCall(
-                                    val,
-                                    syscall,
-                                    SyscallState::Suspend(_),
-                                ) => {
-                                    co.syscall(val, syscall, SyscallState::Timeout)?;
-                                    self.ready.push(co);
-                                }
-                                _ => unreachable!("check_ready should never execute to here"),
+        if let Some(item) = self.syscall_suspend.peek() {
+            if now() >= item.timestamp {
+                if let Some(item) = self.syscall_suspend.pop() {
+                    if let Some((_, co)) = self.syscall.remove(item.co_name) {
+                        match co.state() {
+                            CoroutineState::SystemCall(val, syscall, SyscallState::Suspend(_)) => {
+                                co.syscall(val, syscall, SyscallState::Timeout)?;
+                                self.ready.push(co);
                             }
+                            _ => unreachable!("check_ready should never execute to here"),
                         }
                     }
                 }
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::scheduler::SyscallSuspendItem;
+    use std::collections::BinaryHeap;
+
+    #[test]
+    fn test_small_heap() {
+        let mut heap = BinaryHeap::default();
+        for timestamp in (0..10).rev() {
+            heap.push(SyscallSuspendItem {
+                timestamp,
+                co_name: "test",
+            });
+        }
+        for timestamp in 0..10 {
+            assert_eq!(timestamp, heap.pop().unwrap().timestamp);
+        }
     }
 }
