@@ -4,7 +4,6 @@ use crate::common::constants::{CoroutineState, PoolState, Syscall, SyscallState,
 use crate::net::selector::{Event, Events, Poller, Selector};
 use crate::scheduler::SchedulableCoroutine;
 use crate::{error, impl_current_for, impl_display_by_debug, info};
-use crossbeam_utils::atomic::AtomicCell;
 use dashmap::DashSet;
 use once_cell::sync::Lazy;
 use rand::Rng;
@@ -28,8 +27,6 @@ cfg_if::cfg_if! {
 #[repr(C)]
 #[derive(Debug)]
 pub(crate) struct EventLoop<'e> {
-    //状态
-    state: AtomicCell<PoolState>,
     stop: Arc<(Mutex<bool>, Condvar)>,
     shared_stop: Arc<(Mutex<AtomicUsize>, Condvar)>,
     cpu: usize,
@@ -87,7 +84,6 @@ impl<'e> EventLoop<'e> {
         shared_stop: Arc<(Mutex<AtomicUsize>, Condvar)>,
     ) -> std::io::Result<Self> {
         Ok(EventLoop {
-            state: AtomicCell::new(PoolState::Running),
             stop: Arc::new((Mutex::new(false), Condvar::new())),
             shared_stop,
             cpu,

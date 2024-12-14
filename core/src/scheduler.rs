@@ -322,26 +322,28 @@ impl<'s> Scheduler<'s> {
 
     fn check_ready(&mut self) -> std::io::Result<()> {
         // Check if the elements in the suspend queue are ready
-        if let Some(item) = self.suspend.peek() {
-            if now() >= item.timestamp {
-                if let Some(item) = self.suspend.pop() {
-                    item.coroutine.ready()?;
-                    self.ready.push(item.coroutine);
-                }
+        while let Some(item) = self.suspend.peek() {
+            if now() < item.timestamp {
+                break;
+            }
+            if let Some(item) = self.suspend.pop() {
+                item.coroutine.ready()?;
+                self.ready.push(item.coroutine);
             }
         }
         // Check if the elements in the syscall suspend queue are ready
-        if let Some(item) = self.syscall_suspend.peek() {
-            if now() >= item.timestamp {
-                if let Some(item) = self.syscall_suspend.pop() {
-                    if let Some((_, co)) = self.syscall.remove(item.co_name) {
-                        match co.state() {
-                            CoroutineState::SystemCall(val, syscall, SyscallState::Suspend(_)) => {
-                                co.syscall(val, syscall, SyscallState::Timeout)?;
-                                self.ready.push(co);
-                            }
-                            _ => unreachable!("check_ready should never execute to here"),
+        while let Some(item) = self.syscall_suspend.peek() {
+            if now() < item.timestamp {
+                break;
+            }
+            if let Some(item) = self.syscall_suspend.pop() {
+                if let Some((_, co)) = self.syscall.remove(item.co_name) {
+                    match co.state() {
+                        CoroutineState::SystemCall(val, syscall, SyscallState::Suspend(_)) => {
+                            co.syscall(val, syscall, SyscallState::Timeout)?;
+                            self.ready.push(co);
                         }
+                        _ => unreachable!("check_ready should never execute to here"),
                     }
                 }
             }
