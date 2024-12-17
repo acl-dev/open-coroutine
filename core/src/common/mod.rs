@@ -79,13 +79,7 @@ pub mod work_steal;
 /// for i in 0..2 {
 ///     local1.push_with_priority(i, i);
 /// }
-/// for i in 0..2 {
-///     assert_eq!(local1.pop(), Some(i));
-/// }
-/// for i in (2..6).rev() {
-///     assert_eq!(local1.pop(), Some(i));
-/// }
-/// for i in 6..8 {
+/// for i in 0..8 {
 ///     assert_eq!(local1.pop(), Some(i));
 /// }
 /// assert_eq!(local0.pop(), None);
