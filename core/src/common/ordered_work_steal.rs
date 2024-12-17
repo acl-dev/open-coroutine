@@ -338,10 +338,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     ///     local1.push_with_priority(i, i);
     /// }
     /// assert_eq!(local1.len(), 2);
-    /// for i in 0..2 {
-    ///     assert_eq!(local1.pop(), Some(i));
-    /// }
-    /// for i in (2..6).rev() {
+    /// for i in 0..6 {
     ///     assert_eq!(local1.pop(), Some(i));
     /// }
     /// assert_eq!(local0.pop(), None);
@@ -374,7 +371,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
                         //不能偷自己
                         continue;
                     }
-                    for entry in another.iter().rev() {
+                    for entry in another {
                         let worker = entry.value();
                         if worker.is_empty() {
                             //其他队列为空

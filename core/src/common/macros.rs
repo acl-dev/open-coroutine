@@ -1,4 +1,4 @@
-/// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
+//! Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
 
 /// Constructs an event at the trace level.
 #[allow(unused_macros)]

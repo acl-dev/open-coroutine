@@ -1,0 +1,37 @@
+name: Code Coverage
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.png'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.png'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Run cargo coverage
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.81.0
+          profile: minimal
+          override: true
+          components: llvm-tools-preview
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
+        run: sudo bash -c "ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /home/runner/.cargo/bin/cargo llvm-cov --all-features --release --workspace --lcov --output-path lcov.info"
+      - name: Upload coverage to Codecov
+        run: bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ secrets.CODECOV_TOKEN }}
