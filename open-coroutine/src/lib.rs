@@ -226,7 +226,7 @@ macro_rules! maybe_grow {
     };
 }
 
-/// Create a coroutine.
+/// Grows the call stack if necessary.
 pub fn maybe_grow<R: 'static, F: FnOnce() -> R>(
     red_zone: usize,
     stack_size: usize,

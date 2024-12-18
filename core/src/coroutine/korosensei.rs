@@ -324,7 +324,28 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 r
             });
         }
-        DefaultStack::new(stack_size).map(|stack| corosensei::on_stack(stack, callback))
+        // in thread
+        thread_local! {
+            #[allow(clippy::missing_const_for_thread_local)]
+            static STACK_INFOS: RefCell<VecDeque<StackInfo>> = const { RefCell::new(VecDeque::new()) };
+        }
+        if let Some(last_stack_info) = STACK_INFOS.with(|s| s.borrow().back().copied()) {
+            let remaining_stack = psm::stack_pointer() as usize - last_stack_info.stack_bottom;
+            if remaining_stack >= red_zone {
+                return Ok(callback());
+            }
+        }
+        DefaultStack::new(stack_size).map(|stack| {
+            STACK_INFOS.with(|s| {
+                s.borrow_mut().push_back(StackInfo {
+                    stack_top: stack.base().get(),
+                    stack_bottom: stack.limit().get(),
+                });
+            });
+            let r = corosensei::on_stack(stack, callback);
+            _ = STACK_INFOS.with(|s| s.borrow_mut().pop_back());
+            r
+        })
     }
 }
 

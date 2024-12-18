@@ -71,6 +71,48 @@ fn coroutine_delay() -> std::io::Result<()> {
 }
 
 #[test]
+fn sp_in_bounds() -> std::io::Result<()> {
+    let mut coroutine = co!(|suspender, input| {
+        let current = Coroutine::<(), (), ()>::current().unwrap();
+        if let Some(stack_info) = current.stack_infos().back().copied() {
+            assert!(current.stack_ptr_in_bounds(psm::stack_pointer() as u64));
+            assert_eq!(
+                current.stack_ptr_in_bounds(stack_info.stack_top as u64 + 1),
+                false
+            );
+            assert_eq!(
+                current.stack_ptr_in_bounds(stack_info.stack_bottom as u64 - 1),
+                false
+            );
+        }
+        assert_eq!(1, input);
+        assert_eq!(3, suspender.suspend_with(2));
+        4
+    })?;
+    assert_eq!(CoroutineState::Suspend(2, 0), coroutine.resume_with(1)?);
+    assert_eq!(CoroutineState::Complete(4), coroutine.resume_with(3)?);
+    println!("{:?}", coroutine);
+    println!("{}", coroutine);
+    Ok(())
+}
+
+#[test]
+fn thread_stack_growth() {
+    fn recurse(i: u32, p: &mut [u8; 10240]) {
+        Coroutine::<(), (), ()>::maybe_grow(|| {
+            // Ensure the stack allocation isn't optimized away.
+            unsafe { std::ptr::read_volatile(&p) };
+            if i > 0 {
+                recurse(i - 1, &mut [0; 10240]);
+            }
+        })
+        .expect("allocate stack failed")
+    }
+    // Use 10MB of stack.
+    recurse(1000, &mut [0; 10240]);
+}
+
+#[test]
 fn coroutine_stack_growth() -> std::io::Result<()> {
     let mut coroutine = co!(|_: &Suspender<(), ()>, ()| {
         fn recurse(i: u32, p: &mut [u8; 10240]) {
