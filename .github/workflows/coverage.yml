@@ -31,6 +31,10 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
-        run: sudo bash -c "ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /home/runner/.cargo/bin/cargo llvm-cov --all-features --release --all --lcov --output-path lcov.info"
+        run: sudo bash -c "ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /home/runner/.cargo/bin/cargo llvm-cov --release --all --lcov --output-path lcov.info"
+      - name: Generate code coverage with all features
+        run: sudo bash -c "ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /home/runner/.cargo/bin/cargo llvm-cov --all-features --release --all --lcov --output-path lcov-all-features.info"
       - name: Upload coverage to Codecov
-        run: bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ env.CODECOV_TOKEN }}
+        run: |
+          bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ env.CODECOV_TOKEN }}
+          bash <(curl -s https://codecov.io/bash) -f lcov-all-features.info -t ${{ env.CODECOV_TOKEN }}
