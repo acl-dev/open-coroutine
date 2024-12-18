@@ -16,7 +16,6 @@ fn coroutine_basic() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
 #[test]
 fn coroutine_panic() -> std::io::Result<()> {
     let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
@@ -31,7 +30,6 @@ fn coroutine_panic() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
 #[test]
 fn coroutine_backtrace() -> std::io::Result<()> {
     let mut coroutine = co!(|suspender, input| {
