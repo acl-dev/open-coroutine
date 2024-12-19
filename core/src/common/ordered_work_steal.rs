@@ -422,3 +422,30 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ordered_work_steal_queue() {
+        let queue = OrderedWorkStealQueue::new(2, 64);
+        for i in 6..8 {
+            queue.push_with_priority(i, i);
+        }
+        let local0 = queue.local_queue();
+        for i in 2..6 {
+            local0.push_with_priority(i, i);
+        }
+        let local1 = queue.local_queue();
+        for i in 0..2 {
+            local1.push_with_priority(i, i);
+        }
+        for i in 0..8 {
+            assert_eq!(local1.pop(), Some(i));
+        }
+        assert_eq!(local0.pop(), None);
+        assert_eq!(local1.pop(), None);
+        assert_eq!(queue.pop(), None);
+    }
+}

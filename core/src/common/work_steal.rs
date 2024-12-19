@@ -334,3 +334,31 @@ impl<'l, T: Debug> LocalQueue<'l, T> {
         self.shared.pop()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_work_steal_queue() {
+        let queue = WorkStealQueue::new(2, 64);
+        queue.push(6);
+        queue.push(7);
+
+        let local0 = queue.local_queue();
+        local0.push(2);
+        local0.push(3);
+        local0.push(4);
+        local0.push(5);
+
+        let local1 = queue.local_queue();
+        local1.push(0);
+        local1.push(1);
+        for i in 0..8 {
+            assert_eq!(local1.pop(), Some(i));
+        }
+        assert_eq!(local0.pop(), None);
+        assert_eq!(local1.pop(), None);
+        assert_eq!(queue.pop(), None);
+    }
+}
