@@ -14,7 +14,7 @@ The `open-coroutine` is a simple, efficient and generic stackful-coroutine libra
 
 - [x] Preemptive(`not supported in windows`): even if the coroutine enters a dead loop, it can still be seized, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
 - [x] Hook: you are free to use most of the slow system calls in coroutine;
-- [x] Scalable: the size of the coroutine stack supports unlimited expansion, and immediately shrinks to the original size after use, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
+- [x] Scalable: the size of the coroutine stack supports unlimited expansion without the cost of copying stack, and immediately shrinks to the original size after use, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
 - [x] io_uring(`only in linux`): supports and is compatible with io_uring in terms of local file IO and network IO. If it's not supported on your system, it will fall back to non-blocking IO;
 - [x] Priority: support custom task and coroutine priority;
 - [x] Work Stealing: internally using a lock free work steel queue;
