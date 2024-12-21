@@ -2,11 +2,13 @@ use crate::catch;
 use crate::common::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
+use crate::coroutine::stack_pool::{PooledStack, StackPool};
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::StackInfo;
-use corosensei::stack::{DefaultStack, Stack};
+use corosensei::stack::Stack;
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
+use once_cell::sync::Lazy;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::ffi::c_longlong;
@@ -22,11 +24,13 @@ cfg_if::cfg_if! {
     }
 }
 
+static STACK_POOL: Lazy<StackPool> = Lazy::new(StackPool::default);
+
 /// Use `corosensei` as the low-level coroutine.
 #[repr(C)]
 pub struct Coroutine<'c, Param, Yield, Return> {
     pub(crate) name: String,
-    inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, DefaultStack>,
+    inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, PooledStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
     pub(crate) stack_size: usize,
     pub(crate) stack_infos: RefCell<VecDeque<StackInfo>>,
@@ -314,7 +318,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             if remaining_stack >= red_zone {
                 return Ok(callback());
             }
-            return DefaultStack::new(stack_size).map(|stack| {
+            return STACK_POOL.get_stack(stack_size).map(|stack| {
                 co.stack_infos.borrow_mut().push_back(StackInfo {
                     stack_top: stack.base().get(),
                     stack_bottom: stack.limit().get(),
@@ -335,7 +339,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 return Ok(callback());
             }
         }
-        DefaultStack::new(stack_size).map(|stack| {
+        STACK_POOL.get_stack(stack_size).map(|stack| {
             STACK_INFOS.with(|s| {
                 s.borrow_mut().push_back(StackInfo {
                     stack_top: stack.base().get(),
@@ -378,7 +382,7 @@ where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return + 'static,
     {
         let stack_size = stack_size.max(crate::common::page_size());
-        let stack = DefaultStack::new(stack_size)?;
+        let stack = STACK_POOL.get_stack(stack_size)?;
         let stack_infos = RefCell::new(VecDeque::from([StackInfo {
             stack_top: stack.base().get(),
             stack_bottom: stack.limit().get(),
