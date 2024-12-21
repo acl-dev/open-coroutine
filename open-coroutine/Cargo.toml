@@ -37,6 +37,7 @@ cargo_metadata.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+cfg-if.workspace = true
 
 [features]
 default = ["open-coroutine-hook/default", "open-coroutine-core/default"]
