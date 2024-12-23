@@ -8,30 +8,30 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Average time to resolve an issue")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Percentage of issues still open")
 
-The `open-coroutine` is a simple, efficient and generic stackful-coroutine library.
+`open-coroutine`是一个简单、高效、通用的有栈协程库。
 
-English | [中文](README_ZH.md)
+[English](README.md) | 中文
 
-## 🚀 Features
+## 🚀 当前特性
 
-- [x] Preemptive(`not supported in windows`): even if the coroutine enters a dead loop, it can still be seized, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
-- [x] Hook: you are free to use most of the slow system calls in coroutine;
-- [x] Scalable: the size of the coroutine stack supports unlimited expansion without the cost of copying stack, and immediately shrinks to the original size after use, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
-- [x] io_uring(`only in linux`): supports and is compatible with io_uring in terms of local file IO and network IO. If it's not supported on your system, it will fall back to non-blocking IO;
-- [x] Priority: support custom task and coroutine priority;
-- [x] Work Stealing: internally using a lock free work steal queue;
-- [x] Compatibility: the implementation of open-coroutine is no async, but it is compatible with async, which means you can use this crate in tokio/async-std/smol/...;
-- [x] Platforms: running on Linux, macOS and Windows;
+- [x] 抢占调度(`不支持windows`): 即使协程进入死循环，它仍能被抢占，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
+- [x] Hook: 您可以在协程中自由使用大多数慢系统调用;
+- [x] 可伸缩栈: 协程栈的大小支持无限制扩容而没有复制堆栈的开销，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
+- [x] io_uring(`只支持linux`): 在本地文件IO和网络IO方面支持并兼容io_uring。如果您的系统不支持，它将回退到NIO;
+- [x] 优先级: 支持自定义任务和协程的优先级;
+- [x] 任务窃取: 内部使用无锁任务窃取队列;
+- [x] 兼容性: open-coroutine的实现是No async的，但它与async兼容，这意味着您可以在tokio/sync-std/smol/...中使用这个crate;
+- [x] 跨平台: 支持Linux、macOS和Windows;
 
-## 🕊 Roadmap
+## 🕊 未来计划
 
-- [ ] support `#[open_coroutine::all_join]` and `#[open_coroutine::any_join]` macro to wait coroutines;
-- [ ] add synchronization toolkit;
-- [ ] support and compatibility for AF_XDP socket;
+- [ ] 支持`#[open_coroutine::all_join]`和`#[open_coroutine::any_join]`宏;
+- [ ] 增加并发工具包;
+- [ ] 支持AF_XDP套接字;
 
-## 📖 Quick Start
+## 📖 快速接入
 
-### step1: add dependency to your Cargo.toml
+### step1: 在你的Cargo.toml中添加依赖
 
 ```toml
 [dependencies]
@@ -39,7 +39,7 @@ English | [中文](README_ZH.md)
 open-coroutine = "x.y.z"
 ```
 
-### step2: add macro
+### step2: 添加宏
 
 ```rust
 #[open_coroutine::main]
@@ -48,7 +48,7 @@ fn main() {
 }
 ```
 
-### step3: create a task
+### step3: 创建任务
 
 ```rust
 #[open_coroutine::main]
@@ -60,7 +60,7 @@ fn main() {
 }
 ```
 
-### step4: scalable stack(optional)
+### step4: 扩容栈(可选)
 
 ```rust
 #[open_coroutine::main]
@@ -83,6 +83,6 @@ fn main() {
 }
 ```
 
-## ⚓ Learn
+## ⚓ 学习更多
 
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)

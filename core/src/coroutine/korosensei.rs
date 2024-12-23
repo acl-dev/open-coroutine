@@ -307,8 +307,6 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         stack_size: usize,
         callback: F,
     ) -> std::io::Result<R> {
-        // if we can't guess the remaining stack (unsupported on some platforms) we immediately grow
-        // the stack and then cache the new stack size (which we do know now because we allocated it.
         if let Some(co) = Self::current() {
             let remaining_stack = unsafe { co.remaining_stack() };
             if remaining_stack >= red_zone {
@@ -325,6 +323,8 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             });
         }
         // in thread
+        // if we can't guess the remaining stack (unsupported on some platforms) we immediately grow
+        // the stack and then cache the new stack size (which we do know now because we allocated it).
         thread_local! {
             #[allow(clippy::missing_const_for_thread_local)]
             static STACK_INFOS: RefCell<VecDeque<StackInfo>> = const { RefCell::new(VecDeque::new()) };
