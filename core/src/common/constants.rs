@@ -15,6 +15,9 @@ pub const COROUTINE_GLOBAL_QUEUE_BEAN: &str = "coroutineGlobalQueueBean";
 /// Task global queue bean name.
 pub const TASK_GLOBAL_QUEUE_BEAN: &str = "taskGlobalQueueBean";
 
+/// Stack pool bean name.
+pub const STACK_POOL_BEAN: &str = "stackPoolBean";
+
 /// Monitor bean name.
 pub const MONITOR_BEAN: &str = "monitorBean";
 
