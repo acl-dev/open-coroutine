@@ -70,7 +70,11 @@ impl Ord for PooledStack {
         // BinaryHeap defaults to a large top heap, but we need a small top heap
         match Rc::strong_count(&other.stack).cmp(&Rc::strong_count(&self.stack)) {
             Ordering::Less => Ordering::Less,
-            Ordering::Equal => other.stack_size.cmp(&self.stack_size),
+            Ordering::Equal => match other.stack_size.cmp(&self.stack_size) {
+                Ordering::Less => Ordering::Less,
+                Ordering::Equal => other.create_time.cmp(&self.create_time),
+                Ordering::Greater => Ordering::Greater,
+            },
             Ordering::Greater => Ordering::Greater,
         }
     }
@@ -102,11 +106,11 @@ unsafe impl Stack for PooledStack {
 }
 
 impl PooledStack {
-    pub(crate) fn new(stack_size: usize, create_time: u64) -> std::io::Result<Self> {
+    pub(crate) fn new(stack_size: usize) -> std::io::Result<Self> {
         Ok(Self {
             stack_size,
             stack: Rc::new(UnsafeCell::new(DefaultStack::new(stack_size)?)),
-            create_time,
+            create_time: now(),
         })
     }
 
@@ -199,7 +203,7 @@ impl StackPool {
                 not_use.push(stack);
             }
         }
-        let stack = PooledStack::new(stack_size, now())?;
+        let stack = PooledStack::new(stack_size)?;
         heap.push(stack.clone());
         self.add_len();
         Ok(stack)
