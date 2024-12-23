@@ -76,6 +76,8 @@ pub struct StackInfo {
 /// Coroutine state abstraction and impl.
 mod state;
 
+pub(crate) mod stack_pool;
+
 impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     /// Get the name of this coroutine.
     pub fn name(&self) -> &str {
