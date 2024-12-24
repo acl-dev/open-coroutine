@@ -1,5 +1,5 @@
+use crate::config::Config;
 use crate::coroutine::suspender::Suspender;
-use crate::net::config::Config;
 use crate::net::event_loop::EventLoop;
 use crate::net::join::JoinHandle;
 use crate::{error, info};
@@ -29,10 +29,6 @@ mod operator;
 
 #[allow(missing_docs)]
 pub mod event_loop;
-
-/// Configuration for `EventLoops`.
-#[allow(missing_docs)]
-pub mod config;
 
 /// Task join abstraction and impl.
 pub mod join;
