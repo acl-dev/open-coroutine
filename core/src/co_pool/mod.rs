@@ -70,9 +70,8 @@ impl Drop for CoroutinePool<'_> {
             self.get_running_size(),
             "There are still tasks in progress !"
         );
-        assert_eq!(
-            0,
-            self.task_queue.len(),
+        assert!(
+            self.task_queue.is_empty(),
             "There are still tasks to be carried out !"
         );
     }

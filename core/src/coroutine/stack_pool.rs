@@ -186,7 +186,7 @@ impl MemoryPool {
     }
 
     pub(crate) fn allocate(&self, stack_size: usize) -> std::io::Result<PooledStack> {
-        let heap = unsafe { self.pool.get().as_mut().expect("StackPool is not unique") };
+        let heap = unsafe { self.pool.get().as_mut().expect("MemoryPool is not unique") };
         // find min stack
         let mut not_use = Vec::new();
         while let Some(stack) = heap.peek() {
@@ -265,7 +265,7 @@ impl MemoryPool {
     /// Clean the expired stack.
     #[allow(dead_code)]
     pub(crate) fn clean(&self) {
-        let heap = unsafe { self.pool.get().as_mut().expect("StackPool is not unique") };
+        let heap = unsafe { self.pool.get().as_mut().expect("MemoryPool is not unique") };
         let mut maybe_free = Vec::new();
         while let Some(stack) = heap.peek() {
             if Rc::strong_count(&stack.stack) > 1 {
