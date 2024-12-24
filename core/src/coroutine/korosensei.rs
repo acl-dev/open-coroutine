@@ -8,7 +8,7 @@ use crate::coroutine::StackInfo;
 use corosensei::stack::Stack;
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, UnsafeCell};
 use std::collections::VecDeque;
 use std::ffi::c_longlong;
 use std::fmt::Debug;
@@ -29,7 +29,7 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     pub(crate) name: String,
     inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, PooledStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
-    pub(crate) stack_infos: RefCell<VecDeque<StackInfo>>,
+    stack_infos: UnsafeCell<VecDeque<StackInfo>>,
     pub(crate) listeners: VecDeque<&'c dyn Listener<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
     pub(crate) priority: Option<c_longlong>,
@@ -291,6 +291,25 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         self.listeners.push_back(listener);
     }
 
+    pub(crate) fn stack_infos_ref(&self) -> &VecDeque<StackInfo> {
+        unsafe {
+            self.stack_infos
+                .get()
+                .as_ref()
+                .expect("StackInfo not init !")
+        }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) fn stack_infos_mut(&self) -> &mut VecDeque<StackInfo> {
+        unsafe {
+            self.stack_infos
+                .get()
+                .as_mut()
+                .expect("StackInfo not init !")
+        }
+    }
+
     /// Grows the call stack if necessary.
     ///
     /// This function is intended to be called at manually instrumented points in a program where
@@ -314,12 +333,12 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 return Ok(callback());
             }
             return stack_pool.allocate(stack_size).map(|stack| {
-                co.stack_infos.borrow_mut().push_back(StackInfo {
+                co.stack_infos_mut().push_back(StackInfo {
                     stack_top: stack.base().get(),
                     stack_bottom: stack.limit().get(),
                 });
                 let r = corosensei::on_stack(stack, callback);
-                _ = co.stack_infos.borrow_mut().pop_back();
+                _ = co.stack_infos_mut().pop_back();
                 r
             });
         }
@@ -380,7 +399,7 @@ where
     {
         let stack_size = stack_size.max(crate::common::page_size());
         let stack = MemoryPool::get_instance().allocate(stack_size)?;
-        let stack_infos = RefCell::new(VecDeque::from([StackInfo {
+        let stack_infos = UnsafeCell::new(VecDeque::from([StackInfo {
             stack_top: stack.base().get(),
             stack_bottom: stack.limit().get(),
         }]));

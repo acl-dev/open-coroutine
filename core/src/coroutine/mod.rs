@@ -107,15 +107,15 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     ///
     /// This can only be done safely in coroutine.
     pub unsafe fn remaining_stack(&self) -> usize {
-        let current_ptr = psm::stack_pointer() as usize;
-        current_ptr - self.stack_infos.borrow().back().unwrap().stack_bottom
+        let current_sp = psm::stack_pointer() as usize;
+        current_sp - self.stack_infos_ref().back().unwrap().stack_bottom
     }
 
     /// Queries the current stack info of this coroutine.
     ///
     /// The first used stack index is 0 and increases with usage.
     pub fn stack_infos(&self) -> VecDeque<StackInfo> {
-        self.stack_infos.borrow().clone()
+        self.stack_infos_ref().clone()
     }
 
     /// Checks whether the stack pointer at the point where a trap occurred is
@@ -126,7 +126,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     /// The result of this function is only meaningful if the coroutine has not
     /// been dropped yet.
     pub fn stack_ptr_in_bounds(&self, stack_ptr: u64) -> bool {
-        for info in self.stack_infos.borrow().iter() {
+        for info in self.stack_infos_ref() {
             if info.stack_bottom as u64 <= stack_ptr && stack_ptr < info.stack_top as u64 {
                 return true;
             }
@@ -202,7 +202,7 @@ where
         f.debug_struct("Coroutine")
             .field("name", &self.name())
             .field("state", &self.state())
-            .field("stack_infos", &self.stack_infos)
+            .field("stack_infos", &self.stack_infos())
             .field("local", &self.local)
             .field("priority", &self.priority)
             .finish()
