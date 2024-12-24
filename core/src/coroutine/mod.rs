@@ -1,4 +1,5 @@
 use crate::common::constants::CoroutineState;
+use crate::common::ordered_work_steal::Ordered;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
@@ -16,10 +17,11 @@ pub mod local;
 /// Coroutine listener abstraction and impl.
 pub mod listener;
 
-use crate::common::ordered_work_steal::Ordered;
+/// Reuse stacks.
+pub mod stack_pool;
+
 #[cfg(feature = "korosensei")]
 pub use korosensei::Coroutine;
-
 #[cfg(feature = "korosensei")]
 mod korosensei;
 
@@ -75,8 +77,6 @@ pub struct StackInfo {
 
 /// Coroutine state abstraction and impl.
 mod state;
-
-pub(crate) mod stack_pool;
 
 impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     /// Get the name of this coroutine.
@@ -201,8 +201,10 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name())
-            .field("status", &self.state())
+            .field("state", &self.state())
+            .field("stack_infos", &self.stack_infos)
             .field("local", &self.local)
+            .field("priority", &self.priority)
             .finish()
     }
 }

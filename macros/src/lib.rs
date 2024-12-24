@@ -59,6 +59,8 @@ pub fn main(args: TokenStream, func: TokenStream) -> TokenStream {
     let mut min_size = usize::MAX;
     let mut max_size = usize::MAX;
     let mut keep_alive_time = u64::MAX;
+    let mut min_memory_count = usize::MAX;
+    let mut memory_keep_alive_time = u64::MAX;
     let mut hook = true;
     if !args.is_empty() {
         let tea_parser = syn::meta::parser(|meta| {
@@ -72,6 +74,10 @@ pub fn main(args: TokenStream, func: TokenStream) -> TokenStream {
                 max_size = meta.value()?.parse::<LitInt>()?.base10_parse()?;
             } else if meta.path.is_ident("keep_alive_time") {
                 keep_alive_time = meta.value()?.parse::<LitInt>()?.base10_parse()?;
+            } else if meta.path.is_ident("min_memory_count") {
+                min_memory_count = meta.value()?.parse::<LitInt>()?.base10_parse()?;
+            } else if meta.path.is_ident("memory_keep_alive_time") {
+                memory_keep_alive_time = meta.value()?.parse::<LitInt>()?.base10_parse()?;
             } else if meta.path.is_ident("hook") {
                 hook = meta.value()?.parse::<LitBool>()?.value();
             }
@@ -108,6 +114,12 @@ pub fn main(args: TokenStream, func: TokenStream) -> TokenStream {
             }
             if #keep_alive_time != u64::MAX {
                 open_coroutine_config.set_keep_alive_time(#keep_alive_time);
+            }
+            if #min_memory_count != usize::MAX {
+                open_coroutine_config.set_min_memory_count(#min_memory_count);
+            }
+            if #memory_keep_alive_time != u64::MAX {
+                open_coroutine_config.set_memory_keep_alive_time(#memory_keep_alive_time);
             }
             if #hook != true {
                 open_coroutine_config.set_hook(#hook);

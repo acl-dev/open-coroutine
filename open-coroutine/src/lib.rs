@@ -49,7 +49,7 @@
 
 use open_coroutine_core::co_pool::task::UserTaskFunc;
 use open_coroutine_core::common::constants::SLICE;
-pub use open_coroutine_core::net::config::Config;
+pub use open_coroutine_core::config::Config;
 use open_coroutine_core::net::UserFunc;
 pub use open_coroutine_macros::*;
 use std::cmp::Ordering;
@@ -322,7 +322,7 @@ pub fn connect_timeout<A: ToSocketAddrs>(addr: A, timeout: Duration) -> std::io:
 #[cfg(test)]
 mod tests {
     use crate::{init, shutdown};
-    use open_coroutine_core::net::config::Config;
+    use open_coroutine_core::config::Config;
 
     #[test]
     fn test() {

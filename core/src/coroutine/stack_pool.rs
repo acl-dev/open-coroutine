@@ -1,7 +1,7 @@
-use crate::common::beans::BeanFactory;
-use crate::common::constants::STACK_POOL_BEAN;
 use crate::common::now;
+use crate::config::Config;
 use corosensei::stack::{DefaultStack, Stack, StackPointer};
+use once_cell::sync::OnceCell;
 use std::cell::UnsafeCell;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -138,35 +138,49 @@ impl PooledStack {
     }
 }
 
-pub(crate) struct StackPool {
+static STACK_POOL: OnceCell<MemoryPool> = OnceCell::new();
+
+/// A memory pool for reusing stacks.
+#[derive(educe::Educe)]
+#[educe(Debug)]
+pub struct MemoryPool {
+    #[educe(Debug(ignore))]
     pool: UnsafeCell<BinaryHeap<PooledStack>>,
     len: AtomicUsize,
     //最小内存数，即核心内存数
-    min_size: AtomicUsize,
+    min_count: AtomicUsize,
     //非核心内存的最大存活时间，单位ns
     keep_alive_time: AtomicU64,
 }
 
-unsafe impl Send for StackPool {}
+unsafe impl Send for MemoryPool {}
 
-unsafe impl Sync for StackPool {}
+unsafe impl Sync for MemoryPool {}
 
-impl Default for StackPool {
+impl Default for MemoryPool {
     fn default() -> Self {
         Self::new(0, 10_000_000_000)
     }
 }
 
-impl StackPool {
-    pub(crate) fn get_instance<'m>() -> &'m Self {
-        BeanFactory::get_or_default(STACK_POOL_BEAN)
+impl MemoryPool {
+    /// Init the `MemoryPool`.
+    pub fn init(config: &Config) -> Result<(), MemoryPool> {
+        STACK_POOL.set(MemoryPool::new(
+            config.min_memory_count(),
+            config.memory_keep_alive_time(),
+        ))
     }
 
-    pub(crate) fn new(min_size: usize, keep_alive_time: u64) -> Self {
+    pub(crate) fn get_instance<'m>() -> &'m Self {
+        STACK_POOL.get_or_init(MemoryPool::default)
+    }
+
+    pub(crate) fn new(min_count: usize, keep_alive_time: u64) -> Self {
         Self {
             pool: UnsafeCell::new(BinaryHeap::default()),
             len: AtomicUsize::default(),
-            min_size: AtomicUsize::new(min_size),
+            min_count: AtomicUsize::new(min_count),
             keep_alive_time: AtomicU64::new(keep_alive_time),
         }
     }
@@ -194,7 +208,7 @@ impl StackPool {
                     stack.update_stack_teb_fields();
                     return Ok(stack);
                 }
-                if self.min_size() < self.len()
+                if self.min_count() < self.len()
                     && now() <= stack.create_time.saturating_add(self.keep_alive_time())
                 {
                     // clean the expired stack
@@ -221,13 +235,13 @@ impl StackPool {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn set_min_size(&self, min_size: usize) {
-        self.min_size
-            .store(min_size, std::sync::atomic::Ordering::Release);
+    pub(crate) fn set_min_count(&self, min_count: usize) {
+        self.min_count
+            .store(min_count, std::sync::atomic::Ordering::Release);
     }
 
-    pub(crate) fn min_size(&self) -> usize {
-        self.min_size.load(std::sync::atomic::Ordering::Acquire)
+    pub(crate) fn min_count(&self) -> usize {
+        self.min_count.load(std::sync::atomic::Ordering::Acquire)
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -264,7 +278,7 @@ impl StackPool {
             }
         }
         for stack in maybe_free {
-            if self.min_size() < self.len()
+            if self.min_count() < self.len()
                 && now() <= stack.create_time.saturating_add(self.keep_alive_time())
             {
                 // free the stack
@@ -283,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_stack_pool() -> std::io::Result<()> {
-        let pool = StackPool::default();
+        let pool = MemoryPool::default();
         let stack = pool.allocate(DEFAULT_STACK_SIZE)?;
         assert_eq!(Rc::strong_count(&stack.stack), 2);
         drop(stack);

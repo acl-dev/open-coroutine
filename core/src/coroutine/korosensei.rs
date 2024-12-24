@@ -2,7 +2,7 @@ use crate::catch;
 use crate::common::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
-use crate::coroutine::stack_pool::{PooledStack, StackPool};
+use crate::coroutine::stack_pool::{MemoryPool, PooledStack};
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::StackInfo;
 use corosensei::stack::Stack;
@@ -29,7 +29,6 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     pub(crate) name: String,
     inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, PooledStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
-    pub(crate) stack_size: usize,
     pub(crate) stack_infos: RefCell<VecDeque<StackInfo>>,
     pub(crate) listeners: VecDeque<&'c dyn Listener<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
@@ -308,7 +307,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         stack_size: usize,
         callback: F,
     ) -> std::io::Result<R> {
-        let stack_pool = StackPool::get_instance();
+        let stack_pool = MemoryPool::get_instance();
         if let Some(co) = Self::current() {
             let remaining_stack = unsafe { co.remaining_stack() };
             if remaining_stack >= red_zone {
@@ -380,7 +379,7 @@ where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return + 'static,
     {
         let stack_size = stack_size.max(crate::common::page_size());
-        let stack = StackPool::get_instance().allocate(stack_size)?;
+        let stack = MemoryPool::get_instance().allocate(stack_size)?;
         let stack_infos = RefCell::new(VecDeque::from([StackInfo {
             stack_top: stack.base().get(),
             stack_bottom: stack.limit().get(),
@@ -403,7 +402,6 @@ where
         let mut co = Coroutine {
             name,
             inner,
-            stack_size,
             stack_infos,
             state: Cell::new(CoroutineState::Ready),
             listeners: VecDeque::default(),

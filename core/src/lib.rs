@@ -56,6 +56,10 @@
 /// Common traits and impl.
 pub mod common;
 
+/// Configuration for `EventLoops`.
+#[allow(missing_docs)]
+pub mod config;
+
 /// Coroutine impls.
 pub mod coroutine;
 
