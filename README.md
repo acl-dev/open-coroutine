@@ -67,7 +67,7 @@ fn main() {
 fn main() {
     _ = open_coroutine::task!(|param| {
         assert_eq!(param, "param");
-    }, "param", 1/*priority*/);
+    }, "param", 1/*the smaller the value, the higher the priority*/);
 }
 ```
 
