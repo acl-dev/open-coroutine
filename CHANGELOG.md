@@ -79,4 +79,4 @@
 - [x] higher level coroutine abstraction supported
 - [x] preemptive scheduling supported
 - [x] work stealing supported
-- [x] sleep system call hooks supported
+- [x] sleep syscall hooks supported

@@ -1,4 +1,4 @@
-use crate::common::constants::{CoroutineState, Syscall, SyscallState};
+use crate::common::constants::{CoroutineState, SyscallName, SyscallState};
 use crate::scheduler::SchedulableCoroutine;
 use crate::syscall::windows::NON_BLOCKING;
 use crate::{error, info};
@@ -42,14 +42,14 @@ impl<I: IoctlsocketSyscall> IoctlsocketSyscall for IoctlsocketSyscallFacade<I> {
         cmd: c_int,
         argp: *mut c_uint,
     ) -> c_int {
-        let syscall = Syscall::ioctlsocket;
+        let syscall = SyscallName::ioctlsocket;
         info!("enter syscall {}", syscall);
         if let Some(co) = SchedulableCoroutine::current() {
             _ = co.syscall((), syscall, SyscallState::Executing);
         }
         let r = self.inner.ioctlsocket(fn_ptr, fd, cmd, argp);
         if let Some(co) = SchedulableCoroutine::current() {
-            if let CoroutineState::SystemCall((), Syscall::ioctlsocket, SyscallState::Executing) =
+            if let CoroutineState::Syscall((), SyscallName::ioctlsocket, SyscallState::Executing) =
                 co.state()
             {
                 if co.running().is_err() {

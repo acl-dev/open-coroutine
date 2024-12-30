@@ -182,6 +182,28 @@ impl<R> JoinHandle<R> {
             }
         }
     }
+
+    pub fn any_timeout_join(dur: Duration, slice: &[Self]) -> std::io::Result<Option<R>> {
+        if slice.is_empty() {
+            return Ok(None);
+        }
+        let timeout_time = open_coroutine_core::common::get_timeout_time(dur);
+        loop {
+            for handle in slice {
+                let left_time = timeout_time.saturating_sub(open_coroutine_core::common::now());
+                if 0 == left_time {
+                    return Err(Error::new(ErrorKind::Other, "timeout join failed"));
+                }
+                if let Ok(x) = handle.timeout_join(Duration::from_nanos(left_time).min(SLICE)) {
+                    return Ok(x);
+                }
+            }
+        }
+    }
+
+    pub fn any_join<I: IntoIterator<Item = Self>>(iter: I) -> std::io::Result<Option<R>> {
+        Self::any_timeout_join(Duration::MAX, Vec::from_iter(iter).as_slice())
+    }
 }
 
 impl<R> From<open_coroutine_core::net::join::JoinHandle> for JoinHandle<R> {
@@ -201,6 +223,22 @@ impl<R> Deref for JoinHandle<R> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// Waiting for one of the tasks to be completed.
+#[macro_export]
+macro_rules! any_timeout_join {
+    ($time:expr, $($x:expr),+ $(,)?) => {
+        $crate::JoinHandle::any_timeout_join($time, vec![$($x),+].as_slice())
+    }
+}
+
+/// Waiting for one of the tasks to be completed.
+#[macro_export]
+macro_rules! any_join {
+    ($($x:expr),+ $(,)?) => {
+        $crate::JoinHandle::any_join(vec![$($x),+])
     }
 }
 

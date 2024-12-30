@@ -1,4 +1,4 @@
-use crate::common::constants::{CoroutineState, Syscall, SyscallState};
+use crate::common::constants::{CoroutineState, SyscallName, SyscallState};
 use crate::common::now;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::Coroutine;
@@ -67,7 +67,7 @@ where
         let current = self.state();
         match current {
             CoroutineState::Running => return Ok(()),
-            CoroutineState::Ready | CoroutineState::SystemCall(_, _, SyscallState::Executing) => {
+            CoroutineState::Ready | CoroutineState::Syscall(_, _, SyscallState::Executing) => {
                 let new_state = CoroutineState::Running;
                 let old_state = self.change_state(new_state);
                 self.on_running(self, old_state);
@@ -82,7 +82,7 @@ where
                     return Ok(());
                 }
             }
-            CoroutineState::SystemCall(_, _, SyscallState::Callback | SyscallState::Timeout) => {
+            CoroutineState::Syscall(_, _, SyscallState::Callback | SyscallState::Timeout) => {
                 return Ok(());
             }
             _ => {}
@@ -127,20 +127,20 @@ where
     pub fn syscall(
         &self,
         val: Yield,
-        syscall: Syscall,
+        syscall: SyscallName,
         syscall_state: SyscallState,
     ) -> std::io::Result<()> {
         let current = self.state();
         match current {
             CoroutineState::Running => {
-                let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
+                let new_state = CoroutineState::Syscall(val, syscall, syscall_state);
                 let old_state = self.change_state(new_state);
                 self.on_syscall(self, old_state);
                 return Ok(());
             }
-            CoroutineState::SystemCall(_, original_syscall, _) => {
+            CoroutineState::Syscall(_, original_syscall, _) => {
                 if original_syscall == syscall {
-                    let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
+                    let new_state = CoroutineState::Syscall(val, syscall, syscall_state);
                     let old_state = self.change_state(new_state);
                     self.on_syscall(self, old_state);
                     return Ok(());
@@ -153,7 +153,7 @@ where
             format!(
                 "{} unexpected {current}->{:?}",
                 self.name(),
-                CoroutineState::<Yield, Return>::SystemCall(val, syscall, syscall_state)
+                CoroutineState::<Yield, Return>::Syscall(val, syscall, syscall_state)
             ),
         ))
     }
@@ -250,13 +250,13 @@ mod tests {
         let co = co!(|_: &Suspender<(), ()>, ()| {})?;
         assert_eq!(CoroutineState::Ready, co.state());
         co.running()?;
-        co.syscall((), Syscall::nanosleep, SyscallState::Executing)?;
+        co.syscall((), SyscallName::nanosleep, SyscallState::Executing)?;
         assert_eq!(
-            CoroutineState::SystemCall((), Syscall::nanosleep, SyscallState::Executing),
+            CoroutineState::Syscall((), SyscallName::nanosleep, SyscallState::Executing),
             co.state()
         );
         assert!(co
-            .syscall((), Syscall::sleep, SyscallState::Executing)
+            .syscall((), SyscallName::sleep, SyscallState::Executing)
             .is_err());
         Ok(())
     }

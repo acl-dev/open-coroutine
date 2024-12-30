@@ -15,17 +15,18 @@ English | [中文](README_ZH.md)
 ## 🚀 Features
 
 - [x] Preemptive(`not supported in windows`): even if the coroutine enters a dead loop, it can still be seized, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
-- [x] Hook: you are free to use most of the slow system calls in coroutine;
+- [x] Hook: you are free to use most of the slow syscall in coroutine, see supported syscall on [unix](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/unix.rs)/[windows](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/windows.rs);
 - [x] Scalable: the size of the coroutine stack supports unlimited expansion without the cost of copying stack, and immediately shrinks to the original size after use, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
 - [x] io_uring(`only in linux`): supports and is compatible with io_uring in terms of local file IO and network IO. If it's not supported on your system, it will fall back to non-blocking IO;
-- [x] Priority: support custom task and coroutine priority;
-- [x] Work Stealing: internally using a lock free work steal queue;
-- [x] Compatibility: the implementation of open-coroutine is no async, but it is compatible with async, which means you can use this crate in tokio/async-std/smol/...;
+- [x] Priority: support custom task priority, note that coroutine priority is not open to users;
+- [x] Work Steal: internally using a lock free work steal queue;
+- [x] Compatibility: the implementation of open-coroutine is no async, but it is compatible with async, which means you can use this crate in `tokio/async-std/smol/...`;
 - [x] Platforms: running on Linux, macOS and Windows;
 
 ## 🕊 Roadmap
 
-- [ ] support `#[open_coroutine::all_join]` and `#[open_coroutine::any_join]` macro to wait coroutines;
+- [ ] cancel coroutine/task;
+- [ ] add metrics;
 - [ ] add synchronization toolkit;
 - [ ] support and compatibility for AF_XDP socket;
 
@@ -39,7 +40,7 @@ English | [中文](README_ZH.md)
 open-coroutine = "x.y.z"
 ```
 
-### step2: add macro
+### step2: add `open_coroutine::main` macro
 
 ```rust
 #[open_coroutine::main]
@@ -53,14 +54,36 @@ fn main() {
 ```rust
 #[open_coroutine::main]
 fn main() {
+    _ = open_coroutine::task!(|param| {
+        assert_eq!(param, "param");
+    }, "param");
+}
+```
+
+### create a task with priority(optional)
+
+```rust
+#[open_coroutine::main]
+fn main() {
+    _ = open_coroutine::task!(|param| {
+        assert_eq!(param, "param");
+    }, "param", 1/*priority*/);
+}
+```
+
+### wait until the task is completed or timed out(optional)
+
+```rust
+#[open_coroutine::main]
+fn main() {
     let task = open_coroutine::task!(|param| {
-        assert_eq!(param, 1);
-    }, 1);
+        assert_eq!(param, "param");
+    }, "param", 1);
     task.timeout_join(std::time::Duration::from_secs(1)).expect("timeout");
 }
 ```
 
-### step4: scalable stack(optional)
+### scalable stack(optional)
 
 ```rust
 #[open_coroutine::main]
@@ -83,6 +106,6 @@ fn main() {
 }
 ```
 
-## ⚓ Learn
+## ⚓ Learn More
 
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
