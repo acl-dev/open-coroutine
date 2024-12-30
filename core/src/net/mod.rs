@@ -243,7 +243,7 @@ impl EventLoops {
 }
 
 macro_rules! impl_io_uring {
-    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    ( $syscall: ident($($arg: ident: $arg_type: ty),*) -> $result: ty ) => {
         #[cfg(all(target_os = "linux", feature = "io_uring"))]
         impl EventLoops {
             #[allow(missing_docs)]

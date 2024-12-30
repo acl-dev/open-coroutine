@@ -1,6 +1,6 @@
 use crate::co_pool::CoroutinePool;
 use crate::common::beans::BeanFactory;
-use crate::common::constants::{CoroutineState, PoolState, Syscall, SyscallState, SLICE};
+use crate::common::constants::{CoroutineState, PoolState, SyscallName, SyscallState, SLICE};
 use crate::net::selector::{Event, Events, Poller, Selector};
 use crate::scheduler::SchedulableCoroutine;
 use crate::{error, impl_current_for, impl_display_by_debug, info};
@@ -98,7 +98,7 @@ impl<'e> EventLoop<'e> {
     }
 
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
-    fn token(syscall: Syscall) -> usize {
+    fn token(syscall: SyscallName) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
             let boxed: &'static mut CString = Box::leak(Box::from(
                 CString::new(co.name()).expect("build name failed!"),
@@ -116,9 +116,9 @@ impl<'e> EventLoop<'e> {
                     let thread_id = libc::pthread_self();
                 }
             }
-            let syscall_mask = <Syscall as Into<&str>>::into(syscall).as_ptr() as usize;
+            let syscall_mask = <SyscallName as Into<&str>>::into(syscall).as_ptr() as usize;
             let token = thread_id as usize ^ syscall_mask;
-            if Syscall::nio() != syscall {
+            if SyscallName::nio() != syscall {
                 eprintln!("generate token:{token} for {syscall}");
             }
             token
@@ -127,12 +127,12 @@ impl<'e> EventLoop<'e> {
 
     pub(super) fn add_read_event(&self, fd: c_int) -> std::io::Result<()> {
         self.selector
-            .add_read_event(fd, EventLoop::token(Syscall::nio()))
+            .add_read_event(fd, EventLoop::token(SyscallName::nio()))
     }
 
     pub(super) fn add_write_event(&self, fd: c_int) -> std::io::Result<()> {
         self.selector
-            .add_write_event(fd, EventLoop::token(Syscall::nio()))
+            .add_write_event(fd, EventLoop::token(SyscallName::nio()))
     }
 
     pub(super) fn del_event(&self, fd: c_int) -> std::io::Result<()> {
@@ -182,8 +182,7 @@ impl<'e> EventLoop<'e> {
         if let Some(time) = left_time {
             let timestamp = crate::common::get_timeout_time(time);
             if let Some(co) = SchedulableCoroutine::current() {
-                if let CoroutineState::SystemCall((), syscall, SyscallState::Executing) = co.state()
-                {
+                if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state() {
                     let new_state = SyscallState::Suspend(timestamp);
                     if co.syscall((), syscall, new_state).is_err() {
                         error!(
@@ -201,7 +200,7 @@ impl<'e> EventLoop<'e> {
                 left_time = Some(Duration::ZERO);
             }
             if let Some(co) = SchedulableCoroutine::current() {
-                if let CoroutineState::SystemCall(
+                if let CoroutineState::Syscall(
                     (),
                     syscall,
                     SyscallState::Callback | SyscallState::Timeout,
@@ -409,7 +408,7 @@ macro_rules! impl_io_uring {
                 &self,
                 $($arg: $arg_type),*
             ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
-                let token = EventLoop::token(Syscall::$syscall);
+                let token = EventLoop::token(SyscallName::$syscall);
                 self.operator.$syscall(token, $($arg, )*)?;
                 let arc = Arc::new((Mutex::new(None), Condvar::new()));
                 assert!(

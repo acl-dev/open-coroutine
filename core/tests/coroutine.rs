@@ -239,7 +239,7 @@ fn coroutine_preemptive() -> std::io::Result<()> {
 #[cfg(all(unix, feature = "preemptive"))]
 #[test]
 fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
-    use open_coroutine_core::common::constants::{Syscall, SyscallState};
+    use open_coroutine_core::common::constants::{SyscallName, SyscallState};
 
     let pair = std::sync::Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
     let pair2 = pair.clone();
@@ -249,7 +249,7 @@ fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
             let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| {
                 Coroutine::<(), (), ()>::current()
                     .unwrap()
-                    .syscall((), Syscall::sleep, SyscallState::Executing)
+                    .syscall((), SyscallName::sleep, SyscallState::Executing)
                     .unwrap();
                 loop {}
             })?;

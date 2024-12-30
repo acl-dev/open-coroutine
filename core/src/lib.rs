@@ -60,7 +60,7 @@ pub mod common;
 #[allow(missing_docs)]
 pub mod config;
 
-/// Coroutine impls.
+#[doc = include_str!("../../docs/en/coroutine.md")]
 pub mod coroutine;
 
 /// Make the coroutine automatically yield.

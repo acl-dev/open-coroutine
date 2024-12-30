@@ -20,7 +20,7 @@ macro_rules! impl_facade {
                 fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
                 $($arg: $arg_type),*
             ) -> $result {
-                let syscall = $crate::common::constants::Syscall::$syscall;
+                let syscall = $crate::common::constants::SyscallName::$syscall;
                 $crate::info!("enter syscall {}", syscall);
                 if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
                     let new_state = $crate::common::constants::SyscallState::Executing;
@@ -226,7 +226,7 @@ macro_rules! impl_nio_read_iovec {
                             $fd,
                             arg.as_ptr(),
                             std::ffi::c_uint::try_from(arg.len()).unwrap_or_else(|_| {
-                                panic!("{} iovcnt overflow", $crate::common::constants::Syscall::$syscall)
+                                panic!("{} iovcnt overflow", $crate::common::constants::SyscallName::$syscall)
                             }),
                             $($arg, )*
                         );
@@ -415,7 +415,7 @@ macro_rules! impl_nio_write_iovec {
                             $fd,
                             arg.as_ptr(),
                             std::ffi::c_uint::try_from(arg.len()).unwrap_or_else(|_| {
-                                panic!("{} iovcnt overflow", $crate::common::constants::Syscall::$syscall)
+                                panic!("{} iovcnt overflow", $crate::common::constants::SyscallName::$syscall)
                             }),
                             $($arg, )*
                         );
