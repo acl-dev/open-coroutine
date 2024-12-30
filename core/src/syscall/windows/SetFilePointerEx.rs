@@ -8,8 +8,8 @@ pub extern "system" fn SetFilePointerEx(
     fn_ptr: Option<&extern "system" fn(HANDLE, c_longlong, *mut c_longlong, SET_FILE_POINTER_MOVE_METHOD) -> BOOL>,
     hfile: HANDLE,
     lidistancetomove: c_longlong,
-    lpnewfilepointer : *mut c_longlong,
-    dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
+    lpnewfilepointer: *mut c_longlong,
+    dwmovemethod: SET_FILE_POINTER_MOVE_METHOD
 ) -> BOOL {
     static CHAIN: Lazy<SetFilePointerExSyscallFacade<RawSetFilePointerExSyscall>> =
         Lazy::new(Default::default);
@@ -22,8 +22,8 @@ trait SetFilePointerExSyscall {
         fn_ptr: Option<&extern "system" fn(HANDLE, c_longlong, *mut c_longlong, SET_FILE_POINTER_MOVE_METHOD) -> BOOL>,
         hfile: HANDLE,
         lidistancetomove: c_longlong,
-        lpnewfilepointer : *mut c_longlong,
-        dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
+        lpnewfilepointer: *mut c_longlong,
+        dwmovemethod: SET_FILE_POINTER_MOVE_METHOD
     ) -> BOOL;
 }
 
@@ -31,8 +31,8 @@ impl_facade!(SetFilePointerExSyscallFacade, SetFilePointerExSyscall,
     SetFilePointerEx(
         hfile: HANDLE,
         lidistancetomove: c_longlong,
-        lpnewfilepointer : *mut c_longlong,
-        dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
+        lpnewfilepointer: *mut c_longlong,
+        dwmovemethod: SET_FILE_POINTER_MOVE_METHOD
     ) -> BOOL
 );
 
@@ -40,7 +40,7 @@ impl_raw!(RawSetFilePointerExSyscall, SetFilePointerExSyscall, windows_sys::Win3
     SetFilePointerEx(
         hfile: HANDLE,
         lidistancetomove: c_longlong,
-        lpnewfilepointer : *mut c_longlong,
-        dwmovemethod : SET_FILE_POINTER_MOVE_METHOD
+        lpnewfilepointer: *mut c_longlong,
+        dwmovemethod: SET_FILE_POINTER_MOVE_METHOD
     ) -> BOOL
 );

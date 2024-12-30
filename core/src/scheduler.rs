@@ -203,7 +203,7 @@ impl<'s> Scheduler<'s> {
         Ok(())
     }
 
-    /// Resume a coroutine from the system call table to the ready queue,
+    /// Resume a coroutine from the syscall table to the ready queue,
     /// it's generally only required for framework level crates.
     ///
     /// If we can't find the coroutine, nothing happens.
@@ -213,7 +213,7 @@ impl<'s> Scheduler<'s> {
     pub fn try_resume(&self, co_name: &'s str) {
         if let Some((_, co)) = self.syscall.remove(&co_name) {
             match co.state() {
-                CoroutineState::SystemCall(val, syscall, SyscallState::Suspend(_)) => {
+                CoroutineState::Syscall(val, syscall, SyscallState::Suspend(_)) => {
                     co.syscall(val, syscall, SyscallState::Callback)
                         .expect("change syscall state failed");
                 }
@@ -271,7 +271,7 @@ impl<'s> Scheduler<'s> {
             // schedule coroutines
             if let Some(mut coroutine) = self.ready.pop() {
                 match coroutine.resume()? {
-                    CoroutineState::SystemCall((), _, state) => {
+                    CoroutineState::Syscall((), _, state) => {
                         //挂起协程到系统调用表
                         let co_name = Box::leak(Box::from(coroutine.name()));
                         //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
@@ -339,7 +339,7 @@ impl<'s> Scheduler<'s> {
             if let Some(item) = self.syscall_suspend.pop() {
                 if let Some((_, co)) = self.syscall.remove(item.co_name) {
                     match co.state() {
-                        CoroutineState::SystemCall(val, syscall, SyscallState::Suspend(_)) => {
+                        CoroutineState::Syscall(val, syscall, SyscallState::Suspend(_)) => {
                             co.syscall(val, syscall, SyscallState::Timeout)?;
                             self.ready.push(co);
                         }

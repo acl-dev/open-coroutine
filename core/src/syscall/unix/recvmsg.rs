@@ -98,7 +98,7 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
                     let msg_iovlen = vec.len();
                 } else {
                     let msg_iovlen = c_int::try_from(iov.len()).unwrap_or_else(|_| {
-                        panic!("{} msghdr.msg_iovlen overflow", crate::common::constants::Syscall::recvmsg)
+                        panic!("{} msghdr.msg_iovlen overflow", crate::common::constants::SyscallName::recvmsg)
                     });
                 }
             }

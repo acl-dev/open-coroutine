@@ -159,7 +159,7 @@ unsafe impl Sync for MemoryPool {}
 
 impl Default for MemoryPool {
     fn default() -> Self {
-        Self::new(0, 10_000_000_000)
+        Self::new(0, 0)
     }
 }
 

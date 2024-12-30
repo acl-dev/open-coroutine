@@ -17,7 +17,7 @@ impl Listener<(), Option<usize>> for CoroutineCreator {
         new_state: SchedulableCoroutineState,
     ) {
         match new_state {
-            CoroutineState::Suspend((), _) | CoroutineState::SystemCall((), _, _) => {
+            CoroutineState::Suspend((), _) | CoroutineState::Syscall((), _, _) => {
                 if let Some(pool) = CoroutinePool::current() {
                     _ = pool.try_grow();
                 }

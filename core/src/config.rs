@@ -16,7 +16,7 @@ pub struct Config {
 impl Config {
     #[must_use]
     pub fn single() -> Self {
-        Self::new(1, DEFAULT_STACK_SIZE, 0, 65536, 0, 0, 10_000_000_000, true)
+        Self::new(1, DEFAULT_STACK_SIZE, 0, 65536, 0, 0, 0, true)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -136,15 +136,6 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self::new(
-            cpu_count(),
-            DEFAULT_STACK_SIZE,
-            0,
-            65536,
-            0,
-            0,
-            10_000_000_000,
-            true,
-        )
+        Self::new(cpu_count(), DEFAULT_STACK_SIZE, 0, 65536, 0, 0, 0, true)
     }
 }

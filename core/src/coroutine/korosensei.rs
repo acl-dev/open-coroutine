@@ -447,8 +447,8 @@ where
                         self.suspend(y, timestamp)?;
                         Ok(CoroutineState::Suspend(y, timestamp))
                     }
-                    CoroutineState::SystemCall(y, syscall, state) => {
-                        Ok(CoroutineState::SystemCall(y, syscall, state))
+                    CoroutineState::Syscall(y, syscall, state) => {
+                        Ok(CoroutineState::Syscall(y, syscall, state))
                     }
                     _ => Err(Error::new(
                         ErrorKind::Other,

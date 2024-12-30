@@ -32,7 +32,7 @@ impl SleepSyscall for NioSleepSyscall {
     ) -> c_uint {
         let time = Duration::from_secs(u64::from(secs));
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
-            let syscall = crate::common::constants::Syscall::sleep;
+            let syscall = crate::common::constants::SyscallName::sleep;
             let new_state = crate::common::constants::SyscallState::Suspend(
                 crate::common::get_timeout_time(time),
             );

@@ -60,6 +60,14 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
         lock: *mut pthread_mutex_t,
         abstime: *const timespec,
     ) -> c_int {
+        fn wait_time(left_time: u64) -> u64 {
+            if left_time > 10_000_000 {
+                10_000_000
+            } else {
+                left_time
+            }
+        }
+
         #[cfg(all(unix, feature = "preemptive"))]
         if crate::monitor::Monitor::current().is_some() {
             return self.inner.pthread_cond_timedwait(
@@ -87,13 +95,14 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
             if 0 == left_time {
                 return libc::ETIMEDOUT;
             }
+            let next_timeout = now().saturating_add(wait_time(left_time));
             let r = self.inner.pthread_cond_timedwait(
                 fn_ptr,
                 cond,
                 lock,
                 &timespec {
-                    tv_sec: now().saturating_div(1_000_000_000).saturating_add(1).try_into().expect("overflow"),
-                    tv_nsec: 0,
+                    tv_sec: next_timeout.saturating_div(1_000_000_000).try_into().expect("overflow"),
+                    tv_nsec: next_timeout.wrapping_rem(1_000_000_000).try_into().expect("overflow"),
                 },
             );
             if libc::ETIMEDOUT != r {
@@ -103,14 +112,10 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
             if 0 == left_time {
                 return libc::ETIMEDOUT;
             }
-            let wait_time = if left_time > 10_000_000 {
-                10_000_000
-            } else {
-                left_time
-            };
+            let wait_time = wait_time(left_time);
             if EventLoops::wait_event(Some(Duration::new(
                 wait_time / 1_000_000_000,
-                (wait_time % 1_000_000_000) as _,
+                wait_time.wrapping_rem(1_000_000_000).try_into().expect("overflow"),
             )))
             .is_err()
             {
