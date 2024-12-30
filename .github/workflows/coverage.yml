@@ -13,6 +13,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CODECOV_TOKEN: 86ae569f-70d3-4c7b-833e-6e8fc97ea9f3
+  # If a test crashes, we want to know which one it was.
+  RUST_TEST_THREADS: 1
+  RUST_BACKTRACE: 1
 
 jobs:
   coverage:
@@ -35,9 +38,7 @@ jobs:
       - name: Generate code coverage with all features
         run: bash -c "${{ matrix.cargo }} llvm-cov --all-features --release --all --lcov --output-path lcov-all-features.info"
       - name: Upload coverage to Codecov
-        run: |
-          bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ env.CODECOV_TOKEN }}
-          bash <(curl -s https://codecov.io/bash) -f lcov-all-features.info -t ${{ env.CODECOV_TOKEN }}
+        run: ${{ matrix.upload }}
 
     strategy:
       fail-fast: false
@@ -45,7 +46,16 @@ jobs:
         include:
           - os: ubuntu-latest
             cargo: ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /home/runner/.cargo/bin/cargo
+            upload: |
+              bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ env.CODECOV_TOKEN }}
+              bash <(curl -s https://codecov.io/bash) -f lcov-all-features.info -t ${{ env.CODECOV_TOKEN }}
           - os: macos-14
             cargo: ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /Users/runner/.cargo/bin/cargo
+            upload: |
+              bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ env.CODECOV_TOKEN }}
+              bash <(curl -s https://codecov.io/bash) -f lcov-all-features.info -t ${{ env.CODECOV_TOKEN }}
           - os: windows-latest
             cargo: C://Users//runneradmin//.cargo//bin//cargo.exe
+            upload: |
+              powershell -Command "iwr -useb https://codecov.io/bash | iex" -f lcov.info -t ${{ env.CODECOV_TOKEN }}
+              powershell -Command "iwr -useb https://codecov.io/bash | iex" -f lcov-all-features.info -t ${{ env.CODECOV_TOKEN }}
