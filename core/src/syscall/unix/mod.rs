@@ -73,7 +73,7 @@ macro_rules! impl_io_uring {
                     }
                     if let Some(suspender) = SchedulableSuspender::current() {
                         suspender.suspend();
-                        //回来的时候，系统调用已经执行完了
+                        //回来的时候，系统调用已经执行完毕
                     }
                     if let Some(co) = SchedulableCoroutine::current() {
                         if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
@@ -105,6 +105,172 @@ macro_rules! impl_io_uring {
                     return syscall_result;
                 }
                 self.inner.$syscall(fn_ptr, $($arg, )*)
+            }
+        }
+    }
+}
+
+macro_rules! impl_io_uring_read {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "C" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "C" fn($fd_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
+                    use $crate::common::constants::{CoroutineState, SyscallState};
+                    use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
+                        {
+                            let new_state = SyscallState::Suspend(
+                                $crate::common::now()
+                                    .saturating_add($crate::syscall::recv_time_limit($fd))
+                            );
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    if let Some(suspender) = SchedulableSuspender::current() {
+                        suspender.suspend();
+                        //回来的时候，系统调用已经执行完毕或者超时
+                    }
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, syscall_state) = co.state() {
+                            match syscall_state {
+                                SyscallState::Timeout => {
+                                    $crate::syscall::set_errno(libc::ETIMEDOUT);
+                                    return -1;
+                                },
+                                SyscallState::Callback => {
+                                    let new_state = SyscallState::Executing;
+                                    if co.syscall((), syscall, new_state).is_err() {
+                                        $crate::error!(
+                                            "{} change to syscall {} {} failed !",
+                                            co.name(), syscall, new_state
+                                        );
+                                    }
+                                },
+                                _ => {}
+                            }
+                        }
+                    }
+                    let (lock, cvar) = &*arc;
+                    let mut syscall_result: $result = cvar
+                        .wait_while(lock.lock().expect("lock failed"),
+                            |&mut result| result.is_none()
+                        )
+                        .expect("lock failed")
+                        .expect("no syscall result")
+                        .try_into()
+                        .expect("io_uring syscall result overflow");
+                    if syscall_result < 0 {
+                        let errno: std::ffi::c_int = (-syscall_result).try_into()
+                            .expect("io_uring errno overflow");
+                        $crate::syscall::set_errno(errno);
+                        syscall_result = -1;
+                    }
+                    return syscall_result;
+                }
+                self.inner.$syscall(fn_ptr, $fd, $($arg, )*)
+            }
+        }
+    }
+}
+
+macro_rules! impl_io_uring_write {
+    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(target_os = "linux", feature = "io_uring"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "C" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "C" fn($fd_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
+                    use $crate::common::constants::{CoroutineState, SyscallState};
+                    use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
+                        {
+                            let new_state = SyscallState::Suspend(
+                                $crate::common::now()
+                                    .saturating_add($crate::syscall::send_time_limit($fd))
+                            );
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    if let Some(suspender) = SchedulableSuspender::current() {
+                        suspender.suspend();
+                        //回来的时候，系统调用已经执行完毕或者超时
+                    }
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, syscall_state) = co.state() {
+                            match syscall_state {
+                                SyscallState::Timeout => {
+                                    $crate::syscall::set_errno(libc::ETIMEDOUT);
+                                    return -1;
+                                },
+                                SyscallState::Callback => {
+                                    let new_state = SyscallState::Executing;
+                                    if co.syscall((), syscall, new_state).is_err() {
+                                        $crate::error!(
+                                            "{} change to syscall {} {} failed !",
+                                            co.name(), syscall, new_state
+                                        );
+                                    }
+                                },
+                                _ => {}
+                            }
+                        }
+                    }
+                    let (lock, cvar) = &*arc;
+                    let mut syscall_result: $result = cvar
+                        .wait_while(lock.lock().expect("lock failed"),
+                            |&mut result| result.is_none()
+                        )
+                        .expect("lock failed")
+                        .expect("no syscall result")
+                        .try_into()
+                        .expect("io_uring syscall result overflow");
+                    if syscall_result < 0 {
+                        let errno: std::ffi::c_int = (-syscall_result).try_into()
+                            .expect("io_uring errno overflow");
+                        $crate::syscall::set_errno(errno);
+                        syscall_result = -1;
+                    }
+                    return syscall_result;
+                }
+                self.inner.$syscall(fn_ptr, $fd,  $($arg, )*)
             }
         }
     }

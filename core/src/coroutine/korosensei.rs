@@ -2,10 +2,9 @@ use crate::catch;
 use crate::common::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
-use crate::coroutine::stack_pool::{MemoryPool, PooledStack};
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::StackInfo;
-use corosensei::stack::Stack;
+use corosensei::stack::{DefaultStack, Stack};
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
 use std::cell::{Cell, RefCell, UnsafeCell};
@@ -27,7 +26,7 @@ cfg_if::cfg_if! {
 #[repr(C)]
 pub struct Coroutine<'c, Param, Yield, Return> {
     pub(crate) name: String,
-    inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, PooledStack>,
+    inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, DefaultStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
     stack_infos: UnsafeCell<VecDeque<StackInfo>>,
     pub(crate) listeners: VecDeque<&'c dyn Listener<Yield, Return>>,
@@ -326,17 +325,13 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         stack_size: usize,
         callback: F,
     ) -> std::io::Result<R> {
-        let stack_pool = MemoryPool::get_instance();
         if let Some(co) = Self::current() {
             let remaining_stack = unsafe { co.remaining_stack() };
             if remaining_stack >= red_zone {
                 return Ok(callback());
             }
-            return stack_pool.allocate(stack_size).map(|stack| {
-                co.stack_infos_mut().push_back(StackInfo {
-                    stack_top: stack.base().get(),
-                    stack_bottom: stack.limit().get(),
-                });
+            return DefaultStack::new(stack_size).map(|stack| {
+                co.stack_infos_mut().push_back(StackInfo::from(&stack));
                 let r = corosensei::on_stack(stack, callback);
                 _ = co.stack_infos_mut().pop_back();
                 r
@@ -355,12 +350,9 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 return Ok(callback());
             }
         }
-        stack_pool.allocate(stack_size).map(|stack| {
+        DefaultStack::new(stack_size).map(|stack| {
             STACK_INFOS.with(|s| {
-                s.borrow_mut().push_back(StackInfo {
-                    stack_top: stack.base().get(),
-                    stack_bottom: stack.limit().get(),
-                });
+                s.borrow_mut().push_back(StackInfo::from(&stack));
             });
             let r = corosensei::on_stack(stack, callback);
             _ = STACK_INFOS.with(|s| s.borrow_mut().pop_back());
@@ -398,7 +390,7 @@ where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return + 'static,
     {
         let stack_size = stack_size.max(crate::common::page_size());
-        let stack = MemoryPool::get_instance().allocate(stack_size)?;
+        let stack = DefaultStack::new(stack_size)?;
         let stack_infos = UnsafeCell::new(VecDeque::from([StackInfo {
             stack_top: stack.base().get(),
             stack_bottom: stack.limit().get(),
@@ -466,6 +458,15 @@ where
                     Ok(CoroutineState::Error(message))
                 }
             }
+        }
+    }
+}
+
+impl<S: Stack> From<&S> for StackInfo {
+    fn from(stack: &S) -> Self {
+        Self {
+            stack_top: stack.base().get(),
+            stack_bottom: stack.limit().get(),
         }
     }
 }

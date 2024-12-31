@@ -54,7 +54,7 @@ impl_facade!(SendtoSyscallFacade, SendtoSyscall,
         addr: *const sockaddr, addrlen: socklen_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringSendtoSyscall, SendtoSyscall,
+impl_io_uring_write!(IoUringSendtoSyscall, SendtoSyscall,
     sendto(fd: c_int, buf: *const c_void, len: size_t, flags: c_int,
         addr: *const sockaddr, addrlen: socklen_t) -> ssize_t
 );

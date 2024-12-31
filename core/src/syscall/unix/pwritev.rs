@@ -38,7 +38,7 @@ impl_facade!(PwritevSyscallFacade, PwritevSyscall,
     pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringPwritevSyscall, PwritevSyscall,
+impl_io_uring_write!(IoUringPwritevSyscall, PwritevSyscall,
     pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t
 );
 

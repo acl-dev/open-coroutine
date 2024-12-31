@@ -17,9 +17,6 @@ pub mod local;
 /// Coroutine listener abstraction and impl.
 pub mod listener;
 
-/// Reuse stacks.
-pub mod stack_pool;
-
 #[cfg(feature = "korosensei")]
 pub use korosensei::Coroutine;
 #[cfg(feature = "korosensei")]

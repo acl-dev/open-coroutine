@@ -365,6 +365,7 @@ mod tests {
     #[test]
     fn test() {
         init(Config::single());
+        _ = any_join!(task!(|_| 1, ()), task!(|_| 2, ()), task!(|_| 3, ()));
         let join = task!(
             |_| {
                 println!("Hello, world!");

@@ -36,7 +36,7 @@ impl_facade!(AcceptSyscallFacade, AcceptSyscall,
     accept(fd: c_int, address: *mut sockaddr, address_len: *mut socklen_t) -> c_int
 );
 
-impl_io_uring!(IoUringAcceptSyscall, AcceptSyscall,
+impl_io_uring_read!(IoUringAcceptSyscall, AcceptSyscall,
     accept(fd: c_int, address: *mut sockaddr, address_len: *mut socklen_t) -> c_int
 );
 

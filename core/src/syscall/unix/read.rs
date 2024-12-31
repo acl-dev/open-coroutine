@@ -36,7 +36,7 @@ impl_facade!(ReadSyscallFacade, ReadSyscall,
     read(fd: c_int, buf: *mut c_void, len: size_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringReadSyscall, ReadSyscall,
+impl_io_uring_read!(IoUringReadSyscall, ReadSyscall,
     read(fd: c_int, buf: *mut c_void, len: size_t) -> ssize_t
 );
 

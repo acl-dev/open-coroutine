@@ -40,7 +40,7 @@ impl_facade!(SendmsgSyscallFacade, SendmsgSyscall,
     sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t
 );
 
-impl_io_uring!(IoUringSendmsgSyscall, SendmsgSyscall,
+impl_io_uring_write!(IoUringSendmsgSyscall, SendmsgSyscall,
     sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t
 );
 

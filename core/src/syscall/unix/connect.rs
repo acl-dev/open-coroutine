@@ -40,7 +40,7 @@ impl_facade!(ConnectSyscallFacade, ConnectSyscall,
     connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int
 );
 
-impl_io_uring!(IoUringConnectSyscall, ConnectSyscall,
+impl_io_uring_write!(IoUringConnectSyscall, ConnectSyscall,
     connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int
 );
 
