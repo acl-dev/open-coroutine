@@ -13,6 +13,9 @@ pub mod constants;
 /// Check <https://www.rustwiki.org.cn/en/reference/introduction.html> for help information.
 pub(crate) mod macros;
 
+/// Reuse memory.
+pub mod memory_pool;
+
 /// `BeanFactory` impls.
 pub mod beans;
 

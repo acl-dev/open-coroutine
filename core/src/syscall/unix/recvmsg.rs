@@ -40,7 +40,7 @@ impl_facade!(RecvmsgSyscallFacade, RecvmsgSyscall,
     recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t
 );
 
-impl_io_uring!(IoUringRecvmsgSyscall, RecvmsgSyscall,
+impl_io_uring_read!(IoUringRecvmsgSyscall, RecvmsgSyscall,
     recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t
 );
 
