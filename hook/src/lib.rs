@@ -50,7 +50,6 @@
 use once_cell::sync::OnceCell;
 use open_coroutine_core::co_pool::task::UserTaskFunc;
 use open_coroutine_core::config::Config;
-use open_coroutine_core::coroutine::stack_pool::MemoryPool;
 use open_coroutine_core::net::join::JoinHandle;
 use open_coroutine_core::net::{EventLoops, UserFunc};
 use open_coroutine_core::scheduler::SchedulableCoroutine;
@@ -76,9 +75,6 @@ pub mod syscall;
 /// Start the framework.
 #[no_mangle]
 pub extern "C" fn open_coroutine_init(config: Config) -> c_int {
-    if MemoryPool::init(&config).is_err() {
-        return -1;
-    }
     EventLoops::init(&config);
     _ = HOOK.get_or_init(|| config.hook());
     0

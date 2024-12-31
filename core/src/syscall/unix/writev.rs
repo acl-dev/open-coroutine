@@ -36,7 +36,7 @@ impl_facade!(WritevSyscallFacade, WritevSyscall,
     writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t
 );
 
-impl_io_uring!(IoUringWritevSyscall, WritevSyscall,
+impl_io_uring_write!(IoUringWritevSyscall, WritevSyscall,
     writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t
 );
 

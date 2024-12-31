@@ -38,7 +38,7 @@ impl_facade!(PreadvSyscallFacade, PreadvSyscall,
     preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringPreadvSyscall, PreadvSyscall,
+impl_io_uring_read!(IoUringPreadvSyscall, PreadvSyscall,
     preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t
 );
 

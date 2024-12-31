@@ -176,17 +176,12 @@ impl<'s> Scheduler<'s> {
         stack_size: Option<usize>,
         priority: Option<c_longlong>,
     ) -> std::io::Result<()> {
-        let mut co = co!(
+        self.submit_raw_co(co!(
             format!("{}@{}", self.name(), uuid::Uuid::new_v4()),
             f,
             stack_size.unwrap_or(self.stack_size()),
             priority
-        )?;
-        for listener in self.listeners.clone() {
-            co.add_raw_listener(listener);
-        }
-        // let co_name = Box::leak(Box::from(coroutine.get_name()));
-        self.submit_raw_co(co)
+        )?)
     }
 
     /// Add a listener to this scheduler.
@@ -198,8 +193,11 @@ impl<'s> Scheduler<'s> {
     ///
     /// Allow multiple threads to concurrently submit coroutine to the scheduler,
     /// but only allow one thread to execute scheduling.
-    pub fn submit_raw_co(&self, coroutine: SchedulableCoroutine<'s>) -> std::io::Result<()> {
-        self.ready.push(coroutine);
+    pub fn submit_raw_co(&self, mut co: SchedulableCoroutine<'s>) -> std::io::Result<()> {
+        for listener in self.listeners.clone() {
+            co.add_raw_listener(listener);
+        }
+        self.ready.push(co);
         Ok(())
     }
 

@@ -38,7 +38,7 @@ impl_facade!(PwriteSyscallFacade, PwriteSyscall,
     pwrite(fd: c_int, buf: *const c_void, len: size_t, offset: off_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringPwriteSyscall, PwriteSyscall,
+impl_io_uring_write!(IoUringPwriteSyscall, PwriteSyscall,
     pwrite(fd: c_int, buf: *const c_void, len: size_t, offset: off_t) -> ssize_t
 );
 

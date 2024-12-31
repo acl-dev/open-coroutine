@@ -3,7 +3,6 @@ use crate::common::constants::{CoroutineState, MONITOR_BEAN};
 use crate::common::{get_timeout_time, now, CondvarBlocker};
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
-use crate::coroutine::stack_pool::MemoryPool;
 use crate::scheduler::SchedulableSuspender;
 use crate::{catch, error, impl_current_for, impl_display_by_debug, info};
 use nix::sys::pthread::{pthread_kill, pthread_self, Pthread};
@@ -137,7 +136,6 @@ impl Monitor {
                     );
                 }
             }
-            MemoryPool::get_instance().clean();
             //monitor线程不执行协程计算任务，每次循环至少wait 1ms
             monitor.blocker.clone().block(Duration::from_millis(1));
         }
