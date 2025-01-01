@@ -6,7 +6,7 @@ use crate::common::ordered_work_steal::{OrderedLocalQueue, OrderedWorkStealQueue
 use crate::common::{get_timeout_time, now, CondvarBlocker};
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::{SchedulableCoroutine, Scheduler};
-use crate::{impl_current_for, impl_display_by_debug, impl_for_named, trace};
+use crate::{error, impl_current_for, impl_display_by_debug, impl_for_named, trace};
 use dashmap::DashMap;
 use std::cell::Cell;
 use std::ffi::c_longlong;
@@ -70,10 +70,9 @@ impl Drop for CoroutinePool<'_> {
             self.get_running_size(),
             "There are still tasks in progress !"
         );
-        assert!(
-            self.task_queue.is_empty(),
-            "There are still tasks to be carried out !"
-        );
+        if !self.task_queue.is_empty() {
+            error!("Forget some tasks when closing the pool");
+        }
     }
 }
 
