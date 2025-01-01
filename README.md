@@ -108,4 +108,6 @@ fn main() {
 
 ## ⚓ Learn More
 
+- [Coroutine Design](core/docs/en/coroutine.md)
+
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)

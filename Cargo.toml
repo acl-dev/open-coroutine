@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.6.10"
+version = "0.6.14"
 edition = "2021"
 authors = ["zhangzicheng@apache.org"]
 repository = "https://github.com/acl-dev/open-coroutine"
@@ -16,9 +16,9 @@ license = "Apache-2.0"
 readme = "README.md"
 
 [workspace.dependencies]
-open-coroutine-core = { path = "core", version = "0.6.0" }
-open-coroutine-hook = { path = "hook", version = "0.6.0" }
-open-coroutine-macros = { path = "macros", version = "0.6.0" }
+open-coroutine-core = { path = "core", version = "0.6.14" }
+open-coroutine-hook = { path = "hook", version = "0.6.14" }
+open-coroutine-macros = { path = "macros", version = "0.6.14" }
 
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
