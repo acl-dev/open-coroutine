@@ -49,6 +49,7 @@
 
 use open_coroutine_core::co_pool::task::UserTaskFunc;
 use open_coroutine_core::common::constants::SLICE;
+pub use open_coroutine_core::common::ordered_work_steal::DEFAULT_PRECEDENCE;
 pub use open_coroutine_core::config::Config;
 use open_coroutine_core::net::UserFunc;
 pub use open_coroutine_macros::*;
@@ -109,19 +110,15 @@ pub fn shutdown() {
 #[macro_export]
 macro_rules! task {
     ( $f: expr , $param:expr , $priority: expr $(,)? ) => {
-        $crate::task($f, $param, $priority)
+        $crate::crate_task($f, $param, $priority)
     };
     ( $f: expr , $param:expr $(,)? ) => {
-        $crate::task(
-            $f,
-            $param,
-            open_coroutine_core::common::ordered_work_steal::DEFAULT_PRECEDENCE,
-        )
+        $crate::crate_task($f, $param, $crate::DEFAULT_PRECEDENCE)
     };
 }
 
 /// Create a task.
-pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(
+pub fn crate_task<P: 'static, R: 'static, F: FnOnce(P) -> R>(
     f: F,
     param: P,
     priority: c_longlong,
