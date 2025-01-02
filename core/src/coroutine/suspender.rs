@@ -77,9 +77,8 @@ mod korosensei {
     /// Ths suspender implemented for coroutine.
     #[repr(C)]
     #[derive(educe::Educe)]
-    #[educe(Debug)]
+    #[educe(Debug(named_field = false))]
     pub struct Suspender<'s, Param, Yield> {
-        #[educe(Debug(ignore))]
         inner: &'s Yielder<Param, Yield>,
     }
 

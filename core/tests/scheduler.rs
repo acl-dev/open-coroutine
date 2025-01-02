@@ -93,10 +93,6 @@ fn scheduler_listener() -> std::io::Result<()> {
     #[derive(Debug, Default)]
     struct TestListener {}
     impl Listener<(), Option<usize>> for TestListener {
-        fn on_create(&self, local: &CoroutineLocal, _: usize) {
-            println!("{:?}", local);
-        }
-
         fn on_state_changed(
             &self,
             local: &CoroutineLocal,

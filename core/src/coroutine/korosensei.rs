@@ -420,8 +420,7 @@ where
             priority,
         };
         #[cfg(all(unix, feature = "preemptive"))]
-        co.add_listener(crate::monitor::MonitorListener::default());
-        co.on_create(&co, stack_size);
+        co.add_listener(crate::monitor::MonitorListener::<Param, Yield, Return>::new());
         Ok(co)
     }
 
