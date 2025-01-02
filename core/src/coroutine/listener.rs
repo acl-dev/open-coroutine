@@ -6,9 +6,6 @@ use std::fmt::Debug;
 /// A trait mainly used for monitors.
 #[allow(unused_variables)]
 pub trait Listener<Yield, Return>: Debug {
-    /// Callback when the coroutine is created.
-    fn on_create(&self, local: &CoroutineLocal, stack_size: usize) {}
-
     /// Callback after changing the status of coroutine.
     fn on_state_changed(
         &self,
@@ -68,8 +65,6 @@ where
     Yield: Debug + Copy,
     Return: Debug + Copy,
 {
-    broadcast!(on_create(local: &CoroutineLocal, stack_size: usize), "on_create");
-
     broadcast!(on_state_changed(
         local: &CoroutineLocal,
         old_state: CoroutineState<Yield, Return>,
