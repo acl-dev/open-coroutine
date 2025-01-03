@@ -63,11 +63,11 @@ pub mod config;
 #[doc = include_str!("../docs/en/coroutine.md")]
 pub mod coroutine;
 
-/// Make the coroutine automatically yield.
 #[cfg(all(unix, feature = "preemptive"))]
+#[doc = include_str!("../docs/en/monitor.md")]
 mod monitor;
 
-/// Scheduler impls.
+/// Schedule many coroutines.
 pub mod scheduler;
 
 /// Coroutine pool abstraction and impl.
