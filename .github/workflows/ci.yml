@@ -55,7 +55,6 @@ jobs:
           PROJECT_DIR: ${{ github.workspace }}
         run: sh .github/workflows/ci.sh
       - name: Run preemptive tests
-        if: ${{ contains(fromJSON('["x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]'), matrix.target) }}
         env:
           CHANNEL: ${{ matrix.channel }}
           CROSS: ${{ !startsWith(matrix.target, 'x86_64') && contains(matrix.target, 'linux') && '1' || '0' }}
