@@ -1,6 +1,7 @@
 use open_coroutine::{task, JoinHandle};
 use std::fs::File;
 use std::io::{Error, IoSlice, IoSliceMut, Read, Result, Seek, SeekFrom, Write};
+use std::time::Duration;
 
 #[open_coroutine::main(event_loop_size = 1, max_size = 1)]
 pub fn main() -> Result<()> {
@@ -38,7 +39,7 @@ pub fn main() -> Result<()> {
         },
         ()
     );
-    if let Some(r) = join_handle.join()? {
+    if let Some(r) = join_handle.timeout_join(Duration::from_secs(30))? {
         return r;
     }
     Err(Error::new(

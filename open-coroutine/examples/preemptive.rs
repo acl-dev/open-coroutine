@@ -9,10 +9,11 @@
 /// loop2 end
 /// loop1 end
 /// ```
+#[open_coroutine::main(event_loop_size = 1, max_size = 3)]
 pub fn main() -> std::io::Result<()> {
     cfg_if::cfg_if! {
         if #[cfg(all(unix, feature = "preemptive"))] {
-            use open_coroutine_core::scheduler::Scheduler;
+            use open_coroutine::task;
             use std::sync::{Arc, Condvar, Mutex};
             use std::time::Duration;
 
@@ -23,22 +24,19 @@ pub fn main() -> std::io::Result<()> {
             let handler = std::thread::Builder::new()
                 .name("preemptive".to_string())
                 .spawn(move || {
-                    let mut scheduler = Scheduler::default();
-                    _ = scheduler.submit_co(
-                        |_, _| {
+                    let join = task!(
+                        |_| {
                             println!("coroutine1 launched");
                             while unsafe { TEST_FLAG1 } {
                                 println!("loop1");
                                 _ = unsafe { libc::usleep(10_000) };
                             }
                             println!("loop1 end");
-                            None
                         },
-                        None,
-                        None,
+                        (),
                     );
-                    _ = scheduler.submit_co(
-                        |_, _| {
+                    _ = task!(
+                        |_| {
                             println!("coroutine2 launched");
                             while unsafe { TEST_FLAG2 } {
                                 println!("loop2");
@@ -46,21 +44,17 @@ pub fn main() -> std::io::Result<()> {
                             }
                             println!("loop2 end");
                             unsafe { TEST_FLAG1 = false };
-                            None
                         },
-                        None,
-                        None,
+                        (),
                     );
-                    _ = scheduler.submit_co(
-                        |_, _| {
+                    _ = task!(
+                        |_| {
                             println!("coroutine3 launched");
                             unsafe { TEST_FLAG2 = false };
-                            None
                         },
-                        None,
-                        None,
+                        (),
                     );
-                    scheduler.try_schedule().expect("schedule failed");
+                    join.timeout_join(Duration::from_millis(3000)).expect("join failed");
 
                     let (lock, cvar) = &*pair2;
                     let mut pending = lock.lock().unwrap();
