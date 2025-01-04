@@ -1,6 +1,8 @@
 use open_coroutine::task;
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Read, Write};
 use std::net::{Shutdown, TcpListener, ToSocketAddrs};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -33,6 +35,29 @@ pub fn start_server<A: ToSocketAddrs>(addr: A, server_finished: Arc<(Mutex<bool>
                 socket.write_vectored(&responses).expect("writev failed")
             );
             println!("Server Send Multiple");
+        }
+        #[cfg(unix)]
+        for _ in 0..3 {
+            let mut buffers = [IoSliceMut::new(&mut buffer1), IoSliceMut::new(&mut buffer2)];
+            let mut msg = libc::msghdr {
+                msg_name: std::ptr::null_mut(),
+                msg_namelen: 0,
+                msg_iov: buffers.as_mut_ptr().cast::<libc::iovec>(),
+                msg_iovlen: buffers.len() as _,
+                msg_control: std::ptr::null_mut(),
+                msg_controllen: 0,
+                msg_flags: 0,
+            };
+            assert_eq!(26, unsafe {
+                libc::recvmsg(socket.as_raw_fd(), &mut msg, 0)
+            });
+            eprintln!(
+                "Server Received Message: {} {}",
+                String::from_utf8_lossy(&buffer1),
+                String::from_utf8_lossy(&buffer2)
+            );
+            assert_eq!(512, unsafe { libc::sendmsg(socket.as_raw_fd(), &msg, 0) });
+            eprintln!("Server Send Message");
         }
         println!("Server Shutdown Write");
         if socket.shutdown(Shutdown::Write).is_ok() {
@@ -79,6 +104,37 @@ pub fn start_co_client<A: ToSocketAddrs>(addr: A) {
                 );
                 println!(
                     "Client Received Multiple: {}{}",
+                    String::from_utf8_lossy(&buffer1),
+                    String::from_utf8_lossy(&buffer2)
+                );
+            }
+            #[cfg(unix)]
+            for i in 0..3 {
+                let mut request1 = format!("MessagePart{i}1").into_bytes();
+                let mut request2 = format!("MessagePart{i}2").into_bytes();
+                let mut buffers = [
+                    IoSliceMut::new(request1.as_mut_slice()),
+                    IoSliceMut::new(request2.as_mut_slice()),
+                ];
+                let mut msg = libc::msghdr {
+                    msg_name: std::ptr::null_mut(),
+                    msg_namelen: 0,
+                    msg_iov: buffers.as_mut_ptr().cast::<libc::iovec>(),
+                    msg_iovlen: buffers.len() as _,
+                    msg_control: std::ptr::null_mut(),
+                    msg_controllen: 0,
+                    msg_flags: 0,
+                };
+                assert_eq!(26, unsafe { libc::sendmsg(stream.as_raw_fd(), &msg, 0) });
+                eprintln!("Client Send Message");
+                buffers = [IoSliceMut::new(&mut buffer1), IoSliceMut::new(&mut buffer2)];
+                msg.msg_iov = buffers.as_mut_ptr().cast::<libc::iovec>();
+                msg.msg_iovlen = buffers.len() as _;
+                assert_eq!(512, unsafe {
+                    libc::recvmsg(stream.as_raw_fd(), &mut msg, 0)
+                });
+                eprintln!(
+                    "Client Received Message: {}{}",
                     String::from_utf8_lossy(&buffer1),
                     String::from_utf8_lossy(&buffer2)
                 );
