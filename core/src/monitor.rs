@@ -7,12 +7,10 @@ use crate::scheduler::SchedulableSuspender;
 use crate::{catch, error, impl_current_for, impl_display_by_debug, info};
 use nix::sys::pthread::{pthread_kill, pthread_self, Pthread};
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
-use std::any::TypeId;
 use std::cell::{Cell, UnsafeCell};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
-use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -176,35 +174,19 @@ impl Monitor {
 impl_current_for!(MONITOR, Monitor);
 
 #[repr(C)]
-#[derive(educe::Educe)]
-#[educe(Debug(named_field = false))]
-pub(crate) struct MonitorListener<Param, Yield, Return>(
-    PhantomData<Param>,
-    PhantomData<Yield>,
-    PhantomData<Return>,
-);
-
-impl<Param, Yield, Return> MonitorListener<Param, Yield, Return> {
-    pub(crate) fn new() -> Self {
-        Self(PhantomData, PhantomData, PhantomData)
-    }
-}
+#[derive(Debug)]
+pub(crate) struct MonitorListener;
 
 const NOTIFY_NODE: &str = "MONITOR_NODE";
 
-impl<Param: 'static, Yield: 'static, Return> Listener<Yield, Return>
-    for MonitorListener<Param, Yield, Return>
-{
+impl<Yield, Return> Listener<Yield, Return> for MonitorListener {
     fn on_state_changed(
         &self,
         local: &CoroutineLocal,
         _: CoroutineState<Yield, Return>,
         new_state: CoroutineState<Yield, Return>,
     ) {
-        if TypeId::of::<Param>() != TypeId::of::<()>()
-            || TypeId::of::<Yield>() != TypeId::of::<()>()
-            || Monitor::current().is_some()
-        {
+        if Monitor::current().is_some() {
             return;
         }
         match new_state {
