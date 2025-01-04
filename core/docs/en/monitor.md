@@ -14,9 +14,9 @@ The `preemptive` feature currently supports the following targets:
 |---------------|-----------------------------------|--------------------------|---------|
 | `x86_64`      | ✅                                | ✅                       | ❌     |
 | `x86`         | ✅                                | ❌                       | ❌     |
-| `AArch64`     | ⚠️                                | ✅                       | ❌     |
-| `ARM`         | ⚠️                                | ❌                       | ❌     |
-| `RISC-V`      | ⚠️                                | ❌                       | ❌     |
+| `AArch64`     | ✅                                | ✅                       | ❌     |
+| `ARM`         | ✅                                | ❌                       | ❌     |
+| `RISC-V`      | ✅                                | ❌                       | ❌     |
 | `LoongArch64` | ⚠️                                | ❌                       | ❌     |
 
 ✅ Tested and stable; ⚠️ Tested but unstable; ❌ Not supported.
