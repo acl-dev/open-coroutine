@@ -6,6 +6,38 @@ author: loongs-zhang
 
 # Coroutine Overview
 
+## Usage
+
+```rust
+use open_coroutine_core::common::constants::CoroutineState;
+use open_coroutine_core::coroutine::Coroutine;
+
+fn main() -> std::io::Result<()> {
+    let mut co = Coroutine::new(
+        // optional coroutine name
+        None,
+        |suspender, input| {
+            assert_eq!(1, input);
+            assert_eq!(3, suspender.suspend_with(2));
+            4
+        },
+        // optional stack size
+        None,
+        // optional coroutine priority
+        None,
+    )?;
+    // Macro `co!` is equivalent to the code above
+    // let mut co = open_coroutine_core::co!(|suspender, input| {
+    //     assert_eq!(1, input);
+    //     assert_eq!(3, suspender.suspend_with(2));
+    //     4
+    // })?;
+    assert_eq!(CoroutineState::Suspend(2, 0), co.resume_with(1)?);
+    assert_eq!(CoroutineState::Complete(4), co.resume_with(3)?);
+    Ok(())
+}
+```
+
 ## What is coroutine?
 
 A [coroutine](https://en.wikipedia.org/wiki/Coroutine) is a function that can be paused and resumed, yielding values to
@@ -14,6 +46,26 @@ from a coroutine, you can also pass data into the coroutine each time it is
 resumed.
 
 The above is excerpted from [corosensei](https://github.com/Amanieu/corosensei).
+
+## Coroutine VS Thread
+
+|                   | coroutine | thread  |
+|-------------------|-----------|---------|
+| switch efficiency | ✅ Higher | ❌ High |
+| memory efficiency | KB/MB     | KB/MB   |
+| scheduled by OS   | ❌        | ✅      |
+| stack grow        | ✅        | ❌      |
+
+## Stackfull VS Stackless
+
+|                   | stackfull | stackless |
+|-------------------|-----------|-----------|
+| switch efficiency | ❌ High   | ✅ Higher |
+| memory efficiency | ❌ KB/MB  | ✅ Bytes  |
+| limitations       | ✅ Few    | ❌ Many   |
+
+In general, if the requirements for resource utilization and switching performance are not very strict, using a
+stackfull approach would be more convenient and the code would be easier to maintain.
 
 ## State in open-coroutine
 

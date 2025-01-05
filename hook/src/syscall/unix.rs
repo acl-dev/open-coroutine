@@ -70,6 +70,11 @@ impl_hook!(RMDIR, rmdir(path: *const c_char) -> c_int);
 impl_hook!(LSEEK, lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t);
 impl_hook!(LINK, link(src: *const c_char, dst: *const c_char) -> c_int);
 impl_hook!(UNLINK, unlink(src: *const c_char) -> c_int);
+impl_hook!(FSYNC, fsync(fd: c_int) -> c_int);
+impl_hook!(MKDIRAT, mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
+impl_hook!(RENAMEAT, renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
+#[cfg(target_os = "linux")]
+impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
