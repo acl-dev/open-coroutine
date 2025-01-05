@@ -1,5 +1,5 @@
 macro_rules! syscall_mod {
-    ($($mod_name: ident);*) => {
+    ($($mod_name: ident);*$(;)?) => {
         $(
             pub use $mod_name::$mod_name;
             mod $mod_name;

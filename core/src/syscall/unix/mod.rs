@@ -3,7 +3,10 @@ use once_cell::sync::Lazy;
 use std::ffi::c_int;
 
 macro_rules! impl_facade {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -40,7 +43,10 @@ macro_rules! impl_facade {
 }
 
 macro_rules! impl_io_uring {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         #[cfg(all(target_os = "linux", feature = "io_uring"))]
@@ -111,7 +117,10 @@ macro_rules! impl_io_uring {
 }
 
 macro_rules! impl_io_uring_read {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         #[cfg(all(target_os = "linux", feature = "io_uring"))]
@@ -194,7 +203,10 @@ macro_rules! impl_io_uring_read {
 }
 
 macro_rules! impl_io_uring_write {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         #[cfg(all(target_os = "linux", feature = "io_uring"))]
@@ -277,7 +289,10 @@ macro_rules! impl_io_uring_write {
 }
 
 macro_rules! impl_nio_read {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -332,8 +347,15 @@ macro_rules! impl_nio_read {
 }
 
 macro_rules! impl_nio_read_buf {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $buf: ident : $buf_type: ty,
+            $len: ident : $len_type: ty
+            $(, $($arg: ident : $arg_type: ty),*)?
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -343,11 +365,18 @@ macro_rules! impl_nio_read_buf {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "C" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "C" fn($fd_type, $buf_type, $len_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "C" fn(
+                        $fd_type,
+                        $buf_type,
+                        $len_type
+                        $(, $($arg_type),*)?
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $buf: $buf_type,
-                $len: $len_type,
-                $($arg: $arg_type),*
+                $len: $len_type
+                $(, $($arg: $arg_type),*)?
             ) -> $result {
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
@@ -363,7 +392,7 @@ macro_rules! impl_nio_read_buf {
                         $fd,
                         ($buf as usize + received) as *mut std::ffi::c_void,
                         $len - received,
-                        $($arg, )*
+                        $($($arg, )*)?
                     );
                     if r != -1 {
                         $crate::syscall::reset_errno();
@@ -402,8 +431,15 @@ macro_rules! impl_nio_read_buf {
 }
 
 macro_rules! impl_nio_read_iovec {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $iov: ident : $iov_type: ty, $iovcnt: ident : $iovcnt_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $iov: ident : $iov_type: ty,
+            $iovcnt: ident : $iovcnt_type: ty,
+            $($arg: ident : $arg_type: ty),*
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -413,7 +449,14 @@ macro_rules! impl_nio_read_iovec {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "C" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "C" fn($fd_type, $iov_type, $iovcnt_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "C" fn(
+                        $fd_type,
+                        $iov_type,
+                        $iovcnt_type,
+                        $($arg_type),*
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $iov: $iov_type,
                 $iovcnt: $iovcnt_type,
@@ -521,8 +564,15 @@ macro_rules! impl_nio_read_iovec {
 }
 
 macro_rules! impl_nio_write_buf {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $buf: ident : $buf_type: ty,
+            $len: ident : $len_type: ty
+            $(, $($arg: ident : $arg_type: ty),*)?
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -532,11 +582,18 @@ macro_rules! impl_nio_write_buf {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "C" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "C" fn($fd_type, $buf_type, $len_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "C" fn(
+                        $fd_type,
+                        $buf_type,
+                        $len_type
+                        $(, $($arg_type),*)?
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $buf: $buf_type,
-                $len: $len_type,
-                $($arg: $arg_type),*
+                $len: $len_type
+                $(, $($arg: $arg_type),*)?
             ) -> $result {
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
@@ -552,7 +609,7 @@ macro_rules! impl_nio_write_buf {
                         $fd,
                         ($buf as usize + sent) as *const std::ffi::c_void,
                         $len - sent,
-                        $($arg, )*
+                        $($($arg, )*)?
                     );
                     if r != -1 {
                         $crate::syscall::reset_errno();
@@ -591,8 +648,15 @@ macro_rules! impl_nio_write_buf {
 }
 
 macro_rules! impl_nio_write_iovec {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $iov: ident : $iov_type: ty, $iovcnt: ident : $iovcnt_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $iov: ident : $iov_type: ty,
+            $iovcnt: ident : $iovcnt_type: ty,
+            $($arg: ident : $arg_type: ty),*
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -602,7 +666,14 @@ macro_rules! impl_nio_write_iovec {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "C" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "C" fn($fd_type, $iov_type, $iovcnt_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "C" fn(
+                        $fd_type,
+                        $iov_type,
+                        $iovcnt_type,
+                        $($arg_type),*
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $iov: $iov_type,
                 $iovcnt: $iovcnt_type,
@@ -703,7 +774,10 @@ macro_rules! impl_nio_write_iovec {
 }
 
 macro_rules! impl_raw {
-    ( $struct_name: ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name: ident, $trait_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Copy, Clone, Default)]
         struct $struct_name {}
@@ -725,7 +799,10 @@ macro_rules! impl_raw {
 }
 
 #[cfg(target_os = "linux")]
-syscall_mod!(accept4);
+syscall_mod!(
+    accept4;
+    renameat2;
+);
 syscall_mod!(
     accept;
     close;
@@ -758,10 +835,13 @@ syscall_mod!(
     write;
     writev;
     mkdir;
+    mkdirat;
+    fsync;
     rmdir;
+    renameat;
     lseek;
     link;
-    unlink
+    unlink;
 );
 
 static SEND_TIME_LIMIT: Lazy<DashMap<c_int, u64>> = Lazy::new(Default::default);

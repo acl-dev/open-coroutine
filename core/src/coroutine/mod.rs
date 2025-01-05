@@ -29,34 +29,19 @@ macro_rules! co {
         $crate::coroutine::Coroutine::new($name, $f, $size, $priority)
     };
     ($f:expr, $size:literal, $priority:literal $(,)?) => {
-        $crate::coroutine::Coroutine::new(
-            uuid::Uuid::new_v4().to_string(),
-            $f,
-            $size,
-            Some($priority),
-        )
+        $crate::coroutine::Coroutine::new(None, $f, $size, Some($priority))
     };
     ($name:expr, $f:expr, $size:expr $(,)?) => {
         $crate::coroutine::Coroutine::new($name, $f, $size, None)
     };
     ($f:expr, $size:literal $(,)?) => {
-        $crate::coroutine::Coroutine::new(uuid::Uuid::new_v4().to_string(), $f, $size, None)
+        $crate::coroutine::Coroutine::new(None, $f, $size, None)
     };
     ($name:expr, $f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(
-            $name,
-            $f,
-            $crate::common::constants::DEFAULT_STACK_SIZE,
-            None,
-        )
+        $crate::coroutine::Coroutine::new($name, $f, None, None)
     };
     ($f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(
-            uuid::Uuid::new_v4().to_string(),
-            $f,
-            $crate::common::constants::DEFAULT_STACK_SIZE,
-            None,
-        )
+        $crate::coroutine::Coroutine::new(None, $f, None, None)
     };
 }
 

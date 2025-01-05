@@ -381,20 +381,23 @@ where
     ///# Errors
     /// if stack allocate failed.
     pub fn new<F>(
-        name: String,
+        name: Option<String>,
         f: F,
-        stack_size: usize,
+        stack_size: Option<usize>,
         priority: Option<c_longlong>,
     ) -> std::io::Result<Self>
     where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return + 'static,
     {
-        let stack_size = stack_size.max(crate::common::page_size());
+        let stack_size = stack_size
+            .unwrap_or(crate::common::constants::DEFAULT_STACK_SIZE)
+            .max(crate::common::page_size());
         let stack = DefaultStack::new(stack_size)?;
         let stack_infos = UnsafeCell::new(VecDeque::from([StackInfo {
             stack_top: stack.base().get(),
             stack_bottom: stack.limit().get(),
         }]));
+        let name = name.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let co_name = name.clone().leak();
         let inner = corosensei::Coroutine::with_stack(stack, move |y, p| {
             catch!(

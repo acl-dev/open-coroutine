@@ -177,9 +177,9 @@ impl<'s> Scheduler<'s> {
         priority: Option<c_longlong>,
     ) -> std::io::Result<()> {
         self.submit_raw_co(co!(
-            format!("{}@{}", self.name(), uuid::Uuid::new_v4()),
+            Some(format!("{}@{}", self.name(), uuid::Uuid::new_v4())),
             f,
-            stack_size.unwrap_or(self.stack_size()),
+            Some(stack_size.unwrap_or(self.stack_size())),
             priority
         )?)
     }
