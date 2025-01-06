@@ -7,8 +7,9 @@ use crate::coroutine::StackInfo;
 use corosensei::stack::{DefaultStack, Stack};
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, UnsafeCell};
 use std::collections::VecDeque;
+use std::ffi::c_longlong;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 
@@ -27,21 +28,16 @@ pub struct Coroutine<'c, Param, Yield, Return> {
     pub(crate) name: String,
     inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, DefaultStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
-    pub(crate) stack_size: usize,
-    pub(crate) stack_infos: RefCell<VecDeque<StackInfo>>,
+    stack_infos: UnsafeCell<VecDeque<StackInfo>>,
     pub(crate) listeners: VecDeque<&'c dyn Listener<Yield, Return>>,
     pub(crate) local: CoroutineLocal<'c>,
+    pub(crate) priority: Option<c_longlong>,
 }
 
 impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::too_many_lines,
-                clippy::cast_sign_loss,
-                clippy::cast_possible_wrap
-            )]
+            #[allow(clippy::too_many_lines)]
             extern "C" fn trap_handler(
                 _signum: libc::c_int,
                 _siginfo: *mut libc::siginfo_t,
@@ -56,43 +52,40 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                             any(target_os = "linux", target_os = "android"),
                             target_arch = "x86_64",
                         ))] {
-                            let sp = context.uc_mcontext.gregs[libc::REG_RSP as usize] as usize;
+                            let sp = u64::try_from(context.uc_mcontext.gregs[usize::try_from(libc::REG_RSP).expect("overflow")]).expect("overflow");
                         } else if #[cfg(all(
                             any(target_os = "linux", target_os = "android"),
                             target_arch = "x86",
                         ))] {
-                            let sp = context.uc_mcontext.gregs[libc::REG_ESP as usize] as usize;
+                            let sp = u64::from(std::mem::transmute::<_, std::ffi::c_uint>(context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")]));
                         } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
-                            let sp = (*context.uc_mcontext).__ss.__rsp as usize;
+                            let sp = u64::try_from((*context.uc_mcontext).__ss.__rsp).expect("overflow");
                         } else if #[cfg(all(
                                 any(target_os = "linux", target_os = "android"),
                                 target_arch = "aarch64",
                             ))] {
-                            let sp = context.uc_mcontext.sp as usize;
+                            let sp = u64::try_from(context.uc_mcontext.sp).expect("overflow");
                         } else if #[cfg(all(
                             any(target_os = "linux", target_os = "android"),
                             target_arch = "arm",
                         ))] {
-                            let sp = context.uc_mcontext.arm_sp as usize;
+                            let sp = u64::try_from(context.uc_mcontext.arm_sp).expect("overflow");
                         } else if #[cfg(all(
                             any(target_os = "linux", target_os = "android"),
                             any(target_arch = "riscv64", target_arch = "riscv32"),
                         ))] {
-                            let sp = context.uc_mcontext.__gregs[libc::REG_SP] as usize;
+                            let sp = u64::try_from(context.uc_mcontext.__gregs[libc::REG_SP]).expect("overflow");
                         } else if #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))] {
-                            let sp = (*context.uc_mcontext).__ss.__sp as usize;
+                            let sp = (*context.uc_mcontext).__ss.__sp;
                         } else if #[cfg(all(target_os = "linux", target_arch = "loongarch64"))] {
-                            let sp = context.uc_mcontext.__gregs[3] as usize;
+                            let sp = u64::try_from(context.uc_mcontext.__gregs[3]).expect("overflow");
                         } else {
                             compile_error!("Unsupported platform");
                         }
                     }
                     if let Some(co) = Self::current() {
-                        let handler = co.inner.trap_handler();
-                        // assert!(handler.stack_ptr_in_bounds(sp), "coroutine {} stack overflow !", co.get_name());
-                        // let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
-                        let stack_ptr_in_bounds = handler.stack_ptr_in_bounds(sp);
-                        let regs = handler.setup_trap_handler(move || {
+                        let stack_ptr_in_bounds = co.stack_ptr_in_bounds(sp);
+                        let regs = co.inner.trap_handler().setup_trap_handler(move || {
                             Err(if stack_ptr_in_bounds {
                                 "invalid memory reference"
                             } else {
@@ -105,21 +98,21 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                                     target_arch = "x86_64",
                                 ))] {
                                 let TrapHandlerRegs { rip, rsp, rbp, rdi, rsi } = regs;
-                                context.uc_mcontext.gregs[libc::REG_RIP as usize] = rip as i64;
-                                context.uc_mcontext.gregs[libc::REG_RSP as usize] = rsp as i64;
-                                context.uc_mcontext.gregs[libc::REG_RBP as usize] = rbp as i64;
-                                context.uc_mcontext.gregs[libc::REG_RDI as usize] = rdi as i64;
-                                context.uc_mcontext.gregs[libc::REG_RSI as usize] = rsi as i64;
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RIP).expect("overflow")] = c_longlong::try_from(rip).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RSP).expect("overflow")] = c_longlong::try_from(rsp).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RBP).expect("overflow")] = c_longlong::try_from(rbp).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RDI).expect("overflow")] = c_longlong::try_from(rdi).expect("overflow");
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_RSI).expect("overflow")] = c_longlong::try_from(rsi).expect("overflow");
                             } else if #[cfg(all(
                                 any(target_os = "linux", target_os = "android"),
                                 target_arch = "x86",
                             ))] {
                                 let TrapHandlerRegs { eip, esp, ebp, ecx, edx } = regs;
-                                context.uc_mcontext.gregs[libc::REG_EIP as usize] = eip as i32;
-                                context.uc_mcontext.gregs[libc::REG_ESP as usize] = esp as i32;
-                                context.uc_mcontext.gregs[libc::REG_EBP as usize] = ebp as i32;
-                                context.uc_mcontext.gregs[libc::REG_ECX as usize] = ecx as i32;
-                                context.uc_mcontext.gregs[libc::REG_EDX as usize] = edx as i32;
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EIP).expect("overflow")] = std::mem::transmute(eip);
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")] = std::mem::transmute(esp);
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EBP).expect("overflow")] = std::mem::transmute(ebp);
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_ECX).expect("overflow")] = std::mem::transmute(ecx);
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EDX).expect("overflow")] = std::mem::transmute(edx);
                             } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
                                 let TrapHandlerRegs { rip, rsp, rbp, rdi, rsi } = regs;
                                 (*context.uc_mcontext).__ss.__rip = rip;
@@ -175,12 +168,12 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                                 any(target_arch = "riscv64", target_arch = "riscv32"),
                             ))] {
                                 let TrapHandlerRegs { pc, ra, sp, a0, a1, s0 } = regs;
-                                context.uc_mcontext.__gregs[libc::REG_PC] = pc as libc::c_ulong;
-                                context.uc_mcontext.__gregs[libc::REG_RA] = ra as libc::c_ulong;
-                                context.uc_mcontext.__gregs[libc::REG_SP] = sp as libc::c_ulong;
-                                context.uc_mcontext.__gregs[libc::REG_A0] = a0 as libc::c_ulong;
-                                context.uc_mcontext.__gregs[libc::REG_A0 + 1] = a1 as libc::c_ulong;
-                                context.uc_mcontext.__gregs[libc::REG_S0] = s0 as libc::c_ulong;
+                                context.uc_mcontext.__gregs[libc::REG_PC] = std::ffi::c_ulong::try_from(pc).expect("overflow");
+                                context.uc_mcontext.__gregs[libc::REG_RA] = std::ffi::c_ulong::try_from(ra).expect("overflow");
+                                context.uc_mcontext.__gregs[libc::REG_SP] = std::ffi::c_ulong::try_from(sp).expect("overflow");
+                                context.uc_mcontext.__gregs[libc::REG_A0] = std::ffi::c_ulong::try_from(a0).expect("overflow");
+                                context.uc_mcontext.__gregs[libc::REG_A0 + 1] = std::ffi::c_ulong::try_from(a1).expect("overflow");
+                                context.uc_mcontext.__gregs[libc::REG_S0] = std::ffi::c_ulong::try_from(s0).expect("overflow");
                             } else if #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))] {
                                 let TrapHandlerRegs { pc, sp, x0, x1, x29, lr } = regs;
                                 (*context.uc_mcontext).__ss.__pc = pc;
@@ -214,23 +207,16 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 if let Some(co) = Self::current() {
                     cfg_if::cfg_if! {
                         if #[cfg(target_arch = "x86_64")] {
-                            let sp = usize::try_from((*(*exception_info).ContextRecord).Rsp).expect("parse RSP failed");
+                            let sp = (*(*exception_info).ContextRecord).Rsp;
                         } else if #[cfg(target_arch = "x86")] {
-                            let sp = (*(*exception_info).ContextRecord).Esp as usize;
+                            let sp = u64::from((*(*exception_info).ContextRecord).Esp);
                         } else {
                             compile_error!("Unsupported platform");
                         }
                     }
 
-                    let handler = co.inner.trap_handler();
-                    // if !handler.stack_ptr_in_bounds(sp) {
-                    //     // EXCEPTION_CONTINUE_SEARCH
-                    //     crate::error!("coroutine {} stack overflow !", co.get_name());
-                    //     return 0;
-                    // }
-                    // let regs = handler.setup_trap_handler(|| Err("invalid memory reference"));
-                    let stack_ptr_in_bounds = handler.stack_ptr_in_bounds(sp);
-                    let regs = handler.setup_trap_handler(move || {
+                    let stack_ptr_in_bounds = co.stack_ptr_in_bounds(sp);
+                    let regs = co.inner.trap_handler().setup_trap_handler(move || {
                         Err(if stack_ptr_in_bounds {
                             "invalid memory reference"
                         } else {
@@ -304,6 +290,25 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         self.listeners.push_back(listener);
     }
 
+    pub(crate) fn stack_infos_ref(&self) -> &VecDeque<StackInfo> {
+        unsafe {
+            self.stack_infos
+                .get()
+                .as_ref()
+                .expect("StackInfo not init !")
+        }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) fn stack_infos_mut(&self) -> &mut VecDeque<StackInfo> {
+        unsafe {
+            self.stack_infos
+                .get()
+                .as_mut()
+                .expect("StackInfo not init !")
+        }
+    }
+
     /// Grows the call stack if necessary.
     ///
     /// This function is intended to be called at manually instrumented points in a program where
@@ -320,24 +325,39 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         stack_size: usize,
         callback: F,
     ) -> std::io::Result<R> {
-        // if we can't guess the remaining stack (unsupported on some platforms) we immediately grow
-        // the stack and then cache the new stack size (which we do know now because we allocated it.
         if let Some(co) = Self::current() {
             let remaining_stack = unsafe { co.remaining_stack() };
             if remaining_stack >= red_zone {
                 return Ok(callback());
             }
             return DefaultStack::new(stack_size).map(|stack| {
-                co.stack_infos.borrow_mut().push_back(StackInfo {
-                    stack_top: stack.base().get(),
-                    stack_bottom: stack.limit().get(),
-                });
+                co.stack_infos_mut().push_back(StackInfo::from(&stack));
                 let r = corosensei::on_stack(stack, callback);
-                _ = co.stack_infos.borrow_mut().pop_back();
+                _ = co.stack_infos_mut().pop_back();
                 r
             });
         }
-        DefaultStack::new(stack_size).map(|stack| corosensei::on_stack(stack, callback))
+        // in thread
+        // if we can't guess the remaining stack (unsupported on some platforms) we immediately grow
+        // the stack and then cache the new stack size (which we do know now because we allocated it).
+        thread_local! {
+            #[allow(clippy::missing_const_for_thread_local)]
+            static STACK_INFOS: RefCell<VecDeque<StackInfo>> = const { RefCell::new(VecDeque::new()) };
+        }
+        if let Some(last_stack_info) = STACK_INFOS.with(|s| s.borrow().back().copied()) {
+            let remaining_stack = psm::stack_pointer() as usize - last_stack_info.stack_bottom;
+            if remaining_stack >= red_zone {
+                return Ok(callback());
+            }
+        }
+        DefaultStack::new(stack_size).map(|stack| {
+            STACK_INFOS.with(|s| {
+                s.borrow_mut().push_back(StackInfo::from(&stack));
+            });
+            let r = corosensei::on_stack(stack, callback);
+            _ = STACK_INFOS.with(|s| s.borrow_mut().pop_back());
+            r
+        })
     }
 }
 
@@ -360,16 +380,24 @@ where
     ///
     ///# Errors
     /// if stack allocate failed.
-    pub fn new<F>(name: String, f: F, stack_size: usize) -> std::io::Result<Self>
+    pub fn new<F>(
+        name: Option<String>,
+        f: F,
+        stack_size: Option<usize>,
+        priority: Option<c_longlong>,
+    ) -> std::io::Result<Self>
     where
         F: FnOnce(&Suspender<Param, Yield>, Param) -> Return + 'static,
     {
-        let stack_size = stack_size.max(crate::common::page_size());
+        let stack_size = stack_size
+            .unwrap_or(crate::common::constants::DEFAULT_STACK_SIZE)
+            .max(crate::common::page_size());
         let stack = DefaultStack::new(stack_size)?;
-        let stack_infos = RefCell::new(VecDeque::from([StackInfo {
+        let stack_infos = UnsafeCell::new(VecDeque::from([StackInfo {
             stack_top: stack.base().get(),
             stack_bottom: stack.limit().get(),
         }]));
+        let name = name.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let co_name = name.clone().leak();
         let inner = corosensei::Coroutine::with_stack(stack, move |y, p| {
             catch!(
@@ -388,15 +416,20 @@ where
         let mut co = Coroutine {
             name,
             inner,
-            stack_size,
             stack_infos,
             state: Cell::new(CoroutineState::Ready),
             listeners: VecDeque::default(),
             local: CoroutineLocal::default(),
+            priority,
         };
-        #[cfg(all(unix, feature = "preemptive"))]
-        co.add_listener(crate::monitor::MonitorListener::default());
-        co.on_create(&co, stack_size);
+        cfg_if::cfg_if! {
+            if #[cfg(all(unix, feature = "preemptive"))] {
+                let type_id = std::any::TypeId::of::<()>();
+                if std::any::TypeId::of::<Param>() == type_id && std::any::TypeId::of::<Yield>() == type_id {
+                    co.add_listener(crate::monitor::MonitorListener);
+                }
+            }
+        }
         Ok(co)
     }
 
@@ -414,8 +447,8 @@ where
                         self.suspend(y, timestamp)?;
                         Ok(CoroutineState::Suspend(y, timestamp))
                     }
-                    CoroutineState::SystemCall(y, syscall, state) => {
-                        Ok(CoroutineState::SystemCall(y, syscall, state))
+                    CoroutineState::Syscall(y, syscall, state) => {
+                        Ok(CoroutineState::Syscall(y, syscall, state))
                     }
                     _ => Err(Error::new(
                         ErrorKind::Other,
@@ -433,6 +466,15 @@ where
                     Ok(CoroutineState::Error(message))
                 }
             }
+        }
+    }
+}
+
+impl<S: Stack> From<&S> for StackInfo {
+    fn from(stack: &S) -> Self {
+        Self {
+            stack_top: stack.base().get(),
+            stack_bottom: stack.limit().get(),
         }
     }
 }

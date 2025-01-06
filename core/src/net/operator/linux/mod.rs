@@ -205,7 +205,7 @@ impl Operator<'_> {
             self,
             SUPPORT_POLL_ADD,
             PollAdd,
-            PollAdd::new(Fd(fd), flags as u32)
+            PollAdd::new(Fd(fd), flags.try_into().expect("flags overflow"))
                 .build()
                 .user_data(user_data as u64)
         )
@@ -458,10 +458,14 @@ impl Operator<'_> {
             self,
             SUPPORT_RECV,
             Recv,
-            Recv::new(Fd(fd), buf.cast::<u8>(), len as u32)
-                .flags(flags)
-                .build()
-                .user_data(user_data as u64)
+            Recv::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                len.try_into().expect("len overflow")
+            )
+            .flags(flags)
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -476,9 +480,13 @@ impl Operator<'_> {
             self,
             SUPPORT_READ,
             Read,
-            Read::new(Fd(fd), buf.cast::<u8>(), count as u32)
-                .build()
-                .user_data(user_data as u64)
+            Read::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                count.try_into().expect("count overflow")
+            )
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -494,10 +502,14 @@ impl Operator<'_> {
             self,
             SUPPORT_READ,
             Read,
-            Read::new(Fd(fd), buf.cast::<u8>(), count as u32)
-                .offset(offset as u64)
-                .build()
-                .user_data(user_data as u64)
+            Read::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                count.try_into().expect("count overflow")
+            )
+            .offset(offset.try_into().expect("offset overflow"))
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -512,7 +524,7 @@ impl Operator<'_> {
             self,
             SUPPORT_READV,
             Readv,
-            Readv::new(Fd(fd), iov, iovcnt as u32)
+            Readv::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
                 .build()
                 .user_data(user_data as u64)
         )
@@ -530,8 +542,8 @@ impl Operator<'_> {
             self,
             SUPPORT_READV,
             Readv,
-            Readv::new(Fd(fd), iov, iovcnt as u32)
-                .offset(offset as u64)
+            Readv::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
+                .offset(offset.try_into().expect("offset overflow"))
                 .build()
                 .user_data(user_data as u64)
         )
@@ -549,7 +561,7 @@ impl Operator<'_> {
             SUPPORT_RECVMSG,
             RecvMsg,
             RecvMsg::new(Fd(fd), msg)
-                .flags(flags as u32)
+                .flags(flags.try_into().expect("flags overflow"))
                 .build()
                 .user_data(user_data as u64)
         )
@@ -567,10 +579,14 @@ impl Operator<'_> {
             self,
             SUPPORT_SEND,
             Send,
-            Send::new(Fd(fd), buf.cast::<u8>(), len as u32)
-                .flags(flags)
-                .build()
-                .user_data(user_data as u64)
+            Send::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                len.try_into().expect("len overflow")
+            )
+            .flags(flags)
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -588,12 +604,16 @@ impl Operator<'_> {
             self,
             SUPPORT_SEND_ZC,
             SendZc,
-            SendZc::new(Fd(fd), buf.cast::<u8>(), len as u32)
-                .flags(flags)
-                .dest_addr(addr)
-                .dest_addr_len(addrlen)
-                .build()
-                .user_data(user_data as u64)
+            SendZc::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                len.try_into().expect("len overflow")
+            )
+            .flags(flags)
+            .dest_addr(addr)
+            .dest_addr_len(addrlen)
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -608,9 +628,13 @@ impl Operator<'_> {
             self,
             SUPPORT_WRITE,
             Write,
-            Write::new(Fd(fd), buf.cast::<u8>(), count as u32)
-                .build()
-                .user_data(user_data as u64)
+            Write::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                count.try_into().expect("count overflow")
+            )
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -626,10 +650,14 @@ impl Operator<'_> {
             self,
             SUPPORT_WRITE,
             Write,
-            Write::new(Fd(fd), buf.cast::<u8>(), count as u32)
-                .offset(offset as u64)
-                .build()
-                .user_data(user_data as u64)
+            Write::new(
+                Fd(fd),
+                buf.cast::<u8>(),
+                count.try_into().expect("count overflow")
+            )
+            .offset(offset.try_into().expect("offset overflow"))
+            .build()
+            .user_data(user_data as u64)
         )
     }
 
@@ -644,7 +672,7 @@ impl Operator<'_> {
             self,
             SUPPORT_WRITEV,
             Writev,
-            Writev::new(Fd(fd), iov, iovcnt as u32)
+            Writev::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
                 .build()
                 .user_data(user_data as u64)
         )
@@ -662,8 +690,8 @@ impl Operator<'_> {
             self,
             SUPPORT_WRITEV,
             Writev,
-            Writev::new(Fd(fd), iov, iovcnt as u32)
-                .offset(offset as u64)
+            Writev::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
+                .offset(offset.try_into().expect("offset overflow"))
                 .build()
                 .user_data(user_data as u64)
         )
@@ -681,7 +709,7 @@ impl Operator<'_> {
             SUPPORT_SENDMSG,
             SendMsg,
             SendMsg::new(Fd(fd), msg)
-                .flags(flags as u32)
+                .flags(flags.try_into().expect("flags overflow"))
                 .build()
                 .user_data(user_data as u64)
         )

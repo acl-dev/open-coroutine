@@ -49,7 +49,8 @@
 
 use open_coroutine_core::co_pool::task::UserTaskFunc;
 use open_coroutine_core::common::constants::SLICE;
-pub use open_coroutine_core::net::config::Config;
+pub use open_coroutine_core::common::ordered_work_steal::DEFAULT_PRECEDENCE;
+pub use open_coroutine_core::config::Config;
 use open_coroutine_core::net::UserFunc;
 pub use open_coroutine_macros::*;
 use std::cmp::Ordering;
@@ -75,7 +76,11 @@ extern "C" {
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn task_crate(f: UserTaskFunc, param: usize) -> open_coroutine_core::net::join::JoinHandle;
+    fn task_crate(
+        f: UserTaskFunc,
+        param: usize,
+        priority: c_longlong,
+    ) -> open_coroutine_core::net::join::JoinHandle;
 
     fn task_join(handle: &open_coroutine_core::net::join::JoinHandle) -> c_longlong;
 
@@ -92,6 +97,8 @@ pub fn init(config: Config) {
         unsafe { open_coroutine_init(config) },
         "open-coroutine init failed !"
     );
+    #[cfg(feature = "ci")]
+    open_coroutine_core::common::ci::init();
 }
 
 /// Shutdown the open-coroutine.
@@ -102,18 +109,34 @@ pub fn shutdown() {
 /// Create a task.
 #[macro_export]
 macro_rules! task {
+    ( $f: expr , $param:expr , $priority: expr $(,)? ) => {
+        $crate::crate_task($f, $param, $priority)
+    };
     ( $f: expr , $param:expr $(,)? ) => {
-        $crate::task($f, $param)
+        $crate::crate_task($f, $param, $crate::DEFAULT_PRECEDENCE)
     };
 }
 
 /// Create a task.
-pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(f: F, param: P) -> JoinHandle<R> {
+pub fn crate_task<P: 'static, R: 'static, F: FnOnce(P) -> R>(
+    f: F,
+    param: P,
+    priority: c_longlong,
+) -> JoinHandle<R> {
     extern "C" fn task_main<P: 'static, R: 'static, F: FnOnce(P) -> R>(input: usize) -> usize {
         unsafe {
             let ptr = &mut *((input as *mut c_void).cast::<(F, P)>());
             let data = std::ptr::read_unaligned(ptr);
-            let result: &'static mut R = Box::leak(Box::new((data.0)(data.1)));
+            let result: &'static mut std::io::Result<R> = Box::leak(Box::new(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (data.0)(data.1)))
+                    .map_err(|e| {
+                        Error::new(
+                            ErrorKind::Other,
+                            e.downcast_ref::<&'static str>()
+                                .map_or("task failed without message", |msg| *msg),
+                        )
+                    }),
+            ));
             std::ptr::from_mut(result).cast::<c_void>() as usize
         }
     }
@@ -122,6 +145,7 @@ pub fn task<P: 'static, R: 'static, F: FnOnce(P) -> R>(f: F, param: P) -> JoinHa
         task_crate(
             task_main::<P, R, F>,
             std::ptr::from_mut(inner).cast::<c_void>() as usize,
+            priority,
         )
         .into()
     }
@@ -140,7 +164,7 @@ impl<R> JoinHandle<R> {
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "timeout join failed")),
                 Ordering::Equal => Ok(None),
-                Ordering::Greater => Ok(Some(std::ptr::read_unaligned(ptr as *mut R))),
+                Ordering::Greater => Ok(Some((*Box::from_raw(ptr as *mut std::io::Result<R>))?)),
             }
         }
     }
@@ -151,9 +175,31 @@ impl<R> JoinHandle<R> {
             match ptr.cmp(&0) {
                 Ordering::Less => Err(Error::new(ErrorKind::Other, "join failed")),
                 Ordering::Equal => Ok(None),
-                Ordering::Greater => Ok(Some(std::ptr::read_unaligned(ptr as *mut R))),
+                Ordering::Greater => Ok(Some((*Box::from_raw(ptr as *mut std::io::Result<R>))?)),
             }
         }
+    }
+
+    pub fn any_timeout_join(dur: Duration, slice: &[Self]) -> std::io::Result<Option<R>> {
+        if slice.is_empty() {
+            return Ok(None);
+        }
+        let timeout_time = open_coroutine_core::common::get_timeout_time(dur);
+        loop {
+            for handle in slice {
+                let left_time = timeout_time.saturating_sub(open_coroutine_core::common::now());
+                if 0 == left_time {
+                    return Err(Error::new(ErrorKind::Other, "timeout join failed"));
+                }
+                if let Ok(x) = handle.timeout_join(Duration::from_nanos(left_time).min(SLICE)) {
+                    return Ok(x);
+                }
+            }
+        }
+    }
+
+    pub fn any_join<I: IntoIterator<Item = Self>>(iter: I) -> std::io::Result<Option<R>> {
+        Self::any_timeout_join(Duration::MAX, Vec::from_iter(iter).as_slice())
     }
 }
 
@@ -174,6 +220,22 @@ impl<R> Deref for JoinHandle<R> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// Waiting for one of the tasks to be completed.
+#[macro_export]
+macro_rules! any_timeout_join {
+    ($time:expr, $($x:expr),+ $(,)?) => {
+        $crate::JoinHandle::any_timeout_join($time, vec![$($x),+].as_slice())
+    }
+}
+
+/// Waiting for one of the tasks to be completed.
+#[macro_export]
+macro_rules! any_join {
+    ($($x:expr),+ $(,)?) => {
+        $crate::JoinHandle::any_join(vec![$($x),+])
     }
 }
 
@@ -199,7 +261,7 @@ macro_rules! maybe_grow {
     };
 }
 
-/// Create a coroutine.
+/// Grows the call stack if necessary.
 pub fn maybe_grow<R: 'static, F: FnOnce() -> R>(
     red_zone: usize,
     stack_size: usize,
@@ -295,11 +357,12 @@ pub fn connect_timeout<A: ToSocketAddrs>(addr: A, timeout: Duration) -> std::io:
 #[cfg(test)]
 mod tests {
     use crate::{init, shutdown};
-    use open_coroutine_core::net::config::Config;
+    use open_coroutine_core::config::Config;
 
     #[test]
     fn test() {
         init(Config::single());
+        _ = any_join!(task!(|_| 1, ()), task!(|_| 2, ()), task!(|_| 3, ()));
         let join = task!(
             |_| {
                 println!("Hello, world!");

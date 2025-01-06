@@ -1,6 +1,6 @@
 use crate::common::now;
 use crate::net::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking, send_time_limit};
+use crate::syscall::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking, send_time_limit};
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::io::Error;
@@ -67,7 +67,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 let wait_time = std::time::Duration::from_nanos(left_time)
                     .min(crate::common::constants::SLICE);
                 if EventLoops::wait_write_event(
-                    fd as _,
+                    fd.try_into().expect("overflow"),
                     Some(wait_time)
                 ).is_err() {
                     break;

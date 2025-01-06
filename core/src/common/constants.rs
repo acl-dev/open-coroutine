@@ -46,7 +46,7 @@ impl_display_by_debug!(PoolState);
 #[allow(non_camel_case_types, missing_docs)]
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Syscall {
+pub enum SyscallName {
     #[cfg(windows)]
     Sleep,
     sleep,
@@ -88,6 +88,8 @@ pub enum Syscall {
     connect,
     listen,
     accept,
+    #[cfg(windows)]
+    WSAAccept,
     shutdown,
     close,
     socket,
@@ -129,7 +131,7 @@ pub enum Syscall {
     WSAPoll,
 }
 
-impl Syscall {
+impl SyscallName {
     /// Get the `NIO` syscall.
     #[must_use]
     pub fn nio() -> Self {
@@ -156,10 +158,10 @@ impl Syscall {
     }
 }
 
-impl_display_by_debug!(Syscall);
+impl_display_by_debug!(SyscallName);
 
-impl From<Syscall> for &str {
-    fn from(val: Syscall) -> Self {
+impl From<SyscallName> for &str {
+    fn from(val: SyscallName) -> Self {
         format!("{val}").leak()
     }
 }
@@ -191,8 +193,8 @@ pub enum CoroutineState<Y, R> {
     Running,
     ///The coroutine resumes execution after the specified time has been suspended(with a given value).
     Suspend(Y, u64),
-    ///The coroutine enters the system call.
-    SystemCall(Y, Syscall, SyscallState),
+    ///The coroutine enters the syscall.
+    Syscall(Y, SyscallName, SyscallState),
     /// The coroutine completed with a return value.
     Complete(R),
     /// The coroutine completed with a error message.

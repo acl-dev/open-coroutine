@@ -1,5 +1,5 @@
 use crate::net::EventLoops;
-use crate::syscall::common::reset_errno;
+use crate::syscall::reset_errno;
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::time::Duration;
@@ -40,7 +40,7 @@ impl UsleepSyscall for NioUsleepSyscall {
             None => Duration::MAX,
         };
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
-            let syscall = crate::common::constants::Syscall::usleep;
+            let syscall = crate::common::constants::SyscallName::usleep;
             let new_state = crate::common::constants::SyscallState::Suspend(
                 crate::common::get_timeout_time(time),
             );

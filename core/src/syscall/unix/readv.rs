@@ -36,7 +36,7 @@ impl_facade!(ReadvSyscallFacade, ReadvSyscall,
     readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t
 );
 
-impl_io_uring!(IoUringReadvSyscall, ReadvSyscall,
+impl_io_uring_read!(IoUringReadvSyscall, ReadvSyscall,
     readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t
 );
 

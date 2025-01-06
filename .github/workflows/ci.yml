@@ -4,9 +4,11 @@ on:
   push:
     paths-ignore:
       - '**.md'
+      - '**.png'
   pull_request:
     paths-ignore:
       - '**.md'
+      - '**.png'
 
 env:
   CARGO_TERM_COLOR: always
@@ -53,7 +55,7 @@ jobs:
           PROJECT_DIR: ${{ github.workspace }}
         run: sh .github/workflows/ci.sh
       - name: Run preemptive tests
-        if: always()
+        if: ${{ contains(matrix.os, 'ubuntu') && !contains(matrix.target, 'loongarch64') || contains(matrix.os, 'macos') }}
         env:
           CHANNEL: ${{ matrix.channel }}
           CROSS: ${{ !startsWith(matrix.target, 'x86_64') && contains(matrix.target, 'linux') && '1' || '0' }}
@@ -72,8 +74,8 @@ jobs:
           armv7-unknown-linux-gnueabihf,
           riscv64gc-unknown-linux-gnu,
           thumbv7neon-unknown-linux-gnueabihf,
+          loongarch64-unknown-linux-gnu,
 #          mips64-unknown-linux-muslabi64,
-#          loongarch64-unknown-linux-gnu,
 #          s390x-unknown-linux-gnu,
 
           x86_64-apple-darwin,
@@ -84,7 +86,7 @@ jobs:
           x86_64-pc-windows-msvc,
           i686-pc-windows-msvc,
         ]
-        channel: [ 1.81.0, nightly-2024-08-02 ]
+        channel: [ stable, nightly ]
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
@@ -98,9 +100,9 @@ jobs:
             os: ubuntu-latest
           - target: thumbv7neon-unknown-linux-gnueabihf
             os: ubuntu-latest
+          - target: loongarch64-unknown-linux-gnu
+            os: ubuntu-latest
 #          - target: mips64-unknown-linux-muslabi64
-#            os: ubuntu-latest
-#          - target: loongarch64-unknown-linux-gnu
 #            os: ubuntu-latest
 #          - target: s390x-unknown-linux-gnu
 #            os: ubuntu-latest

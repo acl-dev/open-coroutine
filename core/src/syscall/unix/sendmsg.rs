@@ -1,6 +1,6 @@
 use crate::common::now;
 use crate::net::EventLoops;
-use crate::syscall::common::{is_blocking, reset_errno, set_blocking, set_non_blocking, send_time_limit};
+use crate::syscall::{is_blocking, reset_errno, set_blocking, set_non_blocking, send_time_limit};
 use libc::{msghdr, ssize_t};
 use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
@@ -40,7 +40,7 @@ impl_facade!(SendmsgSyscallFacade, SendmsgSyscall,
     sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t
 );
 
-impl_io_uring!(IoUringSendmsgSyscall, SendmsgSyscall,
+impl_io_uring_write!(IoUringSendmsgSyscall, SendmsgSyscall,
     sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t
 );
 
@@ -69,8 +69,8 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
         let vec = unsafe {
             Vec::from_raw_parts(
                 msghdr.msg_iov,
-                msghdr.msg_iovlen as usize,
-                msghdr.msg_iovlen as usize,
+                msghdr.msg_iovlen.try_into().expect("overflow"),
+                msghdr.msg_iovlen.try_into().expect("overflow"),
             )
         };
         let mut length = 0;
@@ -98,7 +98,7 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
                     let msg_iovlen = vec.len();
                 } else {
                     let msg_iovlen = c_int::try_from(iov.len()).unwrap_or_else(|_| {
-                        panic!("{} msghdr.msg_iovlen overflow", crate::common::constants::Syscall::recvmsg)
+                        panic!("{} msghdr.msg_iovlen overflow", crate::common::constants::SyscallName::recvmsg)
                     });
                 }
             }
@@ -121,9 +121,9 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
                 r = self.inner.sendmsg(fn_ptr, fd, &arg, flags);
                 if r != -1 {
                     reset_errno();
-                    sent += r as usize;
+                    sent += libc::size_t::try_from(r).expect("r overflow");
                     if sent >= length {
-                        r = sent as ssize_t;
+                        r = sent.try_into().expect("sent overflow");
                         break;
                     }
                     offset = sent.saturating_sub(length);

@@ -38,7 +38,7 @@ impl_facade!(PreadSyscallFacade, PreadSyscall,
     pread(fd: c_int, buf: *mut c_void, len: size_t, offset: off_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringPreadSyscall, PreadSyscall,
+impl_io_uring_read!(IoUringPreadSyscall, PreadSyscall,
     pread(fd: c_int, buf: *mut c_void, len: size_t, offset: off_t) -> ssize_t
 );
 

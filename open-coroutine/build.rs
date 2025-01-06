@@ -220,5 +220,6 @@ fn main() {
         }
     }
     // link dylib
+    println!("cargo:rustc-link-search=native={}", deps.display());
     println!("cargo:rustc-link-lib=dylib=open_coroutine_hook");
 }

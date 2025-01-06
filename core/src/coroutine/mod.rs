@@ -1,13 +1,14 @@
 use crate::common::constants::CoroutineState;
+use crate::common::ordered_work_steal::Ordered;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
 use std::collections::VecDeque;
+use std::ffi::c_longlong;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 
 /// Coroutine suspender abstraction and impl.
-#[allow(dead_code)]
 pub mod suspender;
 
 /// Coroutine local abstraction.
@@ -24,21 +25,23 @@ mod korosensei;
 /// Create a new coroutine.
 #[macro_export]
 macro_rules! co {
-    ($f:expr, $size:literal $(,)?) => {
-        $crate::coroutine::Coroutine::new(uuid::Uuid::new_v4().to_string(), $f, $size)
+    ($name:expr, $f:expr, $size:expr, $priority:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new($name, $f, $size, $priority)
     };
-    ($f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new(
-            uuid::Uuid::new_v4().to_string(),
-            $f,
-            $crate::common::constants::DEFAULT_STACK_SIZE,
-        )
+    ($f:expr, $size:literal, $priority:literal $(,)?) => {
+        $crate::coroutine::Coroutine::new(None, $f, $size, Some($priority))
     };
     ($name:expr, $f:expr, $size:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new($name, $f, $size)
+        $crate::coroutine::Coroutine::new($name, $f, $size, None)
+    };
+    ($f:expr, $size:literal $(,)?) => {
+        $crate::coroutine::Coroutine::new(None, $f, $size, None)
     };
     ($name:expr, $f:expr $(,)?) => {
-        $crate::coroutine::Coroutine::new($name, $f, $crate::common::constants::DEFAULT_STACK_SIZE)
+        $crate::coroutine::Coroutine::new($name, $f, None, None)
+    };
+    ($f:expr $(,)?) => {
+        $crate::coroutine::Coroutine::new(None, $f, None, None)
     };
 }
 
@@ -86,15 +89,31 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     ///
     /// This can only be done safely in coroutine.
     pub unsafe fn remaining_stack(&self) -> usize {
-        let current_ptr = psm::stack_pointer() as usize;
-        current_ptr - self.stack_infos.borrow().back().unwrap().stack_bottom
+        let current_sp = psm::stack_pointer() as usize;
+        current_sp - self.stack_infos_ref().back().unwrap().stack_bottom
     }
 
     /// Queries the current stack info of this coroutine.
     ///
     /// The first used stack index is 0 and increases with usage.
     pub fn stack_infos(&self) -> VecDeque<StackInfo> {
-        self.stack_infos.borrow().clone()
+        self.stack_infos_ref().clone()
+    }
+
+    /// Checks whether the stack pointer at the point where a trap occurred is
+    /// within the coroutine that this `CoroutineTrapHandler` was produced from.
+    /// This check includes any guard pages on the stack and will therefore
+    /// still return true in the case of a stack overflow.
+    ///
+    /// The result of this function is only meaningful if the coroutine has not
+    /// been dropped yet.
+    pub fn stack_ptr_in_bounds(&self, stack_ptr: u64) -> bool {
+        for info in self.stack_infos_ref() {
+            if info.stack_bottom as u64 <= stack_ptr && stack_ptr < info.stack_top as u64 {
+                return true;
+            }
+        }
+        false
     }
 
     /// Grows the call stack if necessary.
@@ -164,8 +183,10 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Coroutine")
             .field("name", &self.name())
-            .field("status", &self.state())
+            .field("state", &self.state())
+            .field("stack_infos", &self.stack_infos())
             .field("local", &self.local)
+            .field("priority", &self.priority)
             .finish()
     }
 }
@@ -175,6 +196,12 @@ impl<'c, Param, Yield, Return> Deref for Coroutine<'c, Param, Yield, Return> {
 
     fn deref(&self) -> &Self::Target {
         &self.local
+    }
+}
+
+impl<Param, Yield, Return> Ordered for Coroutine<'_, Param, Yield, Return> {
+    fn priority(&self) -> Option<c_longlong> {
+        self.priority
     }
 }
 

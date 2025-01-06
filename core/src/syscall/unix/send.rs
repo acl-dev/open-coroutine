@@ -38,7 +38,7 @@ impl_facade!(SendSyscallFacade, SendSyscall,
     send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t
 );
 
-impl_io_uring!(IoUringSendSyscall, SendSyscall,
+impl_io_uring_write!(IoUringSendSyscall, SendSyscall,
     send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t
 );
 

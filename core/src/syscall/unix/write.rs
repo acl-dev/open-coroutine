@@ -36,12 +36,12 @@ impl_facade!(WriteSyscallFacade, WriteSyscall,
     write(fd: c_int, buf: *const c_void, len: size_t) -> ssize_t
 );
 
-impl_io_uring!(IoUringWriteSyscall, WriteSyscall,
+impl_io_uring_write!(IoUringWriteSyscall, WriteSyscall,
     write(fd: c_int, buf: *const c_void, len: size_t) -> ssize_t
 );
 
 impl_nio_write_buf!(NioWriteSyscall, WriteSyscall,
-    write(fd: c_int, buf: *const c_void, len: size_t, ) -> ssize_t
+    write(fd: c_int, buf: *const c_void, len: size_t) -> ssize_t
 );
 
 impl_raw!(RawWriteSyscall, WriteSyscall,

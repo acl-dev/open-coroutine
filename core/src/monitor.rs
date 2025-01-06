@@ -174,8 +174,8 @@ impl Monitor {
 impl_current_for!(MONITOR, Monitor);
 
 #[repr(C)]
-#[derive(Debug, Default)]
-pub(crate) struct MonitorListener {}
+#[derive(Debug)]
+pub(crate) struct MonitorListener;
 
 const NOTIFY_NODE: &str = "MONITOR_NODE";
 
@@ -198,7 +198,7 @@ impl<Yield, Return> Listener<Yield, Return> for MonitorListener {
                 }
             }
             CoroutineState::Suspend(_, _)
-            | CoroutineState::SystemCall(_, _, _)
+            | CoroutineState::Syscall(_, _, _)
             | CoroutineState::Complete(_)
             | CoroutineState::Error(_) => {
                 if let Some(node) = local.get(NOTIFY_NODE) {

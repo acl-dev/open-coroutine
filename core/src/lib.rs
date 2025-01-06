@@ -56,14 +56,18 @@
 /// Common traits and impl.
 pub mod common;
 
-/// Coroutine impls.
+/// Configuration for `EventLoops`.
+#[allow(missing_docs)]
+pub mod config;
+
+#[doc = include_str!("../docs/en/coroutine.md")]
 pub mod coroutine;
 
-/// Make the coroutine automatically yield.
 #[cfg(all(unix, feature = "preemptive"))]
+#[doc = include_str!("../docs/en/monitor.md")]
 mod monitor;
 
-/// Scheduler impls.
+/// Schedule many coroutines.
 pub mod scheduler;
 
 /// Coroutine pool abstraction and impl.
@@ -80,9 +84,7 @@ pub mod net;
     clippy::similar_names,
     clippy::not_unsafe_ptr_arg_deref,
     clippy::many_single_char_names,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
+    clippy::useless_conversion,
     clippy::unnecessary_cast,
     trivial_numeric_casts
 )]

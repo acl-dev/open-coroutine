@@ -49,7 +49,7 @@
 
 use once_cell::sync::OnceCell;
 use open_coroutine_core::co_pool::task::UserTaskFunc;
-use open_coroutine_core::net::config::Config;
+use open_coroutine_core::config::Config;
 use open_coroutine_core::net::join::JoinHandle;
 use open_coroutine_core::net::{EventLoops, UserFunc};
 use open_coroutine_core::scheduler::SchedulableCoroutine;
@@ -91,8 +91,13 @@ pub extern "C" fn open_coroutine_stop(secs: c_uint) -> c_int {
 
 ///创建任务
 #[no_mangle]
-pub extern "C" fn task_crate(f: UserTaskFunc, param: usize) -> JoinHandle {
-    EventLoops::submit_task(None, move |p| Some(f(p.unwrap_or(0))), Some(param))
+pub extern "C" fn task_crate(f: UserTaskFunc, param: usize, priority: c_longlong) -> JoinHandle {
+    EventLoops::submit_task(
+        None,
+        move |p| Some(f(p.unwrap_or(0))),
+        Some(param),
+        Some(priority),
+    )
 }
 
 ///等待任务完成

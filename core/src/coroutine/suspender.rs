@@ -1,12 +1,11 @@
 use crate::common::get_timeout_time;
 use crate::impl_current_for;
-use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::time::Duration;
 
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
-    static TIMESTAMP: RefCell<VecDeque<u64>> = const { RefCell::new(VecDeque::new()) };
+    static TIMESTAMP: crossbeam_utils::atomic::AtomicCell<std::collections::VecDeque<u64>> =
+        const { crossbeam_utils::atomic::AtomicCell::new(std::collections::VecDeque::new()) };
 }
 
 impl<Param, Yield> Suspender<'_, Param, Yield> {
@@ -17,19 +16,39 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
 
     /// Delay the execution of the coroutine with an arg until `timestamp`.
     pub fn until_with(&self, arg: Yield, timestamp: u64) -> Param {
-        TIMESTAMP.with(|s| {
-            s.borrow_mut().push_front(timestamp);
+        TIMESTAMP.with(|s| unsafe {
+            s.as_ptr()
+                .as_mut()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "thread:{} init TIMESTAMP current failed",
+                        std::thread::current().name().unwrap_or("unknown")
+                    )
+                })
+                .push_front(timestamp);
         });
         self.suspend_with(arg)
     }
 
     pub(crate) fn timestamp() -> u64 {
-        TIMESTAMP.with(|s| s.borrow_mut().pop_front()).unwrap_or(0)
+        TIMESTAMP
+            .with(|s| unsafe {
+                s.as_ptr()
+                    .as_mut()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "thread:{} get TIMESTAMP current failed",
+                            std::thread::current().name().unwrap_or("unknown")
+                        )
+                    })
+                    .pop_front()
+            })
+            .unwrap_or(0)
     }
 }
 
 #[allow(clippy::must_use_candidate)]
-impl<'s, Param> Suspender<'s, Param, ()> {
+impl<Param> Suspender<'_, Param, ()> {
     /// see the `suspend_with` documents.
     pub fn suspend(&self) -> Param {
         self.suspend_with(())
@@ -57,9 +76,8 @@ mod korosensei {
     /// Ths suspender implemented for coroutine.
     #[repr(C)]
     #[derive(educe::Educe)]
-    #[educe(Debug)]
+    #[educe(Debug(named_field = false))]
     pub struct Suspender<'s, Param, Yield> {
-        #[educe(Debug(ignore))]
         inner: &'s Yielder<Param, Yield>,
     }
 

@@ -3,9 +3,9 @@ name = "open-coroutine"
 version.workspace = true
 edition.workspace = true
 authors = ["zhangzicheng@apache.org"]
-description = "The open-coroutine is a simple, efficient and generic stackful-coroutine library."
+description = "The open-coroutine is a simple, efficient and generic stackfull-coroutine library."
 repository = "https://github.com/acl-dev/open-coroutine"
-keywords = ["coroutine", "fiber", "stackful", "hook"]
+keywords = ["coroutine", "fiber", "stackfull", "hook"]
 categories = ["data-structures", "concurrency", "asynchronous", "web-programming", "wasm"]
 license.workspace = true
 readme.workspace = true
@@ -37,6 +37,7 @@ cargo_metadata.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+cfg-if.workspace = true
 
 [features]
 default = ["open-coroutine-hook/default", "open-coroutine-core/default"]
@@ -44,6 +45,9 @@ default = ["open-coroutine-hook/default", "open-coroutine-core/default"]
 # Print some help log.
 # Enable for default.
 log = ["open-coroutine-hook/log", "open-coroutine-core/log"]
+
+# This feature only used in open-coroutine inner, don't use it in your project.
+ci = ["open-coroutine-hook/ci", "open-coroutine-core/ci"]
 
 # Provide preemptive scheduling implementation.
 # Enable for default.

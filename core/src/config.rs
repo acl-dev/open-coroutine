@@ -8,15 +8,18 @@ pub struct Config {
     min_size: usize,
     max_size: usize,
     keep_alive_time: u64,
+    min_memory_count: usize,
+    memory_keep_alive_time: u64,
     hook: bool,
 }
 
 impl Config {
     #[must_use]
     pub fn single() -> Self {
-        Self::new(1, DEFAULT_STACK_SIZE, 0, 65536, 0, true)
+        Self::new(1, DEFAULT_STACK_SIZE, 0, 65536, 0, 0, 0, true)
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn new(
         event_loop_size: usize,
@@ -24,6 +27,8 @@ impl Config {
         min_size: usize,
         max_size: usize,
         keep_alive_time: u64,
+        min_memory_count: usize,
+        memory_keep_alive_time: u64,
         hook: bool,
     ) -> Self {
         Self {
@@ -32,6 +37,8 @@ impl Config {
             min_size,
             max_size,
             keep_alive_time,
+            min_memory_count,
+            memory_keep_alive_time,
             hook,
         }
     }
@@ -59,6 +66,16 @@ impl Config {
     #[must_use]
     pub fn keep_alive_time(&self) -> u64 {
         self.keep_alive_time
+    }
+
+    #[must_use]
+    pub fn min_memory_count(&self) -> usize {
+        self.min_memory_count
+    }
+
+    #[must_use]
+    pub fn memory_keep_alive_time(&self) -> u64 {
+        self.memory_keep_alive_time
     }
 
     #[must_use]
@@ -101,6 +118,16 @@ impl Config {
         self
     }
 
+    pub fn set_min_memory_count(&mut self, min_memory_count: usize) -> &mut Self {
+        self.min_memory_count = min_memory_count;
+        self
+    }
+
+    pub fn set_memory_keep_alive_time(&mut self, memory_keep_alive_time: u64) -> &mut Self {
+        self.memory_keep_alive_time = memory_keep_alive_time;
+        self
+    }
+
     pub fn set_hook(&mut self, hook: bool) -> &mut Self {
         self.hook = hook;
         self
@@ -109,6 +136,6 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self::new(cpu_count(), DEFAULT_STACK_SIZE, 0, 65536, 0, true)
+        Self::new(cpu_count(), DEFAULT_STACK_SIZE, 0, 65536, 0, 0, 0, true)
     }
 }

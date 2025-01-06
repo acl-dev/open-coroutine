@@ -1,20 +1,22 @@
+use crate::config::Config;
 use crate::coroutine::suspender::Suspender;
-use crate::net::config::Config;
 use crate::net::event_loop::EventLoop;
 use crate::net::join::JoinHandle;
 use crate::{error, info};
 use once_cell::sync::OnceCell;
 use std::collections::VecDeque;
-use std::ffi::c_int;
-#[cfg(any(
-    all(target_os = "linux", feature = "io_uring"),
-    all(windows, feature = "iocp")
-))]
-use std::ffi::c_longlong;
+use std::ffi::{c_int, c_longlong};
 use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
+
+cfg_if::cfg_if! {
+    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+        use libc::{epoll_event, iovec, mode_t, msghdr, off_t, size_t, sockaddr, socklen_t};
+        use std::ffi::{c_char, c_uint, c_void};
+    }
+}
 
 cfg_if::cfg_if! {
     if #[cfg(all(windows, feature = "iocp"))] {
@@ -27,23 +29,13 @@ cfg_if::cfg_if! {
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-        use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
-        use std::ffi::c_void;
-    }
-}
-
 /// 做C兼容时会用到
 pub type UserFunc = extern "C" fn(usize) -> usize;
 
 mod selector;
 
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::too_many_arguments
-)]
+#[allow(clippy::too_many_arguments)]
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
 #[cfg(any(
     all(target_os = "linux", feature = "io_uring"),
     all(windows, feature = "iocp")
@@ -52,10 +44,6 @@ pub(crate) mod operator;
 
 #[allow(missing_docs)]
 pub mod event_loop;
-
-/// Configuration for `EventLoops`.
-#[allow(missing_docs)]
-pub mod config;
 
 /// Task join abstraction and impl.
 pub mod join;
@@ -79,6 +67,8 @@ impl EventLoops {
     /// Init the `EventLoops`.
     pub fn init(config: &Config) {
         _ = INSTANCE.get_or_init(|| {
+            #[cfg(feature = "ci")]
+            crate::common::ci::init();
             let loops = Self::new(
                 config.event_loop_size(),
                 config.stack_size(),
@@ -154,12 +144,15 @@ impl EventLoops {
         name: Option<String>,
         func: impl FnOnce(Option<usize>) -> Option<usize> + 'static,
         param: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> JoinHandle {
         let event_loop = Self::round_robin();
-        event_loop.submit_task(name, func, param).map_or_else(
-            |_| JoinHandle::err(event_loop),
-            |n| JoinHandle::new(event_loop, n.as_str()),
-        )
+        event_loop
+            .submit_task(name, func, param, priority)
+            .map_or_else(
+                |_| JoinHandle::err(event_loop),
+                |n| JoinHandle::new(event_loop, n.as_str()),
+            )
     }
 
     /// Submit a new coroutine to event-loop.
@@ -169,8 +162,9 @@ impl EventLoops {
     pub fn submit_co(
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + 'static,
         stack_size: Option<usize>,
+        priority: Option<c_longlong>,
     ) -> std::io::Result<()> {
-        Self::round_robin().submit_co(f, stack_size)
+        Self::round_robin().submit_co(f, stack_size, priority)
     }
 
     /// Waiting for read or write events to occur.
@@ -264,7 +258,7 @@ impl EventLoops {
 }
 
 macro_rules! impl_io_uring {
-    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    ( $syscall: ident($($arg: ident: $arg_type: ty),*) -> $result: ty ) => {
         #[cfg(all(target_os = "linux", feature = "io_uring"))]
         impl EventLoops {
             #[allow(missing_docs)]
@@ -297,6 +291,10 @@ impl_io_uring!(pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_
 impl_io_uring!(writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_io_uring!(pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
 impl_io_uring!(sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t);
+impl_io_uring!(fsync(fd: c_int) -> c_int);
+impl_io_uring!(mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
+impl_io_uring!(renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
+impl_io_uring!(renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
 macro_rules! impl_iocp {
     ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {

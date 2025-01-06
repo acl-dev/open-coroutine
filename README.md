@@ -1,18 +1,36 @@
 # open-coroutine
 
+[![crates.io](https://img.shields.io/crates/v/open-coroutine.svg)](https://crates.io/crates/open-coroutine)
+[![docs.rs](https://img.shields.io/badge/docs-release-blue)](https://docs.rs/open-coroutine)
+[![LICENSE](https://img.shields.io/github/license/acl-dev/open-coroutine.svg?style=flat-square)](https://github.com/acl-dev/open-coroutine/blob/master/LICENSE-APACHE)
+[![Build Status](https://github.com/acl-dev/open-coroutine/workflows/CI/badge.svg)](https://github.com/acl-dev/open-coroutine/actions)
+[![Codecov](https://codecov.io/github/acl-dev/open-coroutine/graph/badge.svg?token=MSM3R7CBEX)](https://codecov.io/github/acl-dev/open-coroutine)
+[![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Average time to resolve an issue")
+[![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Percentage of issues still open")
+
 The `open-coroutine` is a simple, efficient and generic stackful-coroutine library.
 
-<div style="text-align: center;">
-    <img src="https://github.com/acl-dev/open-coroutine-docs/blob/master/img/architecture.png" width="100%">
-</div>
+English | [中文](README_ZH.md)
 
-[我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
+## 🚀 Features
 
-## Status
+- [x] Preemptive(`not supported in windows`): even if the coroutine enters a dead loop, it can still be seized, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
+- [x] Hook: you are free to use most of the slow syscall in coroutine, see supported syscall on [unix](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/unix.rs)/[windows](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/windows.rs);
+- [x] Scalable: the size of the coroutine stack supports unlimited expansion without the cost of copying stack, and immediately shrinks to the original size after use, see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
+- [x] io_uring(`only in linux`): supports and is compatible with io_uring in terms of local file IO and network IO. If it's not supported on your system, it will fall back to non-blocking IO;
+- [x] Priority: support custom task priority, note that coroutine priority is not open to users;
+- [x] Work Steal: internally using a lock free work steal queue;
+- [x] Compatibility: the implementation of open-coroutine is no async, but it is compatible with async, which means you can use this crate in `tokio/async-std/smol/...`;
+- [x] Platforms: running on Linux, macOS and Windows;
 
-Still under development, please `do not` use this library in the `production` environment !
+## 🕊 Roadmap
 
-## How to use this library ?
+- [ ] cancel coroutine/task;
+- [ ] add metrics;
+- [ ] add synchronization toolkit;
+- [ ] support and compatibility for AF_XDP socket;
+
+## 📖 Quick Start
 
 ### step1: add dependency to your Cargo.toml
 
@@ -22,7 +40,7 @@ Still under development, please `do not` use this library in the `production` en
 open-coroutine = "x.y.z"
 ```
 
-### step2: add macro
+### step2: add `open_coroutine::main` macro
 
 ```rust
 #[open_coroutine::main]
@@ -31,252 +49,66 @@ fn main() {
 }
 ```
 
-### step3: enjoy the performance improvement brought by open-coroutine !
-
-## Examples
-
-### Amazing preemptive schedule
-
-Note: not supported for windows
-
-```rust
-#[open_coroutine::main]
-fn main() -> std::io::Result<()> {
-    cfg_if::cfg_if! {
-        if #[cfg(all(unix, feature = "preemptive-schedule"))] {
-            use open_coroutine_core::scheduler::Scheduler;
-            use std::sync::{Arc, Condvar, Mutex};
-            use std::time::Duration;
-
-            static mut TEST_FLAG1: bool = true;
-            static mut TEST_FLAG2: bool = true;
-            let pair = Arc::new((Mutex::new(true), Condvar::new()));
-            let pair2 = Arc::clone(&pair);
-            let handler = std::thread::Builder::new()
-                .name("preemptive".to_string())
-                .spawn(move || {
-                    let scheduler = Scheduler::new();
-                    _ = scheduler.submit(
-                        |_, _| {
-                            println!("coroutine1 launched");
-                            while unsafe { TEST_FLAG1 } {
-                                println!("loop1");
-                                _ = unsafe { libc::usleep(10_000) };
-                            }
-                            println!("loop1 end");
-                            1
-                        },
-                        None,
-                    );
-                    _ = scheduler.submit(
-                        |_, _| {
-                            println!("coroutine2 launched");
-                            while unsafe { TEST_FLAG2 } {
-                                println!("loop2");
-                                _ = unsafe { libc::usleep(10_000) };
-                            }
-                            println!("loop2 end");
-                            unsafe { TEST_FLAG1 = false };
-                            2
-                        },
-                        None,
-                    );
-                    _ = scheduler.submit(
-                        |_, _| {
-                            println!("coroutine3 launched");
-                            unsafe { TEST_FLAG2 = false };
-                            3
-                        },
-                        None,
-                    );
-                    scheduler.try_schedule();
-
-                    let (lock, cvar) = &*pair2;
-                    let mut pending = lock.lock().unwrap();
-                    *pending = false;
-                    // notify the condvar that the value has changed.
-                    cvar.notify_one();
-                })
-                .expect("failed to spawn thread");
-
-            // wait for the thread to start up
-            let (lock, cvar) = &*pair;
-            let result = cvar
-                .wait_timeout_while(
-                    lock.lock().unwrap(),
-                    Duration::from_millis(3000),
-                    |&mut pending| pending,
-                )
-                .unwrap();
-            if result.1.timed_out() {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "preemptive schedule failed",
-                ))
-            } else {
-                unsafe {
-                    handler.join().unwrap();
-                    assert!(!TEST_FLAG1);
-                }
-                Ok(())
-            }
-        } else {
-            println!("please enable preemptive-schedule feature");
-            Ok(())
-        }
-    }
-}
-```
-
-outputs
-
-```text
-coroutine1 launched
-loop1
-coroutine2 launched
-loop2
-coroutine3 launched
-loop1
-loop2 end
-loop1 end
-```
-
-### Arbitrary use of blocking syscalls
+### step3: create a task
 
 ```rust
 #[open_coroutine::main]
 fn main() {
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    _ = open_coroutine::task!(|param| {
+        assert_eq!(param, "param");
+    }, "param");
 }
 ```
 
-outputs
+### create a task with priority(optional)
 
-```text
-nanosleep hooked
+```rust
+#[open_coroutine::main]
+fn main() {
+    _ = open_coroutine::task!(|param| {
+        assert_eq!(param, "param");
+    }, "param", 1/*the smaller the value, the higher the priority*/);
+}
 ```
 
-## Features
+### wait until the task is completed or timed out(optional)
 
-### todo
+```rust
+#[open_coroutine::main]
+fn main() {
+    let task = open_coroutine::task!(|param| {
+        assert_eq!(param, "param");
+    }, "param", 1);
+    task.timeout_join(std::time::Duration::from_secs(1)).expect("timeout");
+}
+```
 
-- [ ] support and compatibility for AF_XDP socket
-- [ ] hook other syscall maybe interrupt by signal
-  <details>
-  <summary>syscalls</summary>
+### scalable stack(optional)
 
-    - [ ] open
-    - [ ] chdir
-    - [ ] chroot
-    - [ ] readlink
-    - [ ] stat
-    - [ ] dup
-    - [ ] dup2
-    - [ ] umask
-    - [ ] mount
-    - [ ] umount
-    - [ ] mknod
-    - [ ] fcntl
-    - [ ] truncate
-    - [ ] ftruncate
-    - [ ] setjmp
-    - [ ] longjmp
-    - [ ] chown
-    - [ ] lchown
-    - [ ] fchown
-    - [ ] chmod
-    - [ ] fchmod
-    - [ ] fchmodat
-    - [ ] semop
-    - [ ] ppoll
-    - [ ] pselect
-    - [ ] io_getevents
-    - [ ] semop
-    - [ ] semtimedop
-    - [ ] msgrcv
-    - [ ] msgsnd
+```rust
+#[open_coroutine::main]
+fn main() {
+    _ = open_coroutine::task!(|_| {
+        fn recurse(i: u32, p: &mut [u8; 10240]) {
+            open_coroutine::maybe_grow!(|| {
+                // Ensure the stack allocation isn't optimized away.
+                unsafe { _ = std::ptr::read_volatile(&p) };
+                if i > 0 {
+                    recurse(i - 1, &mut [0; 10240]);
+                }
+            })
+            .expect("allocate stack failed")
+        }
+        println!("[task] launched");
+        // Use ~500KB of stack.
+        recurse(50, &mut [0; 10240]);
+    }, ());
+}
+```
 
-  </details>
-- [ ] support `#[open_coroutine::join]` macro to wait coroutines
+## ⚓ Learn More
 
-### 0.6.x
+- [Coroutine Overview](core/docs/en/coroutine.md)
+- [Monitor Overview](core/docs/en/monitor.md)
 
-- [x] support scalable stack
-
-### 0.5.x
-
-- [x] refactor syscall state, distinguish between state and innerState
-
-### 0.4.x
-
-- [x] Supports and is compatible with io_uring in terms of local file IO
-- [x] elegant shutdown
-- [x] use log instead of println
-- [x] enhance `#[open_coroutine::main]` macro
-- [x] refactor hook impl, no need to publish dylibs now
-- [x] `Monitor` follow the `thread-per-core` guideline
-- [x] `EventLoop` follow the `thread-per-core` guideline
-
-### 0.3.x
-
-- [x] ~~support `genawaiter` as low_level stackless coroutine (can't support it due to hook)~~
-- [x] use `corosensei` as low_level coroutine
-- [x] support backtrace
-- [x] support `#[open_coroutine::co]` macro
-- [x] refactor `WorkStealQueue`
-
-### 0.2.x
-
-- [x] use correct `epoll_event` struct
-- [x] use `rayon` for parallel computing
-- [x] support `#[open_coroutine::main]` macro
-- [x] hook almost all `read` syscall
-  <details>
-  <summary>read syscalls</summary>
-
-    - [x] recv
-    - [x] readv
-    - [x] pread
-    - [x] preadv
-    - [x] recvfrom
-    - [x] recvmsg
-
-  </details>
-
-- [x] hook almost all `write` syscall
-  <details>
-  <summary>write syscalls</summary>
-
-    - [x] send
-    - [x] writev
-    - [x] sendto
-    - [x] sendmsg
-    - [x] pwrite
-    - [x] pwritev
-
-  </details>
-
-- [x] hook other syscall
-  <details>
-  <summary>other syscalls</summary>
-
-    - [x] sleep
-    - [x] usleep
-    - [x] nanosleep
-    - [x] connect
-    - [x] listen
-    - [x] accept
-    - [x] shutdown
-    - [x] poll
-    - [x] select
-
-  </details>
-
-### 0.1.x
-
-- [x] basic suspend/resume supported
-- [x] use jemalloc as memory pool
-- [x] higher level coroutine abstraction supported
-- [x] preemptive scheduling supported
-- [x] work stealing supported
-- [x] sleep system call hooks supported
+[我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)

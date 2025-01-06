@@ -30,9 +30,14 @@ windows-sys = { workspace = true, features = [
 minhook.workspace = true
 
 [features]
+default = ["open-coroutine-core/default"]
+
 # Print some help log.
 # Enable for default.
 log = ["open-coroutine-core/log"]
+
+# This feature only used in open-coroutine inner, don't use it in your project.
+ci = ["open-coroutine-core/ci"]
 
 # Provide preemptive scheduling implementation.
 # Enable for default.
@@ -52,8 +57,6 @@ completion_io = ["open-coroutine-core/completion_io"]
 
 # Provide syscall implementation.
 syscall = ["open-coroutine-core/syscall"]
-
-default = ["open-coroutine-core/default"]
 
 [lib]
 crate-type = ["cdylib"]

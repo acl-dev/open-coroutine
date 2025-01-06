@@ -75,6 +75,7 @@ trait WSARecvSyscall {
     ) -> c_int;
 }
 
+
 #[repr(C)]
 #[derive(Debug, Default)]
 struct WSARecvSyscallFacade<I: WSARecvSyscall> {
@@ -254,9 +255,9 @@ impl_nio_read_iovec!(NioWSARecvSyscall, WSARecvSyscall,
         buf: *const WSABUF,
         dwbuffercount: c_uint,
         lpnumberofbytesrecvd: *mut c_uint,
-        lpflags : *mut c_uint,
+        lpflags: *mut c_uint,
         lpoverlapped: *mut OVERLAPPED,
-        lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE
     ) -> c_int
 );
 
@@ -266,8 +267,8 @@ impl_raw!(RawWSARecvSyscall, WSARecvSyscall, windows_sys::Win32::Networking::Win
         buf: *const WSABUF,
         dwbuffercount: c_uint,
         lpnumberofbytesrecvd: *mut c_uint,
-        lpflags : *mut c_uint,
+        lpflags: *mut c_uint,
         lpoverlapped: *mut OVERLAPPED,
-        lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE
     ) -> c_int
 );

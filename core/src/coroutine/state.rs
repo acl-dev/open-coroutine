@@ -1,4 +1,4 @@
-use crate::common::constants::{CoroutineState, Syscall, SyscallState};
+use crate::common::constants::{CoroutineState, SyscallName, SyscallState};
 use crate::common::now;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::Coroutine;
@@ -33,13 +33,17 @@ where
     /// if change state fails.
     pub(crate) fn ready(&self) -> std::io::Result<()> {
         let current = self.state();
-        if let CoroutineState::Suspend(_, timestamp) = current {
-            if timestamp <= now() {
-                let new_state = CoroutineState::Ready;
-                let old_state = self.change_state(new_state);
-                self.on_ready(self, old_state);
-                return Ok(());
+        match current {
+            CoroutineState::Ready => return Ok(()),
+            CoroutineState::Suspend(_, timestamp) => {
+                if timestamp <= now() {
+                    let new_state = CoroutineState::Ready;
+                    let old_state = self.change_state(new_state);
+                    self.on_ready(self, old_state);
+                    return Ok(());
+                }
             }
+            _ => {}
         }
         Err(Error::new(
             ErrorKind::Other,
@@ -63,7 +67,7 @@ where
         let current = self.state();
         match current {
             CoroutineState::Running => return Ok(()),
-            CoroutineState::Ready | CoroutineState::SystemCall(_, _, SyscallState::Executing) => {
+            CoroutineState::Ready | CoroutineState::Syscall(_, _, SyscallState::Executing) => {
                 let new_state = CoroutineState::Running;
                 let old_state = self.change_state(new_state);
                 self.on_running(self, old_state);
@@ -78,7 +82,7 @@ where
                     return Ok(());
                 }
             }
-            CoroutineState::SystemCall(_, _, SyscallState::Callback | SyscallState::Timeout) => {
+            CoroutineState::Syscall(_, _, SyscallState::Callback | SyscallState::Timeout) => {
                 return Ok(());
             }
             _ => {}
@@ -123,20 +127,20 @@ where
     pub fn syscall(
         &self,
         val: Yield,
-        syscall: Syscall,
+        syscall: SyscallName,
         syscall_state: SyscallState,
     ) -> std::io::Result<()> {
         let current = self.state();
         match current {
             CoroutineState::Running => {
-                let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
+                let new_state = CoroutineState::Syscall(val, syscall, syscall_state);
                 let old_state = self.change_state(new_state);
                 self.on_syscall(self, old_state);
                 return Ok(());
             }
-            CoroutineState::SystemCall(_, original_syscall, _) => {
+            CoroutineState::Syscall(_, original_syscall, _) => {
                 if original_syscall == syscall {
-                    let new_state = CoroutineState::SystemCall(val, syscall, syscall_state);
+                    let new_state = CoroutineState::Syscall(val, syscall, syscall_state);
                     let old_state = self.change_state(new_state);
                     self.on_syscall(self, old_state);
                     return Ok(());
@@ -149,7 +153,7 @@ where
             format!(
                 "{} unexpected {current}->{:?}",
                 self.name(),
-                CoroutineState::<Yield, Return>::SystemCall(val, syscall, syscall_state)
+                CoroutineState::<Yield, Return>::Syscall(val, syscall, syscall_state)
             ),
         ))
     }
@@ -196,5 +200,86 @@ where
                 CoroutineState::<Yield, Return>::Error(msg)
             ),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::coroutine::suspender::Suspender;
+
+    #[test]
+    fn test_ready() -> std::io::Result<()> {
+        let co = co!(|_: &Suspender<(), ()>, ()| {})?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.ready()?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.running()?;
+        co.suspend((), u64::MAX)?;
+        assert_eq!(CoroutineState::Suspend((), u64::MAX), co.state());
+        assert!(co.ready().is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_running() -> std::io::Result<()> {
+        let co = co!(|_: &Suspender<(), ()>, ()| {})?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.running()?;
+        co.running()?;
+        co.complete(())?;
+        assert_eq!(CoroutineState::Complete(()), co.state());
+        assert!(co.running().is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_suspend() -> std::io::Result<()> {
+        let mut co = co!(|_: &Suspender<(), ()>, ()| {})?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.running()?;
+        co.suspend((), u64::MAX)?;
+        assert_eq!(CoroutineState::Suspend((), u64::MAX), co.state());
+        assert!(co.resume().is_err());
+        assert!(co.suspend((), u64::MAX).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_syscall() -> std::io::Result<()> {
+        let co = co!(|_: &Suspender<(), ()>, ()| {})?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.running()?;
+        co.syscall((), SyscallName::nanosleep, SyscallState::Executing)?;
+        assert_eq!(
+            CoroutineState::Syscall((), SyscallName::nanosleep, SyscallState::Executing),
+            co.state()
+        );
+        assert!(co
+            .syscall((), SyscallName::sleep, SyscallState::Executing)
+            .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_complete() -> std::io::Result<()> {
+        let co = co!(|_: &Suspender<(), ()>, ()| {})?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.running()?;
+        co.complete(())?;
+        assert_eq!(CoroutineState::Complete(()), co.state());
+        assert!(co.complete(()).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_error() -> std::io::Result<()> {
+        let co = co!(|_: &Suspender<(), ()>, ()| {})?;
+        assert_eq!(CoroutineState::Ready, co.state());
+        co.running()?;
+        co.error("test error, ignore it")?;
+        assert_eq!(CoroutineState::Error("test error, ignore it"), co.state());
+        assert!(co.error("abc").is_err());
+        Ok(())
     }
 }

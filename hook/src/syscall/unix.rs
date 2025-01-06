@@ -15,11 +15,11 @@ macro_rules! impl_hook {
             static $field_name: once_cell::sync::Lazy<
                 extern "C" fn($($arg_type, )*) -> $result,
             > = once_cell::sync::Lazy::new(|| unsafe {
-                let syscall: &str = open_coroutine_core::common::constants::Syscall::$syscall.into();
+                let syscall: &str = open_coroutine_core::common::constants::SyscallName::$syscall.into();
                 let symbol = std::ffi::CString::new(String::from(syscall))
                     .unwrap_or_else(|_| panic!("can not transfer \"{syscall}\" to CString"));
                 let ptr = libc::dlsym(libc::RTLD_NEXT, symbol.as_ptr());
-                assert!(!ptr.is_null(), "system call \"{syscall}\" not found !");
+                assert!(!ptr.is_null(), "syscall \"{syscall}\" not found !");
                 std::mem::transmute(ptr)
             });
             let fn_ptr = once_cell::sync::Lazy::force(&$field_name);
@@ -31,6 +31,7 @@ macro_rules! impl_hook {
     }
 }
 
+// The following are supported syscall
 impl_hook!(SLEEP, sleep(secs: c_uint) -> c_uint);
 impl_hook!(USLEEP, usleep(microseconds: c_uint) -> c_int);
 impl_hook!(NANOSLEEP, nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> c_int);
@@ -69,6 +70,11 @@ impl_hook!(RMDIR, rmdir(path: *const c_char) -> c_int);
 impl_hook!(LSEEK, lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t);
 impl_hook!(LINK, link(src: *const c_char, dst: *const c_char) -> c_int);
 impl_hook!(UNLINK, unlink(src: *const c_char) -> c_int);
+impl_hook!(FSYNC, fsync(fd: c_int) -> c_int);
+impl_hook!(MKDIRAT, mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
+impl_hook!(RENAMEAT, renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
+#[cfg(target_os = "linux")]
+impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);

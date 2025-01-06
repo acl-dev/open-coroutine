@@ -16,22 +16,20 @@ fn coroutine_basic() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
 #[test]
 fn coroutine_panic() -> std::io::Result<()> {
-    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), i32>, ()| {
         panic!("test panic, just ignore it");
     })?;
-    let result = coroutine.resume()?;
-    let error = match result {
-        CoroutineState::Error(_) => true,
-        _ => false,
-    };
-    assert!(error);
-    Ok(())
+    match coroutine.resume()? {
+        CoroutineState::Error(_) => Ok(()),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "The coroutine should panic",
+        )),
+    }
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
 #[test]
 fn coroutine_backtrace() -> std::io::Result<()> {
     let mut coroutine = co!(|suspender, input| {
@@ -48,14 +46,17 @@ fn coroutine_backtrace() -> std::io::Result<()> {
 
 #[test]
 fn coroutine_delay() -> std::io::Result<()> {
-    let mut coroutine = co!(|s, ()| {
-        let current = Coroutine::<(), (), ()>::current().unwrap();
+    let mut coroutine = co!(|s, _| {
+        let current = Coroutine::<i32, (), ()>::current().unwrap();
         assert_eq!(CoroutineState::Running, current.state());
         s.delay(std::time::Duration::MAX);
-        unreachable!();
+        // unreachable
     })?;
     assert_eq!(CoroutineState::Ready, coroutine.state());
-    assert_eq!(CoroutineState::Suspend((), u64::MAX), coroutine.resume()?);
+    assert_eq!(
+        CoroutineState::Suspend((), u64::MAX),
+        coroutine.resume_with(1)?
+    );
     assert_eq!(CoroutineState::Suspend((), u64::MAX), coroutine.state());
     assert_eq!(
         format!(
@@ -64,17 +65,62 @@ fn coroutine_delay() -> std::io::Result<()> {
             CoroutineState::<(), ()>::Suspend((), u64::MAX),
             CoroutineState::<(), ()>::Running
         ),
-        coroutine.resume().unwrap_err().to_string()
+        coroutine.resume_with(2).unwrap_err().to_string()
     );
     assert_eq!(CoroutineState::Suspend((), u64::MAX), coroutine.state());
     Ok(())
 }
 
 #[test]
+fn sp_in_bounds() -> std::io::Result<()> {
+    let mut coroutine = co!(|suspender, input| {
+        let current = Coroutine::<i32, i32, i32>::current().unwrap();
+        let stack_info = current
+            .stack_infos()
+            .back()
+            .copied()
+            .expect("no stack info found");
+        assert!(current.stack_ptr_in_bounds(psm::stack_pointer() as u64));
+        assert_eq!(
+            current.stack_ptr_in_bounds(stack_info.stack_top as u64 + 1),
+            false
+        );
+        assert_eq!(
+            current.stack_ptr_in_bounds(stack_info.stack_bottom as u64 - 1),
+            false
+        );
+        assert_eq!(1, input);
+        assert_eq!(3, suspender.suspend_with(2));
+        4
+    })?;
+    assert_eq!(CoroutineState::Suspend(2, 0), coroutine.resume_with(1)?);
+    assert_eq!(CoroutineState::Complete(4), coroutine.resume_with(3)?);
+    println!("{:?}", coroutine);
+    println!("{}", coroutine);
+    Ok(())
+}
+
+#[test]
+fn thread_stack_growth() {
+    fn recurse(i: u32, p: &mut [u8; 10240]) {
+        Coroutine::<(), (), ()>::maybe_grow(|| {
+            // Ensure the stack allocation isn't optimized away.
+            unsafe { std::ptr::read_volatile(&p) };
+            if i > 0 {
+                recurse(i - 1, &mut [0; 10240]);
+            }
+        })
+        .expect("allocate stack failed")
+    }
+    // Use 10MB of stack.
+    recurse(1000, &mut [0; 10240]);
+}
+
+#[test]
 fn coroutine_stack_growth() -> std::io::Result<()> {
-    let mut coroutine = co!(|_: &Suspender<(), ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<(), i32>, ()| {
         fn recurse(i: u32, p: &mut [u8; 10240]) {
-            Coroutine::<(), (), ()>::maybe_grow(|| {
+            Coroutine::<(), i32, ()>::maybe_grow(|| {
                 // Ensure the stack allocation isn't optimized away.
                 unsafe { std::ptr::read_volatile(&p) };
                 if i > 0 {
@@ -90,7 +136,7 @@ fn coroutine_stack_growth() -> std::io::Result<()> {
         // Use ~500KB of stack.
         recurse(50, &mut [0; 10240]);
         let remaining_stack = unsafe {
-            Coroutine::<(), (), ()>::current()
+            Coroutine::<(), i32, ()>::current()
                 .unwrap()
                 .remaining_stack()
         };
@@ -101,7 +147,7 @@ fn coroutine_stack_growth() -> std::io::Result<()> {
         // Use ~500KB of stack.
         recurse(50, &mut [0; 10240]);
         let remaining_stack = unsafe {
-            Coroutine::<(), (), ()>::current()
+            Coroutine::<(), i32, ()>::current()
                 .unwrap()
                 .remaining_stack()
         };
@@ -114,9 +160,10 @@ fn coroutine_stack_growth() -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(not(all(target_os = "linux", target_arch = "x86", feature = "preemptive")))]
 #[test]
 fn coroutine_trap() -> std::io::Result<()> {
-    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), i32>, ()| {
         println!("Before trap");
         unsafe { std::ptr::write_volatile(1 as *mut u8, 0) };
         println!("After trap");
@@ -130,10 +177,13 @@ fn coroutine_trap() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(
+    debug_assertions,
+    all(target_os = "linux", target_arch = "x86", feature = "preemptive")
+)))]
 #[test]
 fn coroutine_invalid_memory_reference() -> std::io::Result<()> {
-    let mut coroutine = co!(|_: &Suspender<'_, (), ()>, ()| {
+    let mut coroutine = co!(|_: &Suspender<'_, (), i32>, ()| {
         println!("Before invalid memory reference");
         // 没有加--release运行，会收到SIGABRT信号，不好处理，直接禁用测试
         unsafe {
@@ -193,7 +243,7 @@ fn coroutine_preemptive() -> std::io::Result<()> {
 #[cfg(all(unix, feature = "preemptive"))]
 #[test]
 fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
-    use open_coroutine_core::common::constants::{Syscall, SyscallState};
+    use open_coroutine_core::common::constants::{SyscallName, SyscallState};
 
     let pair = std::sync::Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
     let pair2 = pair.clone();
@@ -203,7 +253,7 @@ fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
             let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| {
                 Coroutine::<(), (), ()>::current()
                     .unwrap()
-                    .syscall((), Syscall::sleep, SyscallState::Executing)
+                    .syscall((), SyscallName::sleep, SyscallState::Executing)
                     .unwrap();
                 loop {}
             })?;

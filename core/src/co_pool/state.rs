@@ -43,3 +43,22 @@ impl CoroutinePool<'_> {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_state() -> std::io::Result<()> {
+        let mut pool = CoroutinePool::default();
+        _ = pool.stopping()?;
+        assert_eq!(PoolState::Stopping, pool.state());
+        _ = pool.stopping()?;
+        assert_eq!(PoolState::Stopping, pool.state());
+        _ = pool.stopped()?;
+        assert!(pool.stopped().is_ok());
+        assert!(pool.stopping().is_err());
+        assert!(pool.try_schedule_task().is_err());
+        Ok(())
+    }
+}

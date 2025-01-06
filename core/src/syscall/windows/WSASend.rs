@@ -253,9 +253,9 @@ impl_nio_write_iovec!(NioWSASendSyscall, WSASendSyscall,
         buf: *const WSABUF,
         dwbuffercount: c_uint,
         lpnumberofbytesrecvd: *mut c_uint,
-        dwflags : c_uint,
+        dwflags: c_uint,
         lpoverlapped: *mut OVERLAPPED,
-        lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE
     ) -> c_int
 );
 
@@ -265,8 +265,8 @@ impl_raw!(RawWSASendSyscall, WSASendSyscall, windows_sys::Win32::Networking::Win
         buf: *const WSABUF,
         dwbuffercount: c_uint,
         lpnumberofbytesrecvd: *mut c_uint,
-        dwflags : c_uint,
+        dwflags: c_uint,
         lpoverlapped: *mut OVERLAPPED,
-        lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE
     ) -> c_int
 );

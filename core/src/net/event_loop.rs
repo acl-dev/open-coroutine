@@ -1,13 +1,10 @@
 use crate::co_pool::CoroutinePool;
 use crate::common::beans::BeanFactory;
-use crate::common::constants::{CoroutineState, PoolState, Syscall, SyscallState, SLICE};
+use crate::common::constants::{CoroutineState, PoolState, SyscallName, SyscallState, SLICE};
 use crate::net::selector::{Event, Events, Poller, Selector};
 use crate::scheduler::SchedulableCoroutine;
 use crate::{error, impl_current_for, impl_display_by_debug, info};
-use crossbeam_utils::atomic::AtomicCell;
 use dashmap::DashSet;
-#[cfg(all(target_os = "linux", feature = "io_uring"))]
-use libc::{epoll_event, iovec, msghdr, off_t, size_t, sockaddr, socklen_t};
 use once_cell::sync::Lazy;
 use rand::Rng;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
@@ -18,6 +15,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
+
+cfg_if::cfg_if! {
+    if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+        use dashmap::DashMap;
+        use libc::{epoll_event, iovec, mode_t, msghdr, off_t, size_t, sockaddr, socklen_t};
+        use std::ffi::{c_longlong, c_uint};
+    }
+}
 
 cfg_if::cfg_if! {
     if #[cfg(all(windows, feature = "iocp"))] {
@@ -31,18 +36,9 @@ cfg_if::cfg_if! {
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(any(all(target_os = "linux", feature = "io_uring"), all(windows, feature = "iocp")))] {
-        use dashmap::DashMap;
-        use std::ffi::c_longlong;
-    }
-}
-
 #[repr(C)]
 #[derive(Debug)]
 pub(crate) struct EventLoop<'e> {
-    //状态
-    state: AtomicCell<PoolState>,
     stop: Arc<(Mutex<bool>, Condvar)>,
     shared_stop: Arc<(Mutex<AtomicUsize>, Condvar)>,
     cpu: usize,
@@ -106,7 +102,6 @@ impl<'e> EventLoop<'e> {
         shared_stop: Arc<(Mutex<AtomicUsize>, Condvar)>,
     ) -> std::io::Result<Self> {
         Ok(EventLoop {
-            state: AtomicCell::new(PoolState::Running),
             stop: Arc::new((Mutex::new(false), Condvar::new())),
             shared_stop,
             cpu,
@@ -127,7 +122,7 @@ impl<'e> EventLoop<'e> {
     }
 
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
-    fn token(syscall: Syscall) -> usize {
+    fn token(syscall: SyscallName) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
             let boxed: &'static mut CString = Box::leak(Box::from(
                 CString::new(co.name()).expect("build name failed!"),
@@ -145,9 +140,9 @@ impl<'e> EventLoop<'e> {
                     let thread_id = libc::pthread_self();
                 }
             }
-            let syscall_mask = <Syscall as Into<&str>>::into(syscall).as_ptr() as usize;
+            let syscall_mask = <SyscallName as Into<&str>>::into(syscall).as_ptr() as usize;
             let token = thread_id as usize ^ syscall_mask;
-            if Syscall::nio() != syscall {
+            if SyscallName::nio() != syscall {
                 eprintln!("generate token:{token} for {syscall}");
             }
             token
@@ -156,12 +151,12 @@ impl<'e> EventLoop<'e> {
 
     pub(super) fn add_read_event(&self, fd: c_int) -> std::io::Result<()> {
         self.selector
-            .add_read_event(fd, EventLoop::token(Syscall::nio()))
+            .add_read_event(fd, EventLoop::token(SyscallName::nio()))
     }
 
     pub(super) fn add_write_event(&self, fd: c_int) -> std::io::Result<()> {
         self.selector
-            .add_write_event(fd, EventLoop::token(Syscall::nio()))
+            .add_write_event(fd, EventLoop::token(SyscallName::nio()))
     }
 
     pub(super) fn del_event(&self, fd: c_int) -> std::io::Result<()> {
@@ -211,8 +206,7 @@ impl<'e> EventLoop<'e> {
         if let Some(time) = left_time {
             let timestamp = crate::common::get_timeout_time(time);
             if let Some(co) = SchedulableCoroutine::current() {
-                if let CoroutineState::SystemCall((), syscall, SyscallState::Executing) = co.state()
-                {
+                if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state() {
                     let new_state = SyscallState::Suspend(timestamp);
                     if co.syscall((), syscall, new_state).is_err() {
                         error!(
@@ -230,7 +224,7 @@ impl<'e> EventLoop<'e> {
                 left_time = Some(Duration::ZERO);
             }
             if let Some(co) = SchedulableCoroutine::current() {
-                if let CoroutineState::SystemCall(
+                if let CoroutineState::Syscall(
                     (),
                     syscall,
                     SyscallState::Callback | SyscallState::Timeout,
@@ -344,7 +338,6 @@ impl<'e> EventLoop<'e> {
         Ok(left_time)
     }
 
-    #[allow(clippy::unused_self)]
     unsafe fn resume(&self, token: usize) {
         if COROUTINE_TOKENS.remove(&token).is_none() {
             return;
@@ -486,7 +479,7 @@ macro_rules! impl_io_uring {
                 &self,
                 $($arg: $arg_type),*
             ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
-                let token = EventLoop::token(Syscall::$syscall);
+                let token = EventLoop::token(SyscallName::$syscall);
                 self.operator.$syscall(token, $($arg, )*)?;
                 let arc = Arc::new((Mutex::new(None), Condvar::new()));
                 assert!(
@@ -519,6 +512,10 @@ impl_io_uring!(pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_
 impl_io_uring!(writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_io_uring!(pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
 impl_io_uring!(sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t);
+impl_io_uring!(fsync(fd: c_int) -> c_int);
+impl_io_uring!(mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
+impl_io_uring!(renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
+impl_io_uring!(renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
 macro_rules! impl_iocp {
     ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
@@ -557,13 +554,14 @@ mod tests {
     fn test_simple() -> std::io::Result<()> {
         let mut event_loop = EventLoop::default();
         event_loop.set_max_size(1);
-        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None)?;
+        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None, None)?;
         _ = event_loop.submit_task(
             None,
             |_| {
                 println!("2");
                 Some(2)
             },
+            None,
             None,
         )?;
         event_loop.stop_sync(Duration::from_secs(3))
@@ -574,13 +572,14 @@ mod tests {
     fn test_simple_auto() -> std::io::Result<()> {
         let event_loop = EventLoop::default().start()?;
         event_loop.set_max_size(1);
-        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None)?;
+        _ = event_loop.submit_task(None, |_| panic!("test panic, just ignore it"), None, None)?;
         _ = event_loop.submit_task(
             None,
             |_| {
                 println!("2");
                 Some(2)
             },
+            None,
             None,
         )?;
         event_loop.stop(Duration::from_secs(3))
