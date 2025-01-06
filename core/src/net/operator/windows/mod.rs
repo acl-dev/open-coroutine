@@ -103,6 +103,15 @@ impl<'o> Operator<'o> {
             ));
         }
         debug_assert_eq!(ret, self.iocp);
+        if unsafe {
+            windows_sys::Win32::Storage::FileSystem::SetFileCompletionNotificationModes(
+                handle,
+                windows_sys::Win32::System::WindowsProgramming::FILE_SKIP_SET_EVENT_ON_HANDLE as u8,
+            )
+        } == 0
+        {
+            return Err(Error::last_os_error());
+        }
         Ok(())
     }
 
