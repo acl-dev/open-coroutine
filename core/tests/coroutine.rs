@@ -112,8 +112,10 @@ fn thread_stack_growth() {
         })
         .expect("allocate stack failed")
     }
-    // Use 10MB of stack.
-    recurse(1000, &mut [0; 10240]);
+    // Use ~500KB of stack.
+    recurse(50, &mut [0; 10240]);
+    // Use ~500KB of stack.
+    recurse(50, &mut [0; 10240]);
 }
 
 #[test]

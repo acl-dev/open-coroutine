@@ -33,6 +33,7 @@ fn main() -> std::io::Result<()> {
     // is not enabled, it will remain stuck in a dead loop after resume.
     let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| { loop {} })?;
     assert_eq!(CoroutineState::Suspend((), 0), coroutine.resume()?);
+    // will never reach if the preemptive feature is not enabled
     assert_eq!(CoroutineState::Suspend((), 0), coroutine.state());
     Ok(())
 }
@@ -43,7 +44,7 @@ fn main() -> std::io::Result<()> {
 The `monitor` mod implements the `preemptive` feature for open-coroutine, which allows the coroutine to be preempted
 when it is running for a long time.
 
-## Why preempt
+## Why preempt?
 
 After a `Coroutine::resume_with`, a coroutine may occupy the scheduling thread for a long time, thereby slowing down
 other coroutines scheduled by that scheduling thread. To solve this problem, we introduce preemptive scheduling, which

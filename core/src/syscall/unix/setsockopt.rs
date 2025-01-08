@@ -1,6 +1,7 @@
 use std::ffi::{c_int, c_void};
-use libc::socklen_t;
+use libc::{socklen_t, timeval};
 use once_cell::sync::Lazy;
+use crate::syscall::get_time_limit;
 use crate::syscall::unix::{RECV_TIME_LIMIT, SEND_TIME_LIMIT};
 
 #[must_use]
@@ -52,25 +53,9 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
         let r= self.inner.setsockopt(fn_ptr, socket, level, name, value, option_len);
         if 0 == r && libc::SOL_SOCKET == level {
             if libc::SO_SNDTIMEO == name {
-                let tv = unsafe { &*value.cast::<libc::timeval>() };
-                let mut time_limit = u64::try_from(tv.tv_sec).expect("overflow")
-                    .saturating_mul(1_000_000_000)
-                    .saturating_add(u64::try_from(tv.tv_usec).expect("overflow").saturating_mul(1_000));
-                if 0 == time_limit {
-                    // 取消超时
-                    time_limit = u64::MAX;
-                }
-                assert!(SEND_TIME_LIMIT.insert(socket, time_limit).is_none());
+                assert!(SEND_TIME_LIMIT.insert(socket, get_time_limit(unsafe { &*value.cast::<timeval>() })).is_none());
             } else if libc::SO_RCVTIMEO == name {
-                let tv = unsafe { &*value.cast::<libc::timeval>() };
-                let mut time_limit = u64::try_from(tv.tv_sec).expect("overflow")
-                    .saturating_mul(1_000_000_000)
-                    .saturating_add(u64::try_from(tv.tv_usec).expect("overflow").saturating_mul(1_000));
-                if 0 == time_limit {
-                    // 取消超时
-                    time_limit = u64::MAX;
-                }
-                assert!(RECV_TIME_LIMIT.insert(socket, time_limit).is_none());
+                assert!(RECV_TIME_LIMIT.insert(socket, get_time_limit(unsafe { &*value.cast::<timeval>() })).is_none());
             }
         }
         r

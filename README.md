@@ -8,7 +8,7 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Average time to resolve an issue")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Percentage of issues still open")
 
-The `open-coroutine` is a simple, efficient and generic stackful-coroutine library.
+The `open-coroutine` is a simple, efficient and generic stackfull-coroutine library, you can use this as a performance replacement for IO thread pools.
 
 English | [中文](README_ZH.md)
 
@@ -25,10 +25,78 @@ English | [中文](README_ZH.md)
 
 ## 🕊 Roadmap
 
+- [ ] add docs;
+- [ ] add performance [benchmark](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
 - [ ] cancel coroutine/task;
 - [ ] add metrics;
 - [ ] add synchronization toolkit;
 - [ ] support and compatibility for AF_XDP socket;
+
+## 🏠 Architecture
+
+```mermaid
+graph TD
+    subgraph ApplicationFramework
+        Tower
+        Actix-Web
+        Rocket
+        warp
+        axum
+    end
+    subgraph MessageQueue
+        RocketMQ
+        Pulsar
+    end
+    subgraph RemoteProcedureCall
+        Dubbo
+        Tonic
+        gRPC-rs
+        Volo
+    end
+    subgraph Database
+        MySQL
+        Oracle
+    end
+    subgraph NetworkFramework
+        Tokio
+        monoio
+        async-std
+        smol
+    end
+    subgraph open-coroutine-architecture
+        subgraph core
+            Preemptive
+            ScalableStack
+            WorkSteal
+            Priority
+        end
+        subgraph hook
+            HookSyscall
+        end
+        subgraph macros
+            open-coroutine::main
+        end
+        subgraph open-coroutine
+        end
+        hook -->|depends on| core
+        open-coroutine -->|depends on| hook
+        open-coroutine -->|depends on| macros
+    end
+    subgraph OperationSystem
+        Linux
+        macOS
+        Windows
+    end
+    ApplicationFramework -->|maybe depends on| RemoteProcedureCall
+    ApplicationFramework -->|maybe depends on| MessageQueue
+    ApplicationFramework -->|maybe depends on| Database
+    MessageQueue -->|depends on| NetworkFramework
+    RemoteProcedureCall -->|depends on| NetworkFramework
+    NetworkFramework -->|runs on| OperationSystem
+    NetworkFramework -->|can depends on| open-coroutine-architecture
+    Database -->|runs on| OperationSystem
+    open-coroutine-architecture -->|runs on| OperationSystem
+```
 
 ## 📖 Quick Start
 
@@ -60,7 +128,9 @@ fn main() {
 }
 ```
 
-### create a task with priority(optional)
+## 🪽 Advanced Usage
+
+### create a task with priority
 
 ```rust
 #[open_coroutine::main]
@@ -71,7 +141,7 @@ fn main() {
 }
 ```
 
-### wait until the task is completed or timed out(optional)
+### wait until the task is completed or timed out
 
 ```rust
 #[open_coroutine::main]
@@ -83,7 +153,7 @@ fn main() {
 }
 ```
 
-### scalable stack(optional)
+### scalable stack
 
 ```rust
 #[open_coroutine::main]
@@ -112,3 +182,15 @@ fn main() {
 - [Monitor Overview](core/docs/en/monitor.md)
 
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
+
+## 🙏 Credits
+
+This crate was inspired by the following projects:
+
+- [acl](https://github.com/acl-dev/acl)
+- [coost](https://github.com/idealvin/coost)
+- [golang](https://github.com/golang/go)
+- [stacker](https://github.com/rust-lang/stacker)
+- [monoio](https://github.com/bytedance/monoio)
+- [compio](https://github.com/compio-rs/compio)
+- [may](https://github.com/Xudong-Huang/may)

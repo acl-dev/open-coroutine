@@ -51,7 +51,7 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
-//! see `https://github.com/acl-dev/open-coroutine`
+#![doc = include_str!("../docs/en/overview.md")]
 
 /// Common traits and impl.
 pub mod common;
