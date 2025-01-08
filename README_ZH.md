@@ -8,7 +8,7 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "解决issue的平均时间")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "仍未关闭issue的百分比")
 
-`open-coroutine`是一个简单、高效、通用的有栈协程库。
+`open-coroutine`是一个简单、高效、通用的有栈协程库，您可以将其用作IO线程池的性能替代。
 
 [English](README.md) | 中文
 
@@ -25,10 +25,78 @@
 
 ## 🕊 未来计划
 
+- [ ] 完善文档;
+- [ ] 增加性能[基准测试](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
 - [ ] 取消协程/任务;
 - [ ] 增加性能指标;
 - [ ] 增加并发工具包;
 - [ ] 支持AF_XDP套接字;
+
+## 🏠 架构设计
+
+```mermaid
+graph TD
+    subgraph ApplicationFramework
+        Tower
+        Actix-Web
+        Rocket
+        warp
+        axum
+    end
+    subgraph MessageQueue
+        RocketMQ
+        Pulsar
+    end
+    subgraph RemoteProcedureCall
+        Dubbo
+        Tonic
+        gRPC-rs
+        Volo
+    end
+    subgraph Database
+        MySQL
+        Oracle
+    end
+    subgraph NetworkFramework
+        Tokio
+        monoio
+        async-std
+        smol
+    end
+    subgraph open-coroutine-architecture
+        subgraph core
+            Preemptive
+            ScalableStack
+            WorkSteal
+            Priority
+        end
+        subgraph hook
+            HookSyscall
+        end
+        subgraph macros
+            open-coroutine::main
+        end
+        subgraph open-coroutine
+        end
+        hook -->|depends on| core
+        open-coroutine -->|depends on| hook
+        open-coroutine -->|depends on| macros
+    end
+    subgraph OperationSystem
+        Linux
+        macOS
+        Windows
+    end
+    ApplicationFramework -->|maybe depends on| RemoteProcedureCall
+    ApplicationFramework -->|maybe depends on| MessageQueue
+    ApplicationFramework -->|maybe depends on| Database
+    MessageQueue -->|depends on| NetworkFramework
+    RemoteProcedureCall -->|depends on| NetworkFramework
+    NetworkFramework -->|runs on| OperationSystem
+    NetworkFramework -->|can depends on| open-coroutine-architecture
+    Database -->|runs on| OperationSystem
+    open-coroutine-architecture -->|runs on| OperationSystem
+```
 
 ## 📖 快速接入
 
@@ -60,7 +128,9 @@ fn main() {
 }
 ```
 
-### 创建具有优先级的任务(可选)
+## 🪽 进阶使用
+
+### 创建具有优先级的任务
 
 ```rust
 #[open_coroutine::main]
@@ -71,7 +141,7 @@ fn main() {
 }
 ```
 
-### 等待任务完成或超时(可选)
+### 等待任务完成或超时
 
 ```rust
 #[open_coroutine::main]
@@ -83,7 +153,7 @@ fn main() {
 }
 ```
 
-### 扩容栈(可选)
+### 扩容栈
 
 ```rust
 #[open_coroutine::main]
@@ -112,3 +182,15 @@ fn main() {
 - [语言选择](docs/cn/why-rust.md)
 
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
+
+## 🙏 鸣谢
+
+这个crate的灵感来自以下项目：
+
+- [acl](https://github.com/acl-dev/acl)
+- [coost](https://github.com/idealvin/coost)
+- [golang](https://github.com/golang/go)
+- [stacker](https://github.com/rust-lang/stacker)
+- [monoio](https://github.com/bytedance/monoio)
+- [compio](https://github.com/compio-rs/compio)
+- [may](https://github.com/Xudong-Huang/may)

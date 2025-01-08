@@ -1,9 +1,9 @@
-use crate::catch;
 use crate::common::constants::CoroutineState;
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::StackInfo;
+use crate::{catch, warn};
 use corosensei::stack::{DefaultStack, Stack};
 use corosensei::trap::TrapHandlerRegs;
 use corosensei::CoroutineResult;
@@ -318,8 +318,9 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     ///
     /// The closure `f` is guaranteed to run on a stack with at least `red_zone` bytes, and it will be
     /// run on the current stack if there's space available.
-    #[allow(clippy::inline_always)]
     #[inline(always)]
+    #[allow(clippy::inline_always)]
+    #[doc = include_str!("../../docs/en/scalable-stack.md")]
     pub fn maybe_grow_with<R, F: FnOnce() -> R>(
         red_zone: usize,
         stack_size: usize,
@@ -366,6 +367,7 @@ impl<Param, Yield, Return> Drop for Coroutine<'_, Param, Yield, Return> {
         //for test_yield case
         if self.inner.started() && !self.inner.done() {
             unsafe { self.inner.force_reset() };
+            warn!("Coroutine {} is dropped without complete", self.name());
         }
     }
 }

@@ -959,18 +959,7 @@ pub extern "C" fn send_time_limit(fd: c_int) -> u64 {
                 }
                 panic!("getsockopt failed: {error}");
             }
-            let mut time_limit = u64::try_from(tv.tv_sec)
-                .expect("overflow")
-                .saturating_mul(1_000_000_000)
-                .saturating_add(
-                    u64::try_from(tv.tv_usec)
-                        .expect("overflow")
-                        .saturating_mul(1_000),
-                );
-            if 0 == time_limit {
-                // 取消超时
-                time_limit = u64::MAX;
-            }
+            let time_limit = get_time_limit(&tv);
             assert!(SEND_TIME_LIMIT.insert(fd, time_limit).is_none());
             time_limit
         },
@@ -999,21 +988,26 @@ pub extern "C" fn recv_time_limit(fd: c_int) -> u64 {
                 }
                 panic!("getsockopt failed: {error}");
             }
-            let mut time_limit = u64::try_from(tv.tv_sec)
-                .expect("overflow")
-                .saturating_mul(1_000_000_000)
-                .saturating_add(
-                    u64::try_from(tv.tv_usec)
-                        .expect("overflow")
-                        .saturating_mul(1_000),
-                );
-            if 0 == time_limit {
-                // 取消超时
-                time_limit = u64::MAX;
-            }
+            let time_limit = get_time_limit(&tv);
             assert!(RECV_TIME_LIMIT.insert(fd, time_limit).is_none());
             time_limit
         },
         |v| *v.value(),
     )
+}
+
+pub(crate) fn get_time_limit(tv: &libc::timeval) -> u64 {
+    let mut time_limit = u64::try_from(tv.tv_sec)
+        .expect("overflow")
+        .saturating_mul(1_000_000_000)
+        .saturating_add(
+            u64::try_from(tv.tv_usec)
+                .expect("overflow")
+                .saturating_mul(1_000),
+        );
+    if 0 == time_limit {
+        // 取消超时
+        time_limit = u64::MAX;
+    }
+    time_limit
 }

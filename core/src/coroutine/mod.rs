@@ -120,13 +120,14 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     ///
     /// This function is intended to be called at manually instrumented points in a program where
     /// recursion is known to happen quite a bit. This function will check to see if we're within
-    /// `32 * 1024` bytes of the end of the stack, and if so it will allocate a new stack of at least
+    /// `20 * 1024` bytes of the end of the stack, and if so it will allocate a new stack of at least
     /// `128 * 1024` bytes.
     ///
     /// The closure `f` is guaranteed to run on a stack with at least `32 * 1024` bytes, and it will be
     /// run on the current stack if there's space available.
-    #[allow(clippy::inline_always)]
     #[inline(always)]
+    #[allow(clippy::inline_always)]
+    #[doc = include_str!("../../docs/en/scalable-stack.md")]
     pub fn maybe_grow<R, F: FnOnce() -> R>(callback: F) -> std::io::Result<R> {
         Self::maybe_grow_with(
             crate::common::default_red_zone(),
