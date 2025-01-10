@@ -206,7 +206,7 @@ This crate was inspired by the following projects:
 
 Thanks to those who have provided assistance:
 
-![Amanieu](https://images.weserv.nl/?url=avatars.githubusercontent.com/Amanieu?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
-![bjorn3](https://images.weserv.nl/?url=avatars.githubusercontent.com/bjorn3?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
-![workingjubilee](https://images.weserv.nl/?url=avatars.githubusercontent.com/workingjubilee?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
-![Noratrieb](https://images.weserv.nl/?url=avatars.githubusercontent.com/Noratrieb?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
+[![Amanieu](https://images.weserv.nl/?url=avatars.githubusercontent.com/Amanieu?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)](https://github.com/Amanieu)
+[![bjorn3](https://images.weserv.nl/?url=avatars.githubusercontent.com/bjorn3?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)](https://github.com/bjorn3)
+[![workingjubilee](https://images.weserv.nl/?url=avatars.githubusercontent.com/workingjubilee?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)](https://github.com/workingjubilee)
+[![Noratrieb](https://images.weserv.nl/?url=avatars.githubusercontent.com/Noratrieb?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)](https://github.com/Noratrieb)
