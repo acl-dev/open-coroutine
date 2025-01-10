@@ -9,6 +9,7 @@ keywords = ["coroutine", "fiber", "stackfull", "hook"]
 categories = ["data-structures", "concurrency", "asynchronous", "web-programming", "wasm"]
 license.workspace = true
 readme.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 libc.workspace = true
