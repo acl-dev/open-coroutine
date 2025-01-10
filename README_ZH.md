@@ -201,7 +201,7 @@ fn main() {
 
 感谢那些提供帮助的人：
 
-![Amanieu](https://images.weserv.nl/?url=avatars.githubusercontent.com/Amanieu?v=4&h=100&w=100&fit=cover&mask=circle&maxage=7d)
-![bjorn3](https://images.weserv.nl/?url=avatars.githubusercontent.com/bjorn3?v=4&h=100&w=100&fit=cover&mask=circle&maxage=7d)
-![workingjubilee](https://images.weserv.nl/?url=avatars.githubusercontent.com/workingjubilee?v=4&h=100&w=100&fit=cover&mask=circle&maxage=7d)
-![Noratrieb](https://images.weserv.nl/?url=avatars.githubusercontent.com/Noratrieb?v=4&h=100&w=100&fit=cover&mask=circle&maxage=7d)
+![Amanieu](https://images.weserv.nl/?url=avatars.githubusercontent.com/Amanieu?v=4&h=75&w=75&fit=cover&mask=circle&maxage=7d)
+![bjorn3](https://images.weserv.nl/?url=avatars.githubusercontent.com/bjorn3?v=4&h=75&w=75&fit=cover&mask=circle&maxage=7d)
+![workingjubilee](https://images.weserv.nl/?url=avatars.githubusercontent.com/workingjubilee?v=4&h=75&w=75&fit=cover&mask=circle&maxage=7d)
+![Noratrieb](https://images.weserv.nl/?url=avatars.githubusercontent.com/Noratrieb?v=4&h=75&w=75&fit=cover&mask=circle&maxage=7d)

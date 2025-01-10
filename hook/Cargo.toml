@@ -9,7 +9,6 @@ keywords = ["open-coroutine", "hook", "syscall"]
 categories = ["os", "concurrency", "asynchronous"]
 license.workspace = true
 readme.workspace = true
-rust-version.workspace = true
 
 [dependencies]
 once_cell.workspace = true
