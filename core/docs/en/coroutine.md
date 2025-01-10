@@ -65,7 +65,8 @@ The above is excerpted from [corosensei](https://github.com/Amanieu/corosensei).
 | limitations       | ✅ Few    | ❌ Many   |
 
 In general, if the requirements for resource utilization and switching performance are not very strict, using a
-stackfull approach would be more convenient and the code would be easier to maintain.
+stackfull approach would be more convenient and the code would be easier to maintain. So, `open-coroutine` chooses the
+stackfull coroutine.
 
 ## State in open-coroutine
 

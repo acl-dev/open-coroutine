@@ -1,4 +1,10 @@
-## open-coroutine overview
+---
+title: open-coroutine Overview
+date: 2025-01-10 08:24:00
+author: loongs-zhang
+---
+
+# open-coroutine overview
 
 [![crates.io](https://img.shields.io/crates/v/open-coroutine.svg)](https://crates.io/crates/open-coroutine)
 [![docs.rs](https://img.shields.io/badge/docs-release-blue)](https://docs.rs/open-coroutine)
@@ -8,12 +14,14 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Average time to resolve an issue")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "Percentage of issues still open")
 
-The `open-coroutine` is a simple, efficient and generic stackfull-coroutine library, you can use this as a performance replacement for IO thread pools.
+The `open-coroutine` is a simple, efficient and generic stackfull-coroutine library, you can use this as a performance
+replacement for IO thread pools, see [why better](../en/why-better.md).
 
 [//]: # (todo 增加英文版本的文档)
+
 - [Background](../../../docs/cn/background.md)
-- [Why rust](../../../docs/cn/why-rust.md)
-- [Why better]()
+- [Why Rust](../../../docs/cn/why-rust.md)
+- [Why Better](../en/why-better.md)
 - [Quick Start](../../../README.md)
 - [Coroutine Overview](../en/coroutine.md)
 - [Scalable Stack Overview](../en/scalable-stack.md)
