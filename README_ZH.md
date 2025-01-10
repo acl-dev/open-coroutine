@@ -8,15 +8,18 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "解决issue的平均时间")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "仍未关闭issue的百分比")
 
-`open-coroutine`是一个简单、高效、通用的有栈协程库，您可以将其用作IO线程池的性能替代。
+`open-coroutine`是一个简单、高效、通用的有栈协程库，您可以将其用作IO线程池的性能替代，查看[为什么更好](core/docs/en/why-better.md).
 
 [English](README.md) | 中文
 
 ## 🚀 当前特性
 
-- [x] 抢占调度(`不支持windows`): 即使协程进入死循环，它仍能被抢占，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
-- [x] Hook: 您可以在协程中自由使用大多数慢系统调用，查看支持的系统调用[unix](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/unix.rs)/[windows](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/windows.rs);
-- [x] 可伸缩栈: 协程栈的大小支持无限制扩容而没有复制堆栈的开销，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
+- [x] 抢占调度(`不支持windows`):
+  即使协程进入死循环，它仍能被抢占，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
+- [x] Hook:
+  您可以在协程中自由使用大多数慢系统调用，查看支持的系统调用[unix](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/unix.rs)/[windows](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/windows.rs);
+- [x] 可伸缩栈:
+  协程栈的大小支持无限制扩容而没有复制堆栈的开销，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
 - [x] io_uring(`只支持linux`): 在本地文件IO和网络IO方面支持并兼容io_uring。如果您的系统不支持，它将回退到NIO;
 - [x] 优先级: 支持自定义任务优先级，注意协程优先级未对用户开放;
 - [x] 任务窃取: 内部使用无锁任务窃取队列;
@@ -26,7 +29,8 @@
 ## 🕊 未来计划
 
 - [ ] 完善文档;
-- [ ] 增加性能[基准测试](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
+- [ ] 
+  增加性能[基准测试](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
 - [ ] 取消协程/任务;
 - [ ] 增加性能指标;
 - [ ] 增加并发工具包;
@@ -79,7 +83,7 @@ graph TD
         subgraph open-coroutine
         end
         hook -->|depends on| core
-        open-coroutine -->|depends on| hook
+        open-coroutine -->|link| hook
         open-coroutine -->|depends on| macros
     end
     subgraph OperationSystem
@@ -153,7 +157,7 @@ fn main() {
 }
 ```
 
-### 扩容栈
+### 可伸缩栈
 
 ```rust
 #[open_coroutine::main]
@@ -183,7 +187,7 @@ fn main() {
 
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
 
-## 🙏 鸣谢
+## 👍 鸣谢
 
 这个crate的灵感来自以下项目：
 
@@ -194,3 +198,10 @@ fn main() {
 - [monoio](https://github.com/bytedance/monoio)
 - [compio](https://github.com/compio-rs/compio)
 - [may](https://github.com/Xudong-Huang/may)
+
+感谢那些提供帮助的人：
+
+![Amanieu](https://images.weserv.nl/?url=avatars.githubusercontent.com/Amanieu?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
+![bjorn3](https://images.weserv.nl/?url=avatars.githubusercontent.com/bjorn3?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
+![workingjubilee](https://images.weserv.nl/?url=avatars.githubusercontent.com/workingjubilee?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
+![Noratrieb](https://images.weserv.nl/?url=avatars.githubusercontent.com/Noratrieb?v=4&h=79&w=79&fit=cover&mask=circle&maxage=7d)
