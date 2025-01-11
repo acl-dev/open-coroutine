@@ -15,6 +15,7 @@ env:
 
 jobs:
   test:
+    name: test ${{ matrix.channel }}-${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +47,11 @@ jobs:
           log-level: warn
           command: check
           arguments: --all-features
+      - name: Build Docs
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --all
       - name: Run tests
         env:
           CHANNEL: ${{ matrix.channel }}
