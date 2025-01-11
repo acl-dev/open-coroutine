@@ -136,7 +136,7 @@ fn main() {
 }
 ```
 
-## 🪽 Advanced Usage
+## 🪶 Advanced Usage
 
 ### create a task with priority
 
