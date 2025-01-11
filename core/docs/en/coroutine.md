@@ -49,23 +49,24 @@ The above is excerpted from [corosensei](https://github.com/Amanieu/corosensei).
 
 ## Coroutine VS Thread
 
-|                   | coroutine | thread  |
-|-------------------|-----------|---------|
-| switch efficiency | ✅ Higher | ❌ High |
-| memory efficiency | KB/MB     | KB/MB   |
-| scheduled by OS   | ❌        | ✅      |
-| stack grow        | ✅        | ❌      |
+|                   | coroutine      | thread   |
+|-------------------|----------------|----------|
+| switch efficiency | ✅ Higher      | ❌ High  |
+| memory usage      | ✅ Bytes/KB/MB | ❌ KB/MB |
+| scheduled by OS   | ❌             | ✅       |
+| stack grow        | ✅             | ❌       |
 
 ## Stackfull VS Stackless
 
 |                   | stackfull | stackless |
 |-------------------|-----------|-----------|
 | switch efficiency | ❌ High   | ✅ Higher |
-| memory efficiency | ❌ KB/MB  | ✅ Bytes  |
+| memory usage      | ❌ KB/MB  | ✅ Bytes  |
 | limitations       | ✅ Few    | ❌ Many   |
 
 In general, if the requirements for resource utilization and switching performance are not very strict, using a
-stackfull approach would be more convenient and the code would be easier to maintain.
+stackfull approach would be more convenient and the code would be easier to maintain. So, `open-coroutine` chooses the
+stackfull coroutine.
 
 ## State in open-coroutine
 
@@ -112,3 +113,5 @@ coroutines may flow between multiple threads which makes `ThreadLocal` invalid. 
 introduce `CoroutineLocal`. It's similar to `ThreadLocal`'s approach of providing replicas, but `CoroutineLocal` has
 upgraded the replicas to the coroutine level, which means each coroutine has its own local variables. These local
 variables will be dropped together when the coroutine is dropped.
+
+## [Scalable Stack Overview](scalable-stack.md)
