@@ -155,6 +155,12 @@ fn main() {
     if cfg!(feature = "io_uring") {
         features.push("io_uring");
     }
+    if cfg!(feature = "iocp") {
+        features.push("iocp");
+    }
+    if cfg!(feature = "completion_io") {
+        features.push("completion_io");
+    }
     if cfg!(feature = "syscall") {
         features.push("syscall");
     }

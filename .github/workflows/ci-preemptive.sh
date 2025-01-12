@@ -34,3 +34,13 @@ if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then
     "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive,ci
     "${CARGO}" test --target "${TARGET}" --no-default-features --features io_uring,preemptive,ci --release
 fi
+
+# test IOCP
+if [ "${OS}" = "windows-latest" ]; then
+    cd "${PROJECT_DIR}"/core
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features iocp,preemptive
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features iocp,preemptive --release
+    cd "${PROJECT_DIR}"/open-coroutine
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features iocp,preemptive
+    "${CARGO}" test --target "${TARGET}" --no-default-features --features iocp,preemptive --release
+fi

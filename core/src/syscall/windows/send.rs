@@ -11,8 +11,16 @@ pub extern "system" fn send(
     len: c_int,
     flags: SEND_RECV_FLAGS,
 ) -> c_int {
-    static CHAIN: Lazy<SendSyscallFacade<NioSendSyscall<RawSendSyscall>>> =
-        Lazy::new(Default::default);
+    cfg_if::cfg_if! {
+        if #[cfg(all(windows, feature = "iocp"))] {
+            static CHAIN: Lazy<
+                SendSyscallFacade<IocpSendSyscall<NioSendSyscall<RawSendSyscall>>>
+            > = Lazy::new(Default::default);
+        } else {
+            static CHAIN: Lazy<SendSyscallFacade<NioSendSyscall<RawSendSyscall>>> =
+                Lazy::new(Default::default);
+        }
+    }
     CHAIN.send(fn_ptr, fd, buf, len, flags)
 }
 
@@ -28,6 +36,10 @@ trait SendSyscall {
 }
 
 impl_facade!(SendSyscallFacade, SendSyscall,
+    send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
+);
+
+impl_iocp!(IocpSendSyscall, SendSyscall,
     send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
 );
 
