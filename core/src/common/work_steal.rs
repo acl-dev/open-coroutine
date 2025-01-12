@@ -74,7 +74,7 @@ impl<T: Debug> WorkStealQueue<T> {
                         .store(self.len().saturating_sub(1), Ordering::Release);
                     return Some(item);
                 }
-                Steal::Retry => continue,
+                Steal::Retry => {}
                 Steal::Empty => return None,
             }
         }

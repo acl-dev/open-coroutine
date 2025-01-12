@@ -81,9 +81,7 @@ fn main() {
         );
         let crates_parent = if crates_parent_dirs.len() == 1 {
             crates_parent_dirs.first().expect("host dir not found")
-        } else {
-            let rustup_dist_server =
-                var("RUSTUP_DIST_SERVER").expect("RUSTUP_DIST_SERVER not found");
+        } else if let Ok(rustup_dist_server) = var("RUSTUP_DIST_SERVER") {
             let host = rustup_dist_server
                 .split("://")
                 .last()
@@ -109,6 +107,17 @@ fn main() {
                         })
                         .expect("host dir not found")
                 })
+        } else {
+            crates_parent_dirs
+                .iter()
+                .find(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .to_string()
+                        .contains("crates.io")
+                })
+                .expect("host dir not found")
         }
         .file_name()
         .to_string_lossy()
