@@ -60,5 +60,11 @@ net = ["open-coroutine-hook/net", "open-coroutine-core/net"]
 # This feature only works in linux.
 io_uring = ["open-coroutine-hook/io_uring", "open-coroutine-core/io_uring"]
 
+# Provide IOCP adaptation, this feature only works in windows.
+iocp = ["open-coroutine-hook/iocp", "open-coroutine-core/iocp"]
+
+# Provide completion IO adaptation
+completion_io = ["open-coroutine-hook/completion_io", "open-coroutine-core/completion_io"]
+
 # Provide syscall implementation.
 syscall = ["open-coroutine-hook/syscall", "open-coroutine-core/syscall"]

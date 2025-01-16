@@ -7,7 +7,10 @@ use windows_sys::Win32::Networking::WinSock::{
 };
 
 macro_rules! impl_facade {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -43,8 +46,88 @@ macro_rules! impl_facade {
     }
 }
 
+#[allow(unused_macros)]
+macro_rules! impl_iocp {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(windows, feature = "iocp"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(windows, feature = "iocp"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "system" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
+                $($arg: $arg_type),*
+            ) -> $result {
+                use $crate::common::constants::{CoroutineState, SyscallName, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($($arg, )*) {
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
+                        {
+                            let new_state = SyscallState::Suspend(u64::MAX);
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(),
+                                    syscall,
+                                    new_state
+                                );
+                            }
+                        }
+                    }
+                    if let Some(suspender) = SchedulableSuspender::current() {
+                        suspender.suspend();
+                        //回来的时候，系统调用已经执行完了
+                    }
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
+                        {
+                            let new_state = SyscallState::Executing;
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    let (lock, cvar) = &*arc;
+                    let mut syscall_result = cvar
+                        .wait_while(lock.lock().expect("lock failed"),
+                            |&mut result| result.is_none()
+                        )
+                        .expect("lock failed")
+                        .expect("no syscall result");
+                    if syscall_result < 0 {
+                        $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
+                        if SyscallName::accept == SyscallName::$syscall {
+                            syscall_result = 0;
+                        } else {
+                            syscall_result = -1;
+                        }
+                    }
+                    return <$result>::try_from(syscall_result).expect("overflow");
+                }
+                self.inner.$syscall(fn_ptr, $($arg, )*)
+            }
+        }
+    }
+}
+
 macro_rules! impl_nio_read {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -99,8 +182,15 @@ macro_rules! impl_nio_read {
 }
 
 macro_rules! impl_nio_read_buf {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $buf: ident : $buf_type: ty,
+            $len: ident : $len_type: ty
+            $(, $($arg: ident : $arg_type: ty),*)?
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -110,11 +200,18 @@ macro_rules! impl_nio_read_buf {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "system" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "system" fn($fd_type, $buf_type, $len_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "system" fn(
+                        $fd_type,
+                        $buf_type,
+                        $len_type
+                        $(, $($arg_type),*)?
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $buf: $buf_type,
-                $len: $len_type,
-                $($arg: $arg_type),*
+                $len: $len_type
+                $(, $($arg: $arg_type),*)?
             ) -> $result {
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
@@ -130,7 +227,7 @@ macro_rules! impl_nio_read_buf {
                         $fd,
                         ($buf as usize + usize::try_from(received).expect("overflow")) as windows_sys::core::PSTR,
                         $len - received,
-                        $($arg, )*
+                        $($($arg, )*)?
                     );
                     if r != -1 {
                         $crate::syscall::reset_errno();
@@ -169,8 +266,16 @@ macro_rules! impl_nio_read_buf {
 }
 
 macro_rules! impl_nio_read_iovec {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $iov: ident : $iov_type: ty, $iovcnt: ident : $iovcnt_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $iov: ident : $iov_type: ty,
+            $iovcnt: ident : $iovcnt_type: ty,
+            $recvd: ident : $recvd_type: ty,
+            $($arg: ident : $arg_type: ty),*
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -180,10 +285,19 @@ macro_rules! impl_nio_read_iovec {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "system" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "system" fn($fd_type, $iov_type, $iovcnt_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "system" fn(
+                        $fd_type,
+                        $iov_type,
+                        $iovcnt_type,
+                        $recvd_type,
+                        $($arg_type),*
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $iov: $iov_type,
                 $iovcnt: $iovcnt_type,
+                $recvd: $recvd_type,
                 $($arg: $arg_type),*
             ) -> $result {
                 let blocking = $crate::syscall::is_blocking($fd);
@@ -228,20 +342,15 @@ macro_rules! impl_nio_read_iovec {
                             std::ffi::c_uint::try_from(arg.len()).unwrap_or_else(|_| {
                                 panic!("{} iovcnt overflow", $crate::common::constants::SyscallName::$syscall)
                             }),
+                            $recvd,
                             $($arg, )*
                         );
-                        if r == 0 {
-                            r = received.try_into().expect("overflow");
-                            std::mem::forget(vec);
-                            if blocking {
-                                $crate::syscall::set_blocking($fd);
-                            }
-                            return r;
-                        } else if r != -1 {
+                        if r != -1 {
                             $crate::syscall::reset_errno();
                             received += usize::try_from(r).expect("overflow");
                             if received >= length {
-                                r = received.try_into().expect("overflow");
+                                r = 0;
+                                unsafe{ $recvd.write(received.try_into().expect("overflow")) };
                                 break;
                             }
                             offset = received.saturating_sub(length);
@@ -258,7 +367,8 @@ macro_rules! impl_nio_read_iovec {
                                 $fd.try_into().expect("overflow"),
                                 Some(wait_time)
                             ).is_err() {
-                                r = received.try_into().expect("overflow");
+                                r = 0;
+                                unsafe{ $recvd.write(received.try_into().expect("overflow")) };
                                 std::mem::forget(vec);
                                 if blocking {
                                     $crate::syscall::set_blocking($fd);
@@ -288,8 +398,15 @@ macro_rules! impl_nio_read_iovec {
 }
 
 macro_rules! impl_nio_write_buf {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $buf: ident : $buf_type: ty, $len: ident : $len_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $buf: ident : $buf_type: ty,
+            $len: ident : $len_type: ty
+            $(, $($arg: ident : $arg_type: ty),*)?
+        ) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -299,11 +416,18 @@ macro_rules! impl_nio_write_buf {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "system" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "system" fn($fd_type, $buf_type, $len_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "system" fn(
+                        $fd_type,
+                        $buf_type,
+                        $len_type
+                        $(, $($arg_type),*)?
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $buf: $buf_type,
-                $len: $len_type,
-                $($arg: $arg_type),*
+                $len: $len_type
+                $(, $($arg: $arg_type),*)?
             ) -> $result {
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
@@ -319,7 +443,7 @@ macro_rules! impl_nio_write_buf {
                         $fd,
                         ($buf as usize + usize::try_from(sent).expect("overflow")) as windows_sys::core::PSTR,
                         $len - sent,
-                        $($arg, )*
+                        $($($arg, )*)?
                     );
                     if r != -1 {
                         $crate::syscall::reset_errno();
@@ -358,8 +482,15 @@ macro_rules! impl_nio_write_buf {
 }
 
 macro_rules! impl_nio_write_iovec {
-    ( $struct_name:ident, $trait_name: ident, $syscall: ident($fd: ident : $fd_type: ty,
-        $iov: ident : $iov_type: ty, $iovcnt: ident : $iovcnt_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident(
+            $fd: ident : $fd_type: ty,
+            $iov: ident : $iov_type: ty,
+            $iovcnt: ident : $iovcnt_type: ty,
+            $sent: ident : $sent_type: ty,
+            $($arg: ident : $arg_type: ty),*
+        ) -> $result: ty ) => {
         #[repr(C)]
         #[derive(Debug, Default)]
         struct $struct_name<I: $trait_name> {
@@ -369,10 +500,19 @@ macro_rules! impl_nio_write_iovec {
         impl<I: $trait_name> $trait_name for $struct_name<I> {
             extern "system" fn $syscall(
                 &self,
-                fn_ptr: Option<&extern "system" fn($fd_type, $iov_type, $iovcnt_type, $($arg_type),*) -> $result>,
+                fn_ptr: Option<
+                    &extern "system" fn(
+                        $fd_type,
+                        $iov_type,
+                        $iovcnt_type,
+                        $sent_type,
+                        $($arg_type),*
+                    ) -> $result
+                >,
                 $fd: $fd_type,
                 $iov: $iov_type,
                 $iovcnt: $iovcnt_type,
+                $sent: $sent_type,
                 $($arg: $arg_type),*
             ) -> $result {
                 let blocking = $crate::syscall::is_blocking($fd);
@@ -417,13 +557,15 @@ macro_rules! impl_nio_write_iovec {
                             std::ffi::c_uint::try_from(arg.len()).unwrap_or_else(|_| {
                                 panic!("{} iovcnt overflow", $crate::common::constants::SyscallName::$syscall)
                             }),
+                            $sent,
                             $($arg, )*
                         );
                         if r != -1 {
                             $crate::syscall::reset_errno();
                             sent += usize::try_from(r).expect("overflow");
                             if sent >= length {
-                                r = sent.try_into().expect("overflow");
+                                r = 0;
+                                unsafe{ $sent.write(sent.try_into().expect("overflow")) };
                                 break;
                             }
                             offset = sent.saturating_sub(length);
@@ -440,7 +582,8 @@ macro_rules! impl_nio_write_iovec {
                                 $fd.try_into().expect("overflow"),
                                 Some(wait_time)
                             ).is_err() {
-                                r = sent.try_into().expect("overflow");
+                                r = 0;
+                                unsafe{ $sent.write(sent.try_into().expect("overflow")) };
                                 std::mem::forget(vec);
                                 if blocking {
                                     $crate::syscall::set_blocking($fd);
@@ -470,7 +613,10 @@ macro_rules! impl_nio_write_iovec {
 }
 
 macro_rules! impl_raw {
-    ( $struct_name: ident, $trait_name: ident, $($mod_name: ident)::*, $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    (
+        $struct_name: ident, $trait_name: ident, $($mod_name: ident)::*,
+        $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
         #[repr(C)]
         #[derive(Debug, Copy, Clone, Default)]
         struct $struct_name {}

@@ -58,6 +58,7 @@ windows-sys = { workspace = true, features = [
     "Win32_Networking_WinSock",
     "Win32_System_SystemInformation",
     "Win32_System_Diagnostics_Debug",
+    "Win32_System_WindowsProgramming",
 ] }
 polling = { workspace = true, optional = true }
 
@@ -94,6 +95,12 @@ net = ["korosensei", "polling", "mio", "crossbeam-utils", "core_affinity"]
 
 # Provide io_uring adaptation, this feature only works in linux.
 io_uring = ["net", "io-uring"]
+
+# Provide IOCP adaptation, this feature only works in windows.
+iocp = ["net"]
+
+# Provide completion IO adaptation
+completion_io = ["io_uring", "iocp"]
 
 # Provide syscall implementation.
 syscall = ["net"]

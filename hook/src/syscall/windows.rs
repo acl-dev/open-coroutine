@@ -81,7 +81,7 @@ unsafe fn attach() -> std::io::Result<()> {
     impl_hook!("ws2_32.dll", SOCKET, socket(domain: c_int, ty: WINSOCK_SOCKET_TYPE, protocol: IPPROTO) -> SOCKET);
     impl_hook!("ws2_32.dll", SETSOCKOPT, setsockopt(socket: SOCKET, level: c_int, name: c_int, value: PSTR, option_len: c_int) -> c_int);
     impl_hook!("ws2_32.dll", WSARECV, WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, lpflags: *mut c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
-    impl_hook!("ws2_32.dll", WSASEND, WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags: c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+    impl_hook!("ws2_32.dll", WSASEND, WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytessent: *mut c_uint, dwflags: c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
     impl_hook!("ws2_32.dll", WSASOCKETW, WSASocketW(domain: c_int, ty: WINSOCK_SOCKET_TYPE, protocol: IPPROTO, lpprotocolinfo: *const WSAPROTOCOL_INFOW, g: c_uint, dw_flags: c_uint) -> SOCKET);
     impl_hook!("ws2_32.dll", SELECT, select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, errorfds: *mut FD_SET, timeout: *mut TIMEVAL) -> c_int);
     impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int);
