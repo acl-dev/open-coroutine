@@ -2,7 +2,7 @@ use crate::net::EventLoops;
 use crate::syscall::set_errno;
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
-use windows_sys::Win32::Networking::WinSock::{SOCKET, WINSOCK_SHUTDOWN_HOW};
+use windows_sys::Win32::Networking::WinSock::{SOCKET, WINSOCK_SHUTDOWN_HOW, SD_RECEIVE, SD_SEND, SD_BOTH, WSAEINVAL};
 
 #[must_use]
 pub extern "system" fn shutdown(
@@ -42,13 +42,11 @@ impl<I: ShutdownSyscall> ShutdownSyscall for NioShutdownSyscall<I> {
         {
             let fd = fd.try_into().expect("overflow");
             _ = match how {
-                windows_sys::Win32::Networking::WinSock::SD_RECEIVE => {
-                    EventLoops::del_read_event(fd)
-                }
-                windows_sys::Win32::Networking::WinSock::SD_SEND => EventLoops::del_write_event(fd),
-                windows_sys::Win32::Networking::WinSock::SD_BOTH => EventLoops::del_event(fd),
+                SD_RECEIVE => EventLoops::del_read_event(fd),
+                SD_SEND => EventLoops::del_write_event(fd),
+                SD_BOTH => EventLoops::del_event(fd),
                 _ => {
-                    set_errno(windows_sys::Win32::Networking::WinSock::WSAEINVAL.try_into().expect("overflow"));
+                    set_errno(WSAEINVAL.try_into().expect("overflow"));
                     return -1;
                 }
             };

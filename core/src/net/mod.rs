@@ -18,13 +18,27 @@ cfg_if::cfg_if! {
     }
 }
 
+cfg_if::cfg_if! {
+    if #[cfg(all(windows, feature = "iocp"))] {
+        use std::ffi::c_uint;
+        use windows_sys::core::{PCSTR, PSTR};
+        use windows_sys::Win32::Networking::WinSock::{
+            LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET, WSABUF,
+        };
+        use windows_sys::Win32::System::IO::OVERLAPPED;
+    }
+}
+
 /// 做C兼容时会用到
 pub type UserFunc = extern "C" fn(usize) -> usize;
 
 mod selector;
 
 #[allow(clippy::too_many_arguments)]
-#[cfg(all(target_os = "linux", feature = "io_uring"))]
+#[cfg(any(
+    all(target_os = "linux", feature = "io_uring"),
+    all(windows, feature = "iocp")
+))]
 mod operator;
 
 #[allow(missing_docs)]
@@ -280,3 +294,24 @@ impl_io_uring!(fsync(fd: c_int) -> c_int);
 impl_io_uring!(mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
 impl_io_uring!(renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
 impl_io_uring!(renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
+
+macro_rules! impl_iocp {
+    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[allow(non_snake_case)]
+        #[cfg(all(windows, feature = "iocp"))]
+        impl EventLoops {
+            #[allow(missing_docs)]
+            pub fn $syscall(
+                $($arg: $arg_type),*
+            ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
+                Self::event_loop().$syscall($($arg, )*)
+            }
+        }
+    }
+}
+
+impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
+impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, lpflags : *mut c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+impl_iocp!(send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags : c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);

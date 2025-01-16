@@ -24,16 +24,34 @@ cfg_if::cfg_if! {
     }
 }
 
+cfg_if::cfg_if! {
+    if #[cfg(all(windows, feature = "iocp"))] {
+        use dashmap::DashMap;
+        use std::ffi::{c_longlong, c_uint};
+        use windows_sys::core::{PCSTR, PSTR};
+        use windows_sys::Win32::Networking::WinSock::{
+            LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET, WSABUF,
+        };
+        use windows_sys::Win32::System::IO::OVERLAPPED;
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub(crate) struct EventLoop<'e> {
     stop: Arc<(Mutex<bool>, Condvar)>,
     shared_stop: Arc<(Mutex<AtomicUsize>, Condvar)>,
     cpu: usize,
-    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    #[cfg(any(
+        all(target_os = "linux", feature = "io_uring"),
+        all(windows, feature = "iocp")
+    ))]
     operator: crate::net::operator::Operator<'e>,
     #[allow(clippy::type_complexity)]
-    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    #[cfg(any(
+        all(target_os = "linux", feature = "io_uring"),
+        all(windows, feature = "iocp")
+    ))]
     syscall_wait_table: DashMap<usize, Arc<(Mutex<Option<c_longlong>>, Condvar)>>,
     selector: Poller,
     pool: CoroutinePool<'e>,
@@ -87,9 +105,15 @@ impl<'e> EventLoop<'e> {
             stop: Arc::new((Mutex::new(false), Condvar::new())),
             shared_stop,
             cpu,
-            #[cfg(all(target_os = "linux", feature = "io_uring"))]
+            #[cfg(any(
+                all(target_os = "linux", feature = "io_uring"),
+                all(windows, feature = "iocp")
+            ))]
             operator: crate::net::operator::Operator::new(cpu)?,
-            #[cfg(all(target_os = "linux", feature = "io_uring"))]
+            #[cfg(any(
+                all(target_os = "linux", feature = "io_uring"),
+                all(windows, feature = "iocp")
+            ))]
             syscall_wait_table: DashMap::new(),
             selector: Poller::new()?,
             pool: CoroutinePool::new(name, stack_size, min_size, max_size, keep_alive_time),
@@ -222,6 +246,8 @@ impl<'e> EventLoop<'e> {
         cfg_if::cfg_if! {
             if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
                 left_time = self.adapt_io_uring(left_time)?;
+            } else if #[cfg(all(windows, feature = "iocp"))] {
+                left_time = self.adapt_iocp(left_time)?;
             }
         }
 
@@ -263,6 +289,28 @@ impl<'e> EventLoop<'e> {
             if left != left_time {
                 left_time = Some(left.unwrap_or(Duration::ZERO));
             }
+        }
+        Ok(left_time)
+    }
+
+    #[cfg(all(windows, feature = "iocp"))]
+    fn adapt_iocp(&self, mut left_time: Option<Duration>) -> std::io::Result<Option<Duration>> {
+        // use IOCP
+        let (count, mut cq, left) = self.operator.select(left_time, 0)?;
+        if count > 0 {
+            for cqe in &mut cq {
+                let token = cqe.token;
+                if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
+                    let (lock, cvar) = &*pair;
+                    let mut pending = lock.lock().expect("lock failed");
+                    *pending = Some(cqe.result);
+                    cvar.notify_one();
+                }
+                unsafe { self.resume(token) };
+            }
+        }
+        if left != left_time {
+            left_time = Some(left.unwrap_or(Duration::ZERO));
         }
         Ok(left_time)
     }
@@ -445,6 +493,34 @@ impl_io_uring!(fsync(fd: c_int) -> c_int);
 impl_io_uring!(mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
 impl_io_uring!(renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
 impl_io_uring!(renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
+
+macro_rules! impl_iocp {
+    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+        #[cfg(all(windows, feature = "iocp"))]
+        impl EventLoop<'_> {
+            #[allow(non_snake_case, clippy::too_many_arguments)]
+            pub(super) fn $syscall(
+                &self,
+                $($arg: $arg_type),*
+            ) -> std::io::Result<Arc<(Mutex<Option<c_longlong>>, Condvar)>> {
+                let token = EventLoop::token(SyscallName::$syscall);
+                self.operator.$syscall(token, $($arg, )*)?;
+                let arc = Arc::new((Mutex::new(None), Condvar::new()));
+                assert!(
+                    self.syscall_wait_table.insert(token, arc.clone()).is_none(),
+                    "The previous token was not retrieved in a timely manner"
+                );
+                Ok(arc)
+            }
+        }
+    }
+}
+
+impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
+impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, lpflags : *mut c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+impl_iocp!(send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
+impl_iocp!(WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags : c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
 
 #[cfg(all(test, not(all(unix, feature = "preemptive"))))]
 mod tests {
