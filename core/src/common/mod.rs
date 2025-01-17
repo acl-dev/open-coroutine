@@ -51,6 +51,7 @@ pub mod beans;
 /// assert_eq!(queue.pop(), None);
 /// ```
 ///
+#[doc = include_str!("../../docs/en/work-steal.md")]
 pub mod work_steal;
 
 /// Suppose a thread in a work-stealing scheduler is idle and looking for the next task to run. To
@@ -87,6 +88,7 @@ pub mod work_steal;
 /// assert_eq!(queue.pop(), None);
 /// ```
 ///
+#[doc = include_str!("../../docs/en/ordered-work-steal.md")]
 pub mod ordered_work_steal;
 
 #[cfg(target_os = "linux")]
