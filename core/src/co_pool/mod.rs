@@ -32,6 +32,7 @@ pub struct CoroutinePool<'p> {
     //协程池状态
     state: Cell<PoolState>,
     //任务队列
+    #[doc = include_str!("../../docs/en/ordered-work-steal.md")]
     task_queue: OrderedLocalQueue<'p, Task<'p>>,
     //工作协程组
     workers: Scheduler<'p>,

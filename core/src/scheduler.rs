@@ -85,6 +85,7 @@ pub struct Scheduler<'s> {
     name: String,
     stack_size: AtomicUsize,
     listeners: VecDeque<&'s dyn Listener<(), Option<usize>>>,
+    #[doc = include_str!("../docs/en/ordered-work-steal.md")]
     ready: OrderedLocalQueue<'s, SchedulableCoroutine<'s>>,
     suspend: BinaryHeap<SuspendItem<'s>>,
     syscall: DashMap<&'s str, SchedulableCoroutine<'s>>,

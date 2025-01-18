@@ -71,6 +71,7 @@ mod monitor;
 pub mod scheduler;
 
 /// Coroutine pool abstraction and impl.
+#[doc = include_str!("../docs/en/coroutine-pool.md")]
 pub mod co_pool;
 
 /// net abstraction and impl.
