@@ -45,7 +45,7 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
 )]
-//! see `https://github.com/acl-dev/open-coroutine`
+#![doc = include_str!("../docs/en/hook.md")]
 
 use once_cell::sync::OnceCell;
 use open_coroutine_core::co_pool::task::UserTaskFunc;
