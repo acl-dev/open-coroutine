@@ -26,3 +26,6 @@ replacement for IO thread pools, see [why better](../en/why-better.md).
 - [Coroutine Overview](../en/coroutine.md)
 - [Scalable Stack Overview](../en/scalable-stack.md)
 - [Monitor Overview](../en/monitor.md)
+- [Work Steal Overview](../en/work-steal.md)
+- [Ordered Work Steal Overview](../en/ordered-work-steal.md)
+- [Coroutine Pool Overview](../en/coroutine-pool.md)

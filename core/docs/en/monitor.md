@@ -39,11 +39,6 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-## What is monitor?
-
-The `monitor` mod implements the `preemptive` feature for open-coroutine, which allows the coroutine to be preempted
-when it is running for a long time.
-
 ## Why preempt?
 
 After a `Coroutine::resume_with`, a coroutine may occupy the scheduling thread for a long time, thereby slowing down
@@ -52,6 +47,11 @@ automatically suspends coroutines that are stuck in long-term execution and allo
 
 The coroutine occupies scheduling threads for a long time in two scenarios: getting stuck in heavy computing or syscall.
 The following only solves the problem of getting stuck in heavy computing.
+
+## What is monitor?
+
+The `monitor` mod implements the `preemptive` feature for open-coroutine, which allows the coroutine to be preempted
+when it is running for a long time.
 
 ## How it works
 
