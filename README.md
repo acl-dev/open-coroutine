@@ -192,6 +192,7 @@ fn main() {
 - [Work Steal Overview](core/docs/en/work-steal.md)
 - [Ordered Work Steal Overview](core/docs/en/ordered-work-steal.md)
 - [Coroutine Pool Overview](core/docs/en/coroutine-pool.md)
+- [Hook Overview](hook/docs/en/hook.md)
 
 [我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
 

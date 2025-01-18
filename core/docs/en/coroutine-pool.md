@@ -15,7 +15,7 @@ fn main() -> std::io::Result<()> {
     let mut pool = CoroutinePool::default();
     assert!(pool.is_empty());
     pool.submit_task(
-        Some(String::from(task_name)),
+        None,
         |_| {
             println!("Hello, world!");
             Some(2)
