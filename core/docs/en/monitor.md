@@ -21,6 +21,9 @@ The `preemptive` feature currently supports the following targets:
 
 ✅ Tested and stable; ⚠️ Tested but unstable; ❌ Not supported.
 
+⚠️ If you want to use `preemptive` feature with `open-coroutine-core` not `open-coroutine`, you must learn
+[Hook Overview](../../../hook/docs/en/hook.md).
+
 ## Usage
 
 ```rust

@@ -32,7 +32,6 @@ English | [中文](README_ZH.md)
 
 ## 🕊 Roadmap
 
-- [ ] add docs;
 - [ ] add
   performance [benchmark](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
 - [ ] cancel coroutine/task;
@@ -194,7 +193,7 @@ fn main() {
 - [Coroutine Pool Overview](core/docs/en/coroutine-pool.md)
 - [Hook Overview](hook/docs/en/hook.md)
 
-[我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
+[Old Docs Here](https://github.com/acl-dev/open-coroutine-docs)
 
 ## 👍 Credits
 

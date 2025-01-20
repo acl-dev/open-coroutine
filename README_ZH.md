@@ -28,7 +28,6 @@
 
 ## 🕊 未来计划
 
-- [ ] 完善文档;
 - [ ] 
   增加性能[基准测试](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
 - [ ] 取消协程/任务;
@@ -185,7 +184,7 @@ fn main() {
 - [诞生之因](docs/cn/background.md)
 - [语言选择](docs/cn/why-rust.md)
 
-[我有故事,你有酒吗?](https://github.com/acl-dev/open-coroutine-docs)
+[旧版文档在这](https://github.com/acl-dev/open-coroutine-docs)
 
 ## 👍 鸣谢
 
