@@ -44,6 +44,7 @@
     clippy::indexing_slicing,
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
+    clippy::test_attr_in_doctest,
 )]
 #![doc = include_str!("../docs/en/hook.md")]
 
