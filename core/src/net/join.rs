@@ -12,8 +12,7 @@ pub struct JoinHandle(&'static Arc<EventLoop<'static>>, *const c_char);
 impl Drop for JoinHandle {
     fn drop(&mut self) {
         if let Ok(name) = self.get_name() {
-            // clean data
-            _ = self.0.try_take_task_result(name);
+            self.0.clean_task_result(name);
         }
     }
 }

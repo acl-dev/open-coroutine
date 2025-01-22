@@ -7,7 +7,7 @@ use crate::common::{get_timeout_time, now, CondvarBlocker};
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::{SchedulableCoroutine, Scheduler};
 use crate::{error, impl_current_for, impl_display_by_debug, impl_for_named, trace};
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use std::cell::Cell;
 use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
@@ -52,6 +52,7 @@ pub struct CoroutinePool<'p> {
     waits: DashMap<&'p str, Arc<(Mutex<bool>, Condvar)>>,
     //任务执行结果
     results: DashMap<String, Result<Option<usize>, &'p str>>,
+    no_waits: DashSet<&'p str>,
 }
 
 impl Drop for CoroutinePool<'_> {
@@ -136,6 +137,7 @@ impl<'p> CoroutinePool<'p> {
             blocker: Arc::default(),
             results: DashMap::new(),
             waits: DashMap::default(),
+            no_waits: DashSet::default(),
         }
     }
 
@@ -238,6 +240,14 @@ impl<'p> CoroutinePool<'p> {
     /// Attempt to obtain task results with the given `task_name`.
     pub fn try_take_task_result(&self, task_name: &str) -> Option<Result<Option<usize>, &'p str>> {
         self.results.remove(task_name).map(|(_, r)| r)
+    }
+
+    /// clean the task result data.
+    pub fn clean_task_result(&self, task_name: &str) {
+        if self.try_take_task_result(task_name).is_some() {
+            return;
+        }
+        _ = self.no_waits.insert(Box::leak(Box::from(task_name)));
     }
 
     /// Use the given `task_name` to obtain task results, and if no results are found,
@@ -375,6 +385,11 @@ impl<'p> CoroutinePool<'p> {
     fn try_run(&self) -> Option<()> {
         self.task_queue.pop().map(|task| {
             let (task_name, result) = task.run();
+            let n = task_name.clone().leak();
+            if self.no_waits.contains(n) {
+                _ = self.no_waits.remove(n);
+                return;
+            }
             assert!(
                 self.results.insert(task_name.clone(), result).is_none(),
                 "The previous result was not retrieved in a timely manner"
