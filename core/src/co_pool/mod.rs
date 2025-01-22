@@ -236,7 +236,7 @@ impl<'p> CoroutinePool<'p> {
     }
 
     /// Attempt to obtain task results with the given `task_name`.
-    pub fn try_get_task_result(&self, task_name: &str) -> Option<Result<Option<usize>, &'p str>> {
+    pub fn try_take_task_result(&self, task_name: &str) -> Option<Result<Option<usize>, &'p str>> {
         self.results.remove(task_name).map(|(_, r)| r)
     }
 
@@ -251,7 +251,7 @@ impl<'p> CoroutinePool<'p> {
         wait_time: Duration,
     ) -> std::io::Result<Result<Option<usize>, &str>> {
         let key = Box::leak(Box::from(task_name));
-        if let Some(r) = self.try_get_task_result(key) {
+        if let Some(r) = self.try_take_task_result(key) {
             self.notify(key);
             drop(self.waits.remove(key));
             return Ok(r);
@@ -260,7 +260,7 @@ impl<'p> CoroutinePool<'p> {
             let timeout_time = get_timeout_time(wait_time);
             loop {
                 _ = self.try_run();
-                if let Some(r) = self.try_get_task_result(key) {
+                if let Some(r) = self.try_take_task_result(key) {
                     return Ok(r);
                 }
                 if timeout_time.saturating_sub(now()) == 0 {
@@ -285,7 +285,7 @@ impl<'p> CoroutinePool<'p> {
             )
             .map_err(|e| Error::new(ErrorKind::Other, format!("{e}")))?,
         );
-        if let Some(r) = self.try_get_task_result(key) {
+        if let Some(r) = self.try_take_task_result(key) {
             self.notify(key);
             assert!(self.waits.remove(key).is_some());
             return Ok(r);
@@ -436,8 +436,8 @@ impl<'p> CoroutinePool<'p> {
             }
         }
         Self::init_current(self);
-        let left_time = self.try_timeout_schedule(timeout_time);
+        let r = self.try_timeout_schedule(timeout_time);
         Self::clean_current();
-        left_time
+        r.map(|(left_time, _)| left_time)
     }
 }

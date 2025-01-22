@@ -20,7 +20,8 @@ fn scheduler_basic() -> std::io::Result<()> {
         None,
         None,
     )?;
-    scheduler.try_schedule()
+    scheduler.try_schedule()?;
+    Ok(())
 }
 
 #[cfg(not(all(unix, feature = "preemptive")))]
@@ -36,7 +37,8 @@ fn scheduler_backtrace() -> std::io::Result<()> {
         None,
         None,
     )?;
-    scheduler.try_schedule()
+    scheduler.try_schedule()?;
+    Ok(())
 }
 
 #[test]
@@ -62,7 +64,8 @@ fn scheduler_suspend() -> std::io::Result<()> {
         None,
         None,
     )?;
-    scheduler.try_schedule()
+    scheduler.try_schedule()?;
+    Ok(())
 }
 
 #[test]
@@ -80,7 +83,8 @@ fn scheduler_delay() -> std::io::Result<()> {
     )?;
     scheduler.try_schedule()?;
     std::thread::sleep(Duration::from_millis(100));
-    scheduler.try_schedule()
+    scheduler.try_schedule()?;
+    Ok(())
 }
 
 #[cfg(not(all(unix, feature = "preemptive")))]
@@ -122,5 +126,6 @@ fn scheduler_listener() -> std::io::Result<()> {
         None,
         None,
     )?;
-    scheduler.try_schedule()
+    scheduler.try_schedule()?;
+    Ok(())
 }

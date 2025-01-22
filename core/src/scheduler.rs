@@ -7,7 +7,7 @@ use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
 use crate::{co, impl_current_for, impl_display_by_debug, impl_for_named};
 use dashmap::DashMap;
-use std::collections::{BinaryHeap, VecDeque};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -90,7 +90,6 @@ pub struct Scheduler<'s> {
     suspend: BinaryHeap<SuspendItem<'s>>,
     syscall: DashMap<&'s str, SchedulableCoroutine<'s>>,
     syscall_suspend: BinaryHeap<SyscallSuspendItem<'s>>,
-    results: DashMap<&'s str, Result<Option<usize>, &'s str>>,
 }
 
 impl Default for Scheduler<'_> {
@@ -107,9 +106,10 @@ impl Drop for Scheduler<'_> {
         if std::thread::panicking() {
             return;
         }
+        let name = self.name.clone();
         _ = self
             .try_timed_schedule(Duration::from_secs(30))
-            .unwrap_or_else(|_| panic!("Failed to stop scheduler {} !", self.name()));
+            .unwrap_or_else(|e| panic!("Failed to stop scheduler {name} due to {e} !"));
         assert!(
             self.ready.is_empty(),
             "There are still coroutines to be carried out in the ready queue:{:#?} !",
@@ -134,6 +134,7 @@ impl_current_for!(SCHEDULER, Scheduler<'s>);
 
 impl_display_by_debug!(Scheduler<'s>);
 
+#[allow(clippy::type_complexity)]
 impl<'s> Scheduler<'s> {
     /// Creates a new scheduler.
     #[must_use]
@@ -149,7 +150,6 @@ impl<'s> Scheduler<'s> {
             suspend: BinaryHeap::default(),
             syscall: DashMap::default(),
             syscall_suspend: BinaryHeap::default(),
-            results: DashMap::default(),
         }
     }
 
@@ -229,8 +229,9 @@ impl<'s> Scheduler<'s> {
     ///
     /// # Errors
     /// see `try_timeout_schedule`.
-    pub fn try_schedule(&mut self) -> std::io::Result<()> {
-        self.try_timeout_schedule(u64::MAX).map(|_| ())
+    pub fn try_schedule(&mut self) -> std::io::Result<HashMap<&str, Result<Option<usize>, &str>>> {
+        self.try_timeout_schedule(u64::MAX)
+            .map(|(_, results)| results)
     }
 
     /// Try scheduling the coroutines for up to `dur`.
@@ -240,7 +241,10 @@ impl<'s> Scheduler<'s> {
     ///
     /// # Errors
     /// see `try_timeout_schedule`.
-    pub fn try_timed_schedule(&mut self, dur: Duration) -> std::io::Result<u64> {
+    pub fn try_timed_schedule(
+        &mut self,
+        dur: Duration,
+    ) -> std::io::Result<(u64, HashMap<&str, Result<Option<usize>, &str>>)> {
         self.try_timeout_schedule(get_timeout_time(dur))
     }
 
@@ -253,18 +257,25 @@ impl<'s> Scheduler<'s> {
     ///
     /// # Errors
     /// if change to ready fails.
-    pub fn try_timeout_schedule(&mut self, timeout_time: u64) -> std::io::Result<u64> {
+    pub fn try_timeout_schedule(
+        &mut self,
+        timeout_time: u64,
+    ) -> std::io::Result<(u64, HashMap<&str, Result<Option<usize>, &str>>)> {
         Self::init_current(self);
-        let left_time = self.do_schedule(timeout_time);
+        let r = self.do_schedule(timeout_time);
         Self::clean_current();
-        left_time
+        r
     }
 
-    fn do_schedule(&mut self, timeout_time: u64) -> std::io::Result<u64> {
+    fn do_schedule(
+        &mut self,
+        timeout_time: u64,
+    ) -> std::io::Result<(u64, HashMap<&str, Result<Option<usize>, &str>>)> {
+        let mut results = HashMap::new();
         loop {
             let left_time = timeout_time.saturating_sub(now());
             if 0 == left_time {
-                return Ok(0);
+                return Ok((0, results));
             }
             self.check_ready()?;
             // schedule coroutines
@@ -295,14 +306,14 @@ impl<'s> Scheduler<'s> {
                     CoroutineState::Complete(result) => {
                         let co_name = Box::leak(Box::from(coroutine.name()));
                         assert!(
-                            self.results.insert(co_name, Ok(result)).is_none(),
+                            results.insert(co_name, Ok(result)).is_none(),
                             "not consume result"
                         );
                     }
                     CoroutineState::Error(message) => {
                         let co_name = Box::leak(Box::from(coroutine.name()));
                         assert!(
-                            self.results.insert(co_name, Err(message)).is_none(),
+                            results.insert(co_name, Err(message)).is_none(),
                             "not consume result"
                         );
                     }
@@ -315,7 +326,7 @@ impl<'s> Scheduler<'s> {
                 }
                 continue;
             }
-            return Ok(left_time);
+            return Ok((left_time, results));
         }
     }
 
