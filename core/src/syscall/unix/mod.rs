@@ -61,10 +61,10 @@ macro_rules! impl_io_uring {
                 fn_ptr: Option<&extern "C" fn($($arg_type),*) -> $result>,
                 $($arg: $arg_type),*
             ) -> $result {
-                if let Ok(arc) = $crate::net::EventLoops::$syscall($($arg, )*) {
-                    use $crate::common::constants::{CoroutineState, SyscallState};
-                    use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($($arg, )*) {
                     if let Some(co) = SchedulableCoroutine::current() {
                         if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
                         {
@@ -136,10 +136,10 @@ macro_rules! impl_io_uring_read {
                 $fd: $fd_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
-                    use $crate::common::constants::{CoroutineState, SyscallState};
-                    use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
                     if let Some(co) = SchedulableCoroutine::current() {
                         if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
                         {
@@ -222,10 +222,10 @@ macro_rules! impl_io_uring_write {
                 $fd: $fd_type,
                 $($arg: $arg_type),*
             ) -> $result {
-                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
-                    use $crate::common::constants::{CoroutineState, SyscallState};
-                    use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
                     if let Some(co) = SchedulableCoroutine::current() {
                         if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
                         {

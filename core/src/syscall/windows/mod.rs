@@ -66,7 +66,7 @@ macro_rules! impl_iocp {
                 fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
                 $($arg: $arg_type),*
             ) -> $result {
-                use $crate::common::constants::{CoroutineState, SyscallName, SyscallState};
+                use $crate::common::constants::{CoroutineState, SyscallState};
                 use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 
                 if let Ok(arc) = $crate::net::EventLoops::$syscall($($arg, )*) {
@@ -77,9 +77,7 @@ macro_rules! impl_iocp {
                             if co.syscall((), syscall, new_state).is_err() {
                                 $crate::error!(
                                     "{} change to syscall {} {} failed !",
-                                    co.name(),
-                                    syscall,
-                                    new_state
+                                    co.name(), syscall, new_state
                                 );
                             }
                         }
@@ -109,15 +107,155 @@ macro_rules! impl_iocp {
                         .expect("no syscall result");
                     if syscall_result < 0 {
                         $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
-                        if SyscallName::accept == SyscallName::$syscall {
-                            syscall_result = 0;
-                        } else {
-                            syscall_result = -1;
-                        }
+                        syscall_result = -1;
                     }
                     return <$result>::try_from(syscall_result).expect("overflow");
                 }
                 self.inner.$syscall(fn_ptr, $($arg, )*)
+            }
+        }
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! impl_iocp_read {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(windows, feature = "iocp"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(windows, feature = "iocp"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "system" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "system" fn($fd_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
+                        {
+                            let new_state = SyscallState::Suspend($crate::syscall::recv_time_limit($fd));
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    if let Some(suspender) = SchedulableSuspender::current() {
+                        suspender.suspend();
+                        //回来的时候，系统调用已经执行完了
+                    }
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
+                        {
+                            let new_state = SyscallState::Executing;
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    let (lock, cvar) = &*arc;
+                    let mut syscall_result = cvar
+                        .wait_while(lock.lock().expect("lock failed"),
+                            |&mut result| result.is_none()
+                        )
+                        .expect("lock failed")
+                        .expect("no syscall result");
+                    if syscall_result < 0 {
+                        $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
+                        syscall_result = -1;
+                    }
+                    return <$result>::try_from(syscall_result).expect("overflow");
+                }
+                self.inner.$syscall(fn_ptr, $fd, $($arg, )*)
+            }
+        }
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! impl_iocp_write {
+    (
+        $struct_name:ident, $trait_name: ident,
+        $syscall: ident($fd: ident : $fd_type: ty, $($arg: ident : $arg_type: ty),*) -> $result: ty
+    ) => {
+        #[repr(C)]
+        #[derive(Debug, Default)]
+        #[cfg(all(windows, feature = "iocp"))]
+        struct $struct_name<I: $trait_name> {
+            inner: I,
+        }
+
+        #[cfg(all(windows, feature = "iocp"))]
+        impl<I: $trait_name> $trait_name for $struct_name<I> {
+            extern "system" fn $syscall(
+                &self,
+                fn_ptr: Option<&extern "system" fn($fd_type, $($arg_type),*) -> $result>,
+                $fd: $fd_type,
+                $($arg: $arg_type),*
+            ) -> $result {
+                use $crate::common::constants::{CoroutineState, SyscallState};
+                use $crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
+
+                if let Ok(arc) = $crate::net::EventLoops::$syscall($fd, $($arg, )*) {
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
+                        {
+                            let new_state = SyscallState::Suspend($crate::syscall::send_time_limit($fd));
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    if let Some(suspender) = SchedulableSuspender::current() {
+                        suspender.suspend();
+                        //回来的时候，系统调用已经执行完了
+                    }
+                    if let Some(co) = SchedulableCoroutine::current() {
+                        if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
+                        {
+                            let new_state = SyscallState::Executing;
+                            if co.syscall((), syscall, new_state).is_err() {
+                                $crate::error!(
+                                    "{} change to syscall {} {} failed !",
+                                    co.name(), syscall, new_state
+                                );
+                            }
+                        }
+                    }
+                    let (lock, cvar) = &*arc;
+                    let mut syscall_result = cvar
+                        .wait_while(lock.lock().expect("lock failed"),
+                            |&mut result| result.is_none()
+                        )
+                        .expect("lock failed")
+                        .expect("no syscall result");
+                    if syscall_result < 0 {
+                        $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
+                        syscall_result = -1;
+                    }
+                    return <$result>::try_from(syscall_result).expect("overflow");
+                }
+                self.inner.$syscall(fn_ptr, $fd, $($arg, )*)
             }
         }
     }
