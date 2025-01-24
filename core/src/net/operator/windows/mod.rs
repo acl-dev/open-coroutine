@@ -238,7 +238,7 @@ impl<'o> Operator<'o> {
             let mut sock_info: WSAPROTOCOL_INFOW = std::mem::zeroed();
             let mut sock_info_len = size_of::<WSAPROTOCOL_INFOW>()
                 .try_into()
-                .expect("protocol_len overflow");
+                .expect("sock_info_len overflow");
             if getsockopt(
                 fd,
                 SOL_SOCKET,
