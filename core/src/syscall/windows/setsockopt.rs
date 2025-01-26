@@ -1,22 +1,7 @@
 use std::ffi::c_int;
-use once_cell::sync::Lazy;
 use windows_sys::core::PSTR;
 use crate::syscall::windows::{RECV_TIME_LIMIT, SEND_TIME_LIMIT};
 use windows_sys::Win32::Networking::WinSock::{SO_RCVTIMEO, SO_SNDTIMEO, SOCKET, SOL_SOCKET};
-
-#[must_use]
-pub extern "system" fn setsockopt(
-    fn_ptr: Option<&extern "system" fn(SOCKET, c_int, c_int, PSTR, c_int) -> c_int>,
-    socket: SOCKET,
-    level: c_int,
-    name: c_int,
-    value: PSTR,
-    option_len: c_int
-) -> c_int {
-    static CHAIN: Lazy<SetsockoptSyscallFacade<NioSetsockoptSyscall<RawSetsockoptSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.setsockopt(fn_ptr, socket, level, name, value, option_len)
-}
 
 trait SetsockoptSyscall {
     extern "system" fn setsockopt(
@@ -29,6 +14,10 @@ trait SetsockoptSyscall {
         option_len: c_int
     ) -> c_int;
 }
+
+impl_syscall!(SetsockoptSyscallFacade, NioSetsockoptSyscall, RawSetsockoptSyscall,
+    setsockopt(socket: SOCKET, level: c_int, name: c_int, value: PSTR, option_len: c_int) -> c_int
+);
 
 impl_facade!(SetsockoptSyscallFacade, SetsockoptSyscall,
     setsockopt(socket: SOCKET, level: c_int, name: c_int, value: PSTR, option_len: c_int) -> c_int

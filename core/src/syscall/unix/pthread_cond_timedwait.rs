@@ -1,26 +1,8 @@
 use crate::common::now;
 use crate::net::EventLoops;
 use libc::{pthread_cond_t, pthread_mutex_t, timespec};
-use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::time::Duration;
-
-#[must_use]
-pub extern "C" fn pthread_cond_timedwait(
-    fn_ptr: Option<
-        &extern "C" fn(*mut pthread_cond_t, *mut pthread_mutex_t, *const timespec) -> c_int,
-    >,
-    cond: *mut pthread_cond_t,
-    lock: *mut pthread_mutex_t,
-    abstime: *const timespec,
-) -> c_int {
-    static CHAIN: Lazy<
-        PthreadCondTimedwaitSyscallFacade<
-            NioPthreadCondTimedwaitSyscall<RawPthreadCondTimedwaitSyscall>,
-        >,
-    > = Lazy::new(Default::default);
-    CHAIN.pthread_cond_timedwait(fn_ptr, cond, lock, abstime)
-}
 
 trait PthreadCondTimedwaitSyscall {
     extern "C" fn pthread_cond_timedwait(
@@ -33,6 +15,15 @@ trait PthreadCondTimedwaitSyscall {
         abstime: *const timespec,
     ) -> c_int;
 }
+
+impl_syscall!(
+    PthreadCondTimedwaitSyscallFacade, NioPthreadCondTimedwaitSyscall, RawPthreadCondTimedwaitSyscall,
+    pthread_cond_timedwait(
+        cond: *mut pthread_cond_t,
+        lock: *mut pthread_mutex_t,
+        abstime: *const timespec
+    ) -> c_int
+);
 
 impl_facade!(PthreadCondTimedwaitSyscallFacade, PthreadCondTimedwaitSyscall,
     pthread_cond_timedwait(

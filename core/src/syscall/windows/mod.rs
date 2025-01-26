@@ -6,6 +6,59 @@ use windows_sys::Win32::Networking::WinSock::{
     getsockopt, SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, WSAENOTSOCK,
 };
 
+macro_rules! impl_syscall {
+    (
+        $facade_struct_name:ident, $iocp_struct_name: ident, $nio_struct_name: ident, $raw_struct_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
+        #[must_use]
+        pub extern "system" fn $syscall(
+            fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
+            $($arg: $arg_type),*
+        ) -> $result {
+            cfg_if::cfg_if! {
+                if #[cfg(all(windows, feature = "iocp"))] {
+                    static CHAIN: once_cell::sync::Lazy<
+                        $facade_struct_name<$iocp_struct_name<$nio_struct_name<$raw_struct_name>>>
+                    > = once_cell::sync::Lazy::new(Default::default);
+                } else {
+                    static CHAIN: once_cell::sync::Lazy<$facade_struct_name<$nio_struct_name<$raw_struct_name>>> =
+                        once_cell::sync::Lazy::new(Default::default);
+                }
+            }
+            CHAIN.$syscall(fn_ptr, $($arg, )*)
+        }
+    };
+    (
+        $facade_struct_name:ident, $nio_struct_name: ident, $raw_struct_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
+        #[must_use]
+        pub extern "system" fn $syscall(
+            fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
+            $($arg: $arg_type),*
+        ) -> $result {
+            static CHAIN: once_cell::sync::Lazy<$facade_struct_name<$nio_struct_name<$raw_struct_name>>> =
+                once_cell::sync::Lazy::new(Default::default);
+            CHAIN.$syscall(fn_ptr, $($arg, )*)
+        }
+    };
+    (
+        $facade_struct_name:ident, $struct_name: ident,
+        $syscall: ident($($arg: ident : $arg_type: ty),*$(,)?) -> $result: ty
+    ) => {
+        #[must_use]
+        pub extern "system" fn $syscall(
+            fn_ptr: Option<&extern "system" fn($($arg_type),*) -> $result>,
+            $($arg: $arg_type),*
+        ) -> $result {
+            static CHAIN: once_cell::sync::Lazy<$facade_struct_name<$struct_name >> =
+                once_cell::sync::Lazy::new(Default::default);
+            CHAIN.$syscall(fn_ptr, $($arg, )*)
+        }
+    };
+}
+
 macro_rules! impl_facade {
     (
         $struct_name:ident, $trait_name: ident,

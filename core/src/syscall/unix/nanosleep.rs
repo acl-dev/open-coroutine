@@ -1,19 +1,8 @@
 use crate::net::EventLoops;
 use crate::syscall::{reset_errno, set_errno};
 use libc::timespec;
-use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::time::Duration;
-
-#[must_use]
-pub extern "C" fn nanosleep(
-    fn_ptr: Option<&extern "C" fn(*const timespec, *mut timespec) -> c_int>,
-    rqtp: *const timespec,
-    rmtp: *mut timespec,
-) -> c_int {
-    static CHAIN: Lazy<NanosleepSyscallFacade<NioNanosleepSyscall>> = Lazy::new(Default::default);
-    CHAIN.nanosleep(fn_ptr, rqtp, rmtp)
-}
 
 trait NanosleepSyscall {
     extern "C" fn nanosleep(
@@ -23,6 +12,10 @@ trait NanosleepSyscall {
         rmtp: *mut timespec,
     ) -> c_int;
 }
+
+impl_syscall!(NanosleepSyscallFacade, NioNanosleepSyscall,
+    nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> c_int
+);
 
 impl_facade!(NanosleepSyscallFacade, NanosleepSyscall,
     nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> c_int
