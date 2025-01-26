@@ -1,17 +1,7 @@
 use crate::net::EventLoops;
 use crate::syscall::reset_errno;
-use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::time::Duration;
-
-#[must_use]
-pub extern "C" fn usleep(
-    fn_ptr: Option<&extern "C" fn(c_uint) -> c_int>,
-    microseconds: c_uint,
-) -> c_int {
-    static CHAIN: Lazy<UsleepSyscallFacade<NioUsleepSyscall>> = Lazy::new(Default::default);
-    CHAIN.usleep(fn_ptr, microseconds)
-}
 
 trait UsleepSyscall {
     extern "C" fn usleep(
@@ -20,6 +10,10 @@ trait UsleepSyscall {
         microseconds: c_uint,
     ) -> c_int;
 }
+
+impl_syscall!(UsleepSyscallFacade, NioUsleepSyscall,
+    usleep(microseconds: c_uint) -> c_int
+);
 
 impl_facade!(UsleepSyscallFacade, UsleepSyscall,
     usleep(microseconds: c_uint) -> c_int

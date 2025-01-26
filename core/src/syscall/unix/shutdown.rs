@@ -1,26 +1,6 @@
 use crate::net::EventLoops;
 use crate::syscall::set_errno;
-use once_cell::sync::Lazy;
 use std::ffi::c_int;
-
-#[must_use]
-pub extern "C" fn shutdown(
-    fn_ptr: Option<&extern "C" fn(c_int, c_int) -> c_int>,
-    socket: c_int,
-    how: c_int,
-) -> c_int {
-    cfg_if::cfg_if! {
-        if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-            static CHAIN: Lazy<
-                ShutdownSyscallFacade<IoUringShutdownSyscall<NioShutdownSyscall<RawShutdownSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<ShutdownSyscallFacade<NioShutdownSyscall<RawShutdownSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
-    CHAIN.shutdown(fn_ptr, socket, how)
-}
 
 trait ShutdownSyscall {
     extern "C" fn shutdown(
@@ -30,6 +10,10 @@ trait ShutdownSyscall {
         how: c_int,
     ) -> c_int;
 }
+
+impl_syscall!(ShutdownSyscallFacade, IoUringShutdownSyscall, NioShutdownSyscall, RawShutdownSyscall,
+    shutdown(fd: c_int, how: c_int) -> c_int
+);
 
 impl_facade!(ShutdownSyscallFacade, ShutdownSyscall, shutdown(fd: c_int, how: c_int) -> c_int);
 

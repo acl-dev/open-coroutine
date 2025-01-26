@@ -1,22 +1,9 @@
 use crate::common::now;
 use crate::net::EventLoops;
 use crate::syscall::{is_blocking, reset_errno, set_blocking, set_errno, set_non_blocking, send_time_limit};
-use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::io::Error;
 use windows_sys::Win32::Networking::WinSock::{getpeername, getsockopt, SO_ERROR, SOCKADDR, SOCKET, SOL_SOCKET, WSAEALREADY, WSAEINPROGRESS, WSAEINTR, WSAETIMEDOUT, WSAEWOULDBLOCK};
-
-#[must_use]
-pub extern "system" fn connect(
-    fn_ptr: Option<&extern "system" fn(SOCKET, *const SOCKADDR, c_int) -> c_int>,
-    socket: SOCKET,
-    address: *const SOCKADDR,
-    len: c_int,
-) -> c_int {
-    static CHAIN: Lazy<ConnectSyscallFacade<NioConnectSyscall<RawConnectSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.connect(fn_ptr, socket, address, len)
-}
 
 trait ConnectSyscall {
     extern "system" fn connect(
@@ -27,6 +14,10 @@ trait ConnectSyscall {
         len: c_int,
     ) -> c_int;
 }
+
+impl_syscall!(ConnectSyscallFacade, NioConnectSyscall, RawConnectSyscall,
+    connect(fd: SOCKET, address: *const SOCKADDR, len: c_int) -> c_int
+);
 
 impl_facade!(ConnectSyscallFacade, ConnectSyscall,
     connect(fd: SOCKET, address: *const SOCKADDR, len: c_int) -> c_int

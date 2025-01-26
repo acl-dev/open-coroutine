@@ -2,29 +2,8 @@ use crate::common::now;
 use crate::net::EventLoops;
 use crate::syscall::{is_blocking, reset_errno, set_blocking, set_non_blocking, recv_time_limit};
 use libc::{msghdr, ssize_t};
-use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
 use std::io::{Error, ErrorKind};
-
-#[must_use]
-pub extern "C" fn recvmsg(
-    fn_ptr: Option<&extern "C" fn(c_int, *mut msghdr, c_int) -> ssize_t>,
-    fd: c_int,
-    msg: *mut msghdr,
-    flags: c_int,
-) -> ssize_t {
-    cfg_if::cfg_if! {
-        if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-            static CHAIN: Lazy<
-                RecvmsgSyscallFacade<IoUringRecvmsgSyscall<NioRecvmsgSyscall<RawRecvmsgSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<RecvmsgSyscallFacade<NioRecvmsgSyscall<RawRecvmsgSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
-    CHAIN.recvmsg(fn_ptr, fd, msg, flags)
-}
 
 trait RecvmsgSyscall {
     extern "C" fn recvmsg(
@@ -35,6 +14,10 @@ trait RecvmsgSyscall {
         flags: c_int,
     ) -> ssize_t;
 }
+
+impl_syscall!(RecvmsgSyscallFacade, IoUringRecvmsgSyscall, NioRecvmsgSyscall, RawRecvmsgSyscall,
+    recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t
+);
 
 impl_facade!(RecvmsgSyscallFacade, RecvmsgSyscall,
     recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t

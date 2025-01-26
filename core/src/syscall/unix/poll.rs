@@ -1,20 +1,7 @@
 use crate::net::EventLoops;
 use libc::{nfds_t, pollfd};
-use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use std::time::Duration;
-
-#[must_use]
-pub extern "C" fn poll(
-    fn_ptr: Option<&extern "C" fn(*mut pollfd, nfds_t, c_int) -> c_int>,
-    fds: *mut pollfd,
-    nfds: nfds_t,
-    timeout: c_int,
-) -> c_int {
-    static CHAIN: Lazy<PollSyscallFacade<NioPollSyscall<RawPollSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.poll(fn_ptr, fds, nfds, timeout)
-}
 
 trait PollSyscall {
     extern "C" fn poll(
@@ -25,6 +12,10 @@ trait PollSyscall {
         timeout: c_int,
     ) -> c_int;
 }
+
+impl_syscall!(PollSyscallFacade, NioPollSyscall, RawPollSyscall,
+    poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int
+);
 
 impl_facade!(PollSyscallFacade, PollSyscall,
     poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int

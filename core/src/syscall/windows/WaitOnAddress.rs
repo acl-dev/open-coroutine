@@ -1,24 +1,10 @@
 use std::ffi::{c_uint, c_void};
 use std::time::Duration;
-use once_cell::sync::Lazy;
 use windows_sys::Win32::Foundation::{BOOL, ERROR_TIMEOUT, FALSE, TRUE};
 use crate::common::{get_timeout_time, now};
 use crate::net::EventLoops;
 use crate::syscall::reset_errno;
 use crate::syscall::set_errno;
-
-#[must_use]
-pub extern "system" fn WaitOnAddress(
-    fn_ptr: Option<&extern "system" fn(*const c_void, *const c_void, usize, c_uint) -> BOOL>,
-    address: *const c_void,
-    compareaddress: *const c_void,
-    addresssize: usize,
-    dwmilliseconds: c_uint
-) -> BOOL {
-    static CHAIN: Lazy<WaitOnAddressSyscallFacade<NioWaitOnAddressSyscall<RawWaitOnAddressSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.WaitOnAddress(fn_ptr, address, compareaddress, addresssize, dwmilliseconds)
-}
 
 trait WaitOnAddressSyscall {
     extern "system" fn WaitOnAddress(
@@ -30,6 +16,15 @@ trait WaitOnAddressSyscall {
         dwmilliseconds: c_uint
     ) -> BOOL;
 }
+
+impl_syscall!(WaitOnAddressSyscallFacade, NioWaitOnAddressSyscall, RawWaitOnAddressSyscall,
+    WaitOnAddress(
+        address: *const c_void,
+        compareaddress: *const c_void,
+        addresssize: usize,
+        dwmilliseconds: c_uint
+    ) -> BOOL
+);
 
 impl_facade!(WaitOnAddressSyscallFacade, WaitOnAddressSyscall,
     WaitOnAddress(

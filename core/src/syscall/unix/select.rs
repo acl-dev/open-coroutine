@@ -1,24 +1,7 @@
 use crate::net::EventLoops;
 use libc::{fd_set, timeval};
-use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::time::Duration;
-
-#[must_use]
-pub extern "C" fn select(
-    fn_ptr: Option<
-        &extern "C" fn(c_int, *mut fd_set, *mut fd_set, *mut fd_set, *mut timeval) -> c_int,
-    >,
-    nfds: c_int,
-    readfds: *mut fd_set,
-    writefds: *mut fd_set,
-    errorfds: *mut fd_set,
-    timeout: *mut timeval,
-) -> c_int {
-    static CHAIN: Lazy<SelectSyscallFacade<NioSelectSyscall<RawSelectSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.select(fn_ptr, nfds, readfds, writefds, errorfds, timeout)
-}
 
 trait SelectSyscall {
     extern "C" fn select(
@@ -33,6 +16,16 @@ trait SelectSyscall {
         timeout: *mut timeval,
     ) -> c_int;
 }
+
+impl_syscall!(SelectSyscallFacade, NioSelectSyscall, RawSelectSyscall,
+    select(
+        nfds: c_int,
+        readfds: *mut fd_set,
+        writefds: *mut fd_set,
+        errorfds: *mut fd_set,
+        timeout: *mut timeval
+    ) -> c_int
+);
 
 impl_facade!(SelectSyscallFacade, SelectSyscall,
     select(

@@ -1,21 +1,8 @@
 use std::convert::TryInto;
 use crate::net::EventLoops;
-use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use std::time::Duration;
 use windows_sys::Win32::Networking::WinSock::WSAPOLLFD;
-
-#[must_use]
-pub extern "system" fn WSAPoll(
-    fn_ptr: Option<&extern "system" fn(*mut WSAPOLLFD, c_uint, c_int) -> c_int>,
-    fds: *mut WSAPOLLFD,
-    nfds: c_uint,
-    timeout: c_int,
-) -> c_int {
-    static CHAIN: Lazy<PollSyscallFacade<NioPollSyscall<RawPollSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.WSAPoll(fn_ptr, fds, nfds, timeout)
-}
 
 trait PollSyscall {
     extern "system" fn WSAPoll(
@@ -26,6 +13,10 @@ trait PollSyscall {
         timeout: c_int,
     ) -> c_int;
 }
+
+impl_syscall!(PollSyscallFacade, NioPollSyscall, RawPollSyscall,
+    WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int
+);
 
 impl_facade!(PollSyscallFacade, PollSyscall,
     WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int

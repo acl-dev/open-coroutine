@@ -2,21 +2,8 @@ use crate::common::constants::{CoroutineState, SyscallName, SyscallState};
 use crate::scheduler::SchedulableCoroutine;
 use crate::syscall::windows::NON_BLOCKING;
 use crate::{error, info};
-use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_uint};
 use windows_sys::Win32::Networking::WinSock::SOCKET;
-
-#[must_use]
-pub extern "system" fn ioctlsocket(
-    fn_ptr: Option<&extern "system" fn(SOCKET, c_int, *mut c_uint) -> c_int>,
-    fd: SOCKET,
-    cmd: c_int,
-    argp: *mut c_uint,
-) -> c_int {
-    static CHAIN: Lazy<IoctlsocketSyscallFacade<NioIoctlsocketSyscall<RawIoctlsocketSyscall>>> =
-        Lazy::new(Default::default);
-    CHAIN.ioctlsocket(fn_ptr, fd, cmd, argp)
-}
 
 trait IoctlsocketSyscall {
     extern "system" fn ioctlsocket(
@@ -27,6 +14,10 @@ trait IoctlsocketSyscall {
         argp: *mut c_uint,
     ) -> c_int;
 }
+
+impl_syscall!(IoctlsocketSyscallFacade, NioIoctlsocketSyscall, RawIoctlsocketSyscall,
+    ioctlsocket(fd: SOCKET, cmd: c_int, argp: *mut c_uint) -> c_int
+);
 
 #[repr(C)]
 #[derive(Debug, Default)]

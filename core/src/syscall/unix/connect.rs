@@ -2,29 +2,8 @@ use crate::common::now;
 use crate::net::EventLoops;
 use crate::syscall::{is_blocking, reset_errno, send_time_limit, set_blocking, set_errno, set_non_blocking};
 use libc::{sockaddr, socklen_t};
-use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_void};
 use std::io::Error;
-
-#[must_use]
-pub extern "C" fn connect(
-    fn_ptr: Option<&extern "C" fn(c_int, *const sockaddr, socklen_t) -> c_int>,
-    socket: c_int,
-    address: *const sockaddr,
-    len: socklen_t,
-) -> c_int {
-    cfg_if::cfg_if! {
-        if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-            static CHAIN: Lazy<
-                ConnectSyscallFacade<IoUringConnectSyscall<NioConnectSyscall<RawConnectSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<ConnectSyscallFacade<NioConnectSyscall<RawConnectSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
-    CHAIN.connect(fn_ptr, socket, address, len)
-}
 
 trait ConnectSyscall {
     extern "C" fn connect(
@@ -35,6 +14,10 @@ trait ConnectSyscall {
         len: socklen_t,
     ) -> c_int;
 }
+
+impl_syscall!(ConnectSyscallFacade, IoUringConnectSyscall, NioConnectSyscall, RawConnectSyscall,
+    connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int
+);
 
 impl_facade!(ConnectSyscallFacade, ConnectSyscall,
     connect(fd: c_int, address: *const sockaddr, len: socklen_t) -> c_int

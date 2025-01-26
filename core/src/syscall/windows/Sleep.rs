@@ -2,13 +2,13 @@ use crate::net::EventLoops;
 use once_cell::sync::Lazy;
 use std::time::Duration;
 
+trait SleepSyscall {
+    extern "system" fn Sleep(&self, fn_ptr: Option<&extern "system" fn(u32)>, dw_milliseconds: u32);
+}
+
 pub extern "system" fn Sleep(fn_ptr: Option<&extern "system" fn(u32)>, dw_milliseconds: u32) {
     static CHAIN: Lazy<SleepSyscallFacade<NioSleepSyscall>> = Lazy::new(Default::default);
     CHAIN.Sleep(fn_ptr, dw_milliseconds);
-}
-
-trait SleepSyscall {
-    extern "system" fn Sleep(&self, fn_ptr: Option<&extern "system" fn(u32)>, dw_milliseconds: u32);
 }
 
 impl_facade!(SleepSyscallFacade, SleepSyscall,

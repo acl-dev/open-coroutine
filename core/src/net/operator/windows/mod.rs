@@ -14,7 +14,7 @@ use windows_sys::Win32::Networking::WinSock::{
     getsockopt, setsockopt, AcceptEx, WSAGetLastError, WSARecv, WSASend, WSASocketW,
     INVALID_SOCKET, LPCONDITIONPROC, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR,
     SOCKADDR_IN, SOCKET, SOCKET_ERROR, SOL_SOCKET, SO_PROTOCOL_INFO, SO_UPDATE_ACCEPT_CONTEXT,
-    WSABUF, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED, WSA_IO_PENDING,
+    WSABUF, WSAEINPROGRESS, WSAENETDOWN, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED, WSA_IO_PENDING,
 };
 use windows_sys::Win32::Storage::FileSystem::SetFileCompletionNotificationModes;
 use windows_sys::Win32::System::WindowsProgramming::FILE_SKIP_SET_EVENT_ON_HANDLE;
@@ -159,7 +159,6 @@ impl<'o> Operator<'o> {
                 for entry in entries {
                     let mut cqe = *Box::from_raw(entry.lpOverlapped.cast::<Overlapped>());
                     // resolve completed read/write tasks
-                    // todo refactor IOCP impl
                     cqe.result = match cqe.syscall_name {
                         SyscallName::accept => {
                             if setsockopt(
@@ -172,7 +171,7 @@ impl<'o> Operator<'o> {
                             {
                                 cqe.socket.try_into().expect("result overflow")
                             } else {
-                                -c_longlong::from(windows_sys::Win32::Foundation::GetLastError())
+                                -c_longlong::from(WSAENETDOWN)
                             }
                         }
                         SyscallName::recv
@@ -183,7 +182,7 @@ impl<'o> Operator<'o> {
                             if r > 0 {
                                 r
                             } else {
-                                -c_longlong::from(windows_sys::Win32::Foundation::GetLastError())
+                                -c_longlong::from(WSAEINPROGRESS)
                             }
                         }
                         _ => panic!("unsupported"),
@@ -273,6 +272,7 @@ impl<'o> Operator<'o> {
             overlapped.token = user_data;
             overlapped.syscall_name = syscall_name;
             overlapped.socket = socket;
+            overlapped.result = -c_longlong::from(WSAENETDOWN);
             let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
             while AcceptEx(
                 fd,
@@ -364,6 +364,7 @@ impl<'o> Operator<'o> {
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall_name = syscall_name;
+            overlapped.result = -c_longlong::from(WSAEINPROGRESS);
             if WSARecv(
                 fd,
                 buf,
@@ -457,6 +458,7 @@ impl<'o> Operator<'o> {
             overlapped.from_fd = fd;
             overlapped.token = user_data;
             overlapped.syscall_name = syscall_name;
+            overlapped.result = -c_longlong::from(WSAEINPROGRESS);
             if WSASend(
                 fd,
                 buf,

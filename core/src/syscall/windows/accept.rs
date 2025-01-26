@@ -1,27 +1,6 @@
 use std::convert::TryInto;
-use once_cell::sync::Lazy;
 use std::ffi::c_int;
 use windows_sys::Win32::Networking::WinSock::{SOCKADDR, SOCKET};
-
-#[must_use]
-pub extern "system" fn accept(
-    fn_ptr: Option<&extern "system" fn(SOCKET, *mut SOCKADDR, *mut c_int) -> SOCKET>,
-    fd: SOCKET,
-    address: *mut SOCKADDR,
-    address_len: *mut c_int,
-) -> SOCKET {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "iocp")] {
-            static CHAIN: Lazy<
-                AcceptSyscallFacade<IocpAcceptSyscall<NioAcceptSyscall<RawAcceptSyscall>>>
-            > = Lazy::new(Default::default);
-        } else {
-            static CHAIN: Lazy<AcceptSyscallFacade<NioAcceptSyscall<RawAcceptSyscall>>> =
-                Lazy::new(Default::default);
-        }
-    }
-    CHAIN.accept(fn_ptr, fd, address, address_len)
-}
 
 trait AcceptSyscall {
     extern "system" fn accept(
@@ -32,6 +11,10 @@ trait AcceptSyscall {
         address_len: *mut c_int,
     ) -> SOCKET;
 }
+
+impl_syscall!(AcceptSyscallFacade, IocpAcceptSyscall, NioAcceptSyscall, RawAcceptSyscall,
+    accept(fd: SOCKET, address: *mut SOCKADDR, address_len: *mut c_int) -> SOCKET
+);
 
 impl_facade!(AcceptSyscallFacade, AcceptSyscall,
     accept(fd: SOCKET, address: *mut SOCKADDR, address_len: *mut c_int) -> SOCKET
@@ -89,7 +72,7 @@ impl<I: AcceptSyscall> AcceptSyscall for IocpAcceptSyscall<I> {
             let (lock, cvar) = &*arc;
             let syscall_result = cvar
                 .wait_while(lock.lock().expect("lock failed"),
-                    |&mut result| result.is_none()
+                            |&mut result| result.is_none()
                 )
                 .expect("lock failed")
                 .expect("no syscall result");
