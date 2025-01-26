@@ -46,6 +46,7 @@
     clippy::single_char_lifetime_names, // TODO: change lifetime names
     clippy::test_attr_in_doctest,
     linker_messages,
+    unknown_lints,
 )]
 #![doc = include_str!("../docs/en/hook.md")]
 
