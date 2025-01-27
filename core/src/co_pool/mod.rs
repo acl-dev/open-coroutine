@@ -60,8 +60,9 @@ impl Drop for CoroutinePool<'_> {
         if std::thread::panicking() {
             return;
         }
-        self.stop(Duration::from_secs(30))
-            .unwrap_or_else(|_| panic!("Failed to stop coroutine pool {} !", self.name()));
+        self.stop(Duration::from_secs(30)).unwrap_or_else(|e| {
+            panic!("Failed to stop coroutine pool {} due to {e} !", self.name())
+        });
         assert_eq!(
             PoolState::Stopped,
             self.state(),
