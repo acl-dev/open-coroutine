@@ -157,7 +157,7 @@ impl<'o> Operator<'o> {
                 }
                 entries.set_len(recv_count as _);
                 for entry in entries {
-                    let mut cqe = *Box::from_raw(entry.lpOverlapped.cast::<Overlapped>());
+                    let mut cqe = Box::from_raw(entry.lpOverlapped.cast::<Overlapped>());
                     // resolve completed read/write tasks
                     cqe.result = match cqe.syscall_name {
                         SyscallName::accept => {
@@ -177,18 +177,11 @@ impl<'o> Operator<'o> {
                         SyscallName::recv
                         | SyscallName::WSARecv
                         | SyscallName::send
-                        | SyscallName::WSASend => {
-                            let r = entry.dwNumberOfBytesTransferred.into();
-                            if r > 0 {
-                                r
-                            } else {
-                                -c_longlong::from(WSAEINPROGRESS)
-                            }
-                        }
+                        | SyscallName::WSASend => entry.dwNumberOfBytesTransferred.into(),
                         _ => panic!("unsupported"),
                     };
                     eprintln!("IOCP got:{cqe}");
-                    cq.push(cqe);
+                    cq.push(*cqe);
                 }
             }
             if cq.len() >= want {

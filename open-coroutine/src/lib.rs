@@ -44,6 +44,9 @@
     clippy::indexing_slicing,
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
+    unknown_lints, // for windows nightly
+    linker_messages, // for windows nightly
+    unused_attributes, // for windows nightly
 )]
 //! see `https://github.com/acl-dev/open-coroutine`
 

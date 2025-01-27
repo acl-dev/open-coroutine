@@ -45,8 +45,8 @@
     clippy::separated_literal_suffix, // conflicts with clippy::unseparated_literal_suffix
     clippy::single_char_lifetime_names, // TODO: change lifetime names
     clippy::test_attr_in_doctest,
-    unknown_lints,
-    linker_messages,
+    unknown_lints, // for windows nightly
+    linker_messages, // for windows nightly
 )]
 #![doc = include_str!("../docs/en/hook.md")]
 
