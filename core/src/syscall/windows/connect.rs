@@ -82,7 +82,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                     set_errno(err);
                     r = -1;
                     break;
-                };
+                }
                 unsafe {
                     let mut address = std::mem::zeroed();
                     let mut address_len = c_int::try_from(size_of_val(&address)).expect("overflow");

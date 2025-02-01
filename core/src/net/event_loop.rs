@@ -75,7 +75,7 @@ impl DerefMut for EventLoop<'_> {
 impl Default for EventLoop<'_> {
     fn default() -> Self {
         let max_cpu_index = num_cpus::get();
-        let random_cpu_index = rand::thread_rng().gen_range(0..max_cpu_index);
+        let random_cpu_index = rand::rng().random_range(0..max_cpu_index);
         Self::new(
             format!("open-coroutine-event-loop-{random_cpu_index}"),
             random_cpu_index,

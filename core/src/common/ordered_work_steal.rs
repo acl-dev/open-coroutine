@@ -359,7 +359,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
             //尝试从其他本地队列steal
             let local_queues = &self.shared.local_queues;
             let num = local_queues.len();
-            let start = rand::thread_rng().gen_range(0..num);
+            let start = rand::rng().random_range(0..num);
             for i in 0..num {
                 let i = (start + i) % num;
                 if let Some(another) = local_queues.get(i) {
