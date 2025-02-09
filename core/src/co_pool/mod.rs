@@ -197,11 +197,14 @@ impl<'p> CoroutinePool<'p> {
                 assert_eq!(PoolState::Running, self.stopping()?);
                 _ = self.try_timed_schedule_task(dur)?;
                 assert_eq!(PoolState::Stopping, self.stopped()?);
-                Ok(())
             }
-            PoolState::Stopping => Err(Error::new(ErrorKind::Other, "should never happens")),
-            PoolState::Stopped => Ok(()),
+            PoolState::Stopping => {
+                _ = self.try_timed_schedule_task(dur)?;
+                assert_eq!(PoolState::Stopping, self.stopped()?);
+            }
+            PoolState::Stopped => {}
         }
+        Ok(())
     }
 
     /// Submit a new task to this pool.

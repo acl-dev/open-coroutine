@@ -399,21 +399,25 @@ impl<'e> EventLoop<'e> {
         match self.state() {
             PoolState::Running => {
                 assert_eq!(PoolState::Running, self.stopping()?);
-                let timeout_time = crate::common::get_timeout_time(wait_time);
-                loop {
-                    let left_time = timeout_time.saturating_sub(crate::common::now());
-                    if 0 == left_time {
-                        return Err(Error::new(ErrorKind::TimedOut, "stop timeout !"));
-                    }
-                    self.wait_event(Some(Duration::from_nanos(left_time).min(SLICE)))?;
-                    if self.is_empty() && self.get_running_size() == 0 {
-                        assert_eq!(PoolState::Stopping, self.stopped()?);
-                        return Ok(());
-                    }
-                }
+                self.do_stop_sync(wait_time)
             }
-            PoolState::Stopping => Err(Error::new(ErrorKind::Other, "should never happens")),
+            PoolState::Stopping => self.do_stop_sync(wait_time),
             PoolState::Stopped => Ok(()),
+        }
+    }
+
+    fn do_stop_sync(&mut self, wait_time: Duration) -> std::io::Result<()> {
+        let timeout_time = crate::common::get_timeout_time(wait_time);
+        loop {
+            let left_time = timeout_time.saturating_sub(crate::common::now());
+            if 0 == left_time {
+                return Err(Error::new(ErrorKind::TimedOut, "stop timeout !"));
+            }
+            self.wait_event(Some(Duration::from_nanos(left_time).min(SLICE)))?;
+            if self.is_empty() && self.get_running_size() == 0 {
+                assert_eq!(PoolState::Stopping, self.stopped()?);
+                return Ok(());
+            }
         }
     }
 
@@ -422,25 +426,34 @@ impl<'e> EventLoop<'e> {
             PoolState::Running => {
                 if BeanFactory::remove_bean::<JoinHandle<()>>(&self.get_thread_name()).is_some() {
                     assert_eq!(PoolState::Running, self.stopping()?);
-                    //开启了单独的线程
-                    let (lock, cvar) = &*self.stop;
-                    let result = cvar
-                        .wait_timeout_while(
-                            lock.lock().expect("lock failed"),
-                            wait_time,
-                            |&mut pending| pending,
-                        )
-                        .expect("lock failed");
-                    if result.1.timed_out() {
-                        return Err(Error::new(ErrorKind::TimedOut, "stop timeout !"));
-                    }
-                    assert_eq!(PoolState::Stopping, self.stopped()?);
+                    return self.do_stop(wait_time);
                 }
-                Ok(())
+                Err(Error::new(
+                    ErrorKind::Unsupported,
+                    "use EventLoop::stop_sync instead !",
+                ))
             }
-            PoolState::Stopping => Err(Error::new(ErrorKind::Other, "should never happens")),
+            PoolState::Stopping => self.do_stop(wait_time),
             PoolState::Stopped => Ok(()),
         }
+    }
+
+    fn do_stop(&self, wait_time: Duration) -> std::io::Result<()> {
+        //开启了单独的线程
+        let (lock, cvar) = &*self.stop;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().expect("lock failed"),
+                wait_time,
+                |&mut pending| pending,
+            )
+            .expect("lock failed");
+        if result.1.timed_out() {
+            return Err(Error::new(ErrorKind::TimedOut, "stop timeout !"));
+        }
+        assert_eq!(PoolState::Stopping, self.stopped()?);
+        assert!(BeanFactory::remove_bean::<Self>(self.name()).is_some());
+        Ok(())
     }
 }
 
