@@ -58,6 +58,21 @@ pub(crate) struct EventLoop<'e> {
     phantom_data: PhantomData<&'e EventLoop<'e>>,
 }
 
+impl Drop for EventLoop<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            return;
+        }
+        self.stop_sync(Duration::from_secs(30))
+            .unwrap_or_else(|e| panic!("Failed to stop event-loop {} due to {e} !", self.name()));
+        assert_eq!(
+            PoolState::Stopped,
+            self.state(),
+            "The event-loop is not stopped !"
+        );
+    }
+}
+
 impl<'e> Deref for EventLoop<'e> {
     type Target = CoroutinePool<'e>;
 
