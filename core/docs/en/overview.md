@@ -17,10 +17,8 @@ author: loongs-zhang
 The `open-coroutine` is a simple, efficient and generic stackfull-coroutine library, you can use this as a performance
 replacement for IO thread pools, see [why better](../en/why-better.md).
 
-[//]: # (todo 增加英文版本的文档)
-
-- [Background](../../../docs/cn/background.md)
-- [Why Rust](../../../docs/cn/why-rust.md)
+- [Background](../../../docs/en/background.md)
+- [Why Rust](../../../docs/en/why-rust.md)
 - [Why Better](../en/why-better.md)
 - [Quick Start](../../../README.md)
 - [Coroutine Overview](../en/coroutine.md)
