@@ -185,6 +185,9 @@ fn main() {
 
 ## ⚓ Learn More
 
+- [Project Overview](core/docs/en/overview.md)
+- [Background](docs/en/background.md)
+- [Why Rust](docs/en/why-rust.md)
 - [Coroutine Overview](core/docs/en/coroutine.md)
 - [Scalable Stack Overview](core/docs/en/scalable-stack.md)
 - [Monitor Overview](core/docs/en/monitor.md)
