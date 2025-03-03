@@ -74,8 +74,7 @@ pub fn main() -> std::io::Result<()> {
                 )
                 .unwrap();
             if result.1.timed_out() {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(std::io::Error::other(
                     "preemptive schedule failed",
                 ))
             } else {

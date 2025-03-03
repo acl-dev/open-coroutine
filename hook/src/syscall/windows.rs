@@ -1,5 +1,5 @@
 use std::ffi::{c_int, c_longlong, c_uint, c_void};
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use windows_sys::core::{PCSTR, PCWSTR, PSTR};
 use windows_sys::Win32::Foundation::{BOOL, HANDLE, TRUE};
 use windows_sys::Win32::Networking::WinSock::{
@@ -89,6 +89,5 @@ unsafe fn attach() -> std::io::Result<()> {
     // impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(address: *const c_void, compareaddress: *const c_void, addresssize: usize, dwmilliseconds: c_uint) -> BOOL);
 
     // Enable the hook
-    minhook::MinHook::enable_all_hooks()
-        .map_err(|_| Error::new(ErrorKind::Other, "init all hooks failed !"))
+    minhook::MinHook::enable_all_hooks().map_err(|_| Error::other("init all hooks failed !"))
 }

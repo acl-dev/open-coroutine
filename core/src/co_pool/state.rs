@@ -1,6 +1,6 @@
 use crate::co_pool::CoroutinePool;
 use crate::common::constants::PoolState;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 
 impl CoroutinePool<'_> {
     /// running -> stopping
@@ -37,10 +37,11 @@ impl CoroutinePool<'_> {
             assert_eq!(old_state, self.state.replace(new_state));
             return Ok(old_state);
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!("{} unexpected {current}->{:?}", self.name(), new_state),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            new_state
+        )))
     }
 }
 

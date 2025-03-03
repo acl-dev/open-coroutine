@@ -23,10 +23,7 @@ fn coroutine_panic() -> std::io::Result<()> {
     })?;
     match coroutine.resume()? {
         CoroutineState::Error(_) => Ok(()),
-        _ => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "The coroutine should panic",
-        )),
+        _ => Err(std::io::Error::other("The coroutine should panic")),
     }
 }
 
@@ -233,8 +230,7 @@ fn coroutine_preemptive() -> std::io::Result<()> {
         )
         .unwrap();
     if result.1.timed_out() {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(std::io::Error::other(
             "The monitor should send signals to coroutines in running state",
         ))
     } else {
@@ -279,8 +275,7 @@ fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
     if result.1.timed_out() {
         Ok(())
     } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(std::io::Error::other(
             "The monitor should not send signals to coroutines in syscall state",
         ))
     }

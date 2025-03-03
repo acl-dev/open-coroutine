@@ -54,7 +54,7 @@ The above is excerpted from [corosensei](https://github.com/Amanieu/corosensei).
 | switch efficiency | ✅ Higher      | ❌ High  |
 | memory usage      | ✅ Bytes/KB/MB | ❌ KB/MB |
 | scheduled by OS   | ❌             | ✅       |
-| stack grow        | ✅             | ❌       |
+| grow stack        | ✅             | ❌       |
 
 ## Stackfull VS Stackless
 

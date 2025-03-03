@@ -9,7 +9,7 @@ use crate::{co, impl_current_for, impl_display_by_debug, impl_for_named};
 use dashmap::DashMap;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::ffi::c_longlong;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -318,8 +318,7 @@ impl<'s> Scheduler<'s> {
                         );
                     }
                     _ => {
-                        return Err(Error::new(
-                            ErrorKind::Other,
+                        return Err(Error::other(
                             "try_timeout_schedule should never execute to here",
                         ));
                     }

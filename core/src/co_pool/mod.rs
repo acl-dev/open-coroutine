@@ -221,10 +221,7 @@ impl<'p> CoroutinePool<'p> {
         match self.state() {
             PoolState::Running => {}
             PoolState::Stopping | PoolState::Stopped => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "The coroutine pool is stopping or stopped !",
-                ))
+                return Err(Error::other("The coroutine pool is stopping or stopped !"))
             }
         }
         let name = name.unwrap_or(format!("{}@{}", self.name(), uuid::Uuid::new_v4()));
@@ -292,12 +289,11 @@ impl<'p> CoroutinePool<'p> {
         let (lock, cvar) = &*arc;
         drop(
             cvar.wait_timeout_while(
-                lock.lock()
-                    .map_err(|e| Error::new(ErrorKind::Other, format!("{e}")))?,
+                lock.lock().map_err(|e| Error::other(format!("{e}")))?,
                 wait_time,
                 |&mut pending| pending,
             )
-            .map_err(|e| Error::new(ErrorKind::Other, format!("{e}")))?,
+            .map_err(|e| Error::other(format!("{e}")))?,
         );
         if let Some(r) = self.try_take_task_result(key) {
             self.notify(key);
@@ -372,8 +368,7 @@ impl<'p> CoroutinePool<'p> {
                 "The coroutine pool:{} has reached its maximum size !",
                 self.name()
             );
-            return Err(Error::new(
-                ErrorKind::Other,
+            return Err(Error::other(
                 "The coroutine pool has reached its maximum size !",
             ));
         }
@@ -447,12 +442,7 @@ impl<'p> CoroutinePool<'p> {
             PoolState::Running | PoolState::Stopping => {
                 drop(self.try_grow());
             }
-            PoolState::Stopped => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "The coroutine pool is stopped !",
-                ))
-            }
+            PoolState::Stopped => return Err(Error::other("The coroutine pool is stopped !")),
         }
         Self::init_current(self);
         let r = self.try_timeout_schedule(timeout_time);
