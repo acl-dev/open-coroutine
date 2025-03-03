@@ -42,8 +42,5 @@ pub fn main() -> Result<()> {
     if let Some(r) = join_handle.timeout_join(Duration::from_secs(30))? {
         return r;
     }
-    Err(Error::new(
-        std::io::ErrorKind::Other,
-        "Failed to join the task",
-    ))
+    Err(Error::other("Failed to join the task"))
 }

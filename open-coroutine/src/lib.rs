@@ -133,8 +133,7 @@ pub fn crate_task<P: 'static, R: 'static, F: FnOnce(P) -> R>(
             let result: &'static mut std::io::Result<R> = Box::leak(Box::new(
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (data.0)(data.1)))
                     .map_err(|e| {
-                        Error::new(
-                            ErrorKind::Other,
+                        Error::other(
                             e.downcast_ref::<&'static str>()
                                 .map_or("task failed without message", |msg| *msg),
                         )
@@ -165,7 +164,7 @@ impl<R> JoinHandle<R> {
         unsafe {
             let ptr = task_timeout_join(self, dur.as_nanos().try_into().expect("overflow"));
             match ptr.cmp(&0) {
-                Ordering::Less => Err(Error::new(ErrorKind::Other, "timeout join failed")),
+                Ordering::Less => Err(Error::other("timeout join failed")),
                 Ordering::Equal => Ok(None),
                 Ordering::Greater => Ok(Some((*Box::from_raw(ptr as *mut std::io::Result<R>))?)),
             }
@@ -176,7 +175,7 @@ impl<R> JoinHandle<R> {
         unsafe {
             let ptr = task_join(&self);
             match ptr.cmp(&0) {
-                Ordering::Less => Err(Error::new(ErrorKind::Other, "join failed")),
+                Ordering::Less => Err(Error::other("join failed")),
                 Ordering::Equal => Ok(None),
                 Ordering::Greater => Ok(Some((*Box::from_raw(ptr as *mut std::io::Result<R>))?)),
             }
@@ -192,7 +191,7 @@ impl<R> JoinHandle<R> {
             for handle in slice {
                 let left_time = timeout_time.saturating_sub(open_coroutine_core::common::now());
                 if 0 == left_time {
-                    return Err(Error::new(ErrorKind::Other, "timeout join failed"));
+                    return Err(Error::other("timeout join failed"));
                 }
                 if let Ok(x) = handle.timeout_join(Duration::from_nanos(left_time).min(SLICE)) {
                     return Ok(x);

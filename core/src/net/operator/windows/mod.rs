@@ -239,7 +239,7 @@ impl<'o> Operator<'o> {
                 &mut sock_info_len,
             ) != 0
             {
-                return Err(Error::new(ErrorKind::Other, "get socket info failed"));
+                return Err(Error::other("get socket info failed"));
             }
             self.add_handle(fd as HANDLE)?;
             let socket = WSASocketW(
@@ -251,10 +251,7 @@ impl<'o> Operator<'o> {
                 WSA_FLAG_OVERLAPPED,
             );
             if INVALID_SOCKET == socket {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    format!("add {syscall_name} operation failed"),
-                ));
+                return Err(Error::other(format!("add {syscall_name} operation failed")));
             }
             let size = size_of::<SOCKADDR_IN>()
                 .saturating_add(16)
@@ -370,10 +367,9 @@ impl<'o> Operator<'o> {
             {
                 let errno = WSAGetLastError();
                 if WSA_IO_PENDING != errno {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        format!("add {syscall_name} operation failed with {errno}"),
-                    ));
+                    return Err(Error::other(format!(
+                        "add {syscall_name} operation failed with {errno}"
+                    )));
                 }
             }
             eprintln!("add {syscall_name} operation:{overlapped}");
@@ -464,10 +460,9 @@ impl<'o> Operator<'o> {
             {
                 let errno = WSAGetLastError();
                 if WSA_IO_PENDING != errno {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        format!("add {syscall_name} operation failed with {errno}"),
-                    ));
+                    return Err(Error::other(format!(
+                        "add {syscall_name} operation failed with {errno}"
+                    )));
                 }
             }
             eprintln!("add {syscall_name} operation:{overlapped}");

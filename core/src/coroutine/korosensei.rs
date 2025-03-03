@@ -11,7 +11,7 @@ use std::cell::{Cell, RefCell, UnsafeCell};
 use std::collections::VecDeque;
 use std::ffi::c_longlong;
 use std::fmt::Debug;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -452,10 +452,10 @@ where
                     CoroutineState::Syscall(y, syscall, state) => {
                         Ok(CoroutineState::Syscall(y, syscall, state))
                     }
-                    _ => Err(Error::new(
-                        ErrorKind::Other,
-                        format!("{} unexpected state {current}", self.name()),
-                    )),
+                    _ => Err(Error::other(format!(
+                        "{} unexpected state {current}",
+                        self.name()
+                    ))),
                 }
             }
             CoroutineResult::Return(result) => {

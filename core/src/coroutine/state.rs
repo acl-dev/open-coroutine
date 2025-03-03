@@ -4,7 +4,7 @@ use crate::coroutine::listener::Listener;
 use crate::coroutine::Coroutine;
 use crate::{error, info};
 use std::fmt::Debug;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 
 impl<Param, Yield, Return> Coroutine<'_, Param, Yield, Return>
 where
@@ -45,14 +45,11 @@ where
             }
             _ => {}
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "{} unexpected {current}->{:?}",
-                self.name(),
-                CoroutineState::<Yield, Return>::Ready
-            ),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Ready
+        )))
     }
 
     /// ready -> running
@@ -87,14 +84,11 @@ where
             }
             _ => {}
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "{} unexpected {current}->{:?}",
-                self.name(),
-                CoroutineState::<Yield, Return>::Running
-            ),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Running
+        )))
     }
 
     /// running -> suspend
@@ -109,14 +103,11 @@ where
             self.on_suspend(self, old_state);
             return Ok(());
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "{} unexpected {current}->{:?}",
-                self.name(),
-                CoroutineState::<Yield, Return>::Suspend(val, timestamp)
-            ),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Suspend(val, timestamp)
+        )))
     }
 
     /// running -> syscall
@@ -148,14 +139,11 @@ where
             }
             _ => {}
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "{} unexpected {current}->{:?}",
-                self.name(),
-                CoroutineState::<Yield, Return>::Syscall(val, syscall, syscall_state)
-            ),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Syscall(val, syscall, syscall_state)
+        )))
     }
 
     /// running -> complete
@@ -170,14 +158,11 @@ where
             self.on_complete(self, old_state, val);
             return Ok(());
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "{} unexpected {current}->{:?}",
-                self.name(),
-                CoroutineState::<Yield, Return>::Complete(val)
-            ),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Complete(val)
+        )))
     }
 
     /// running -> error
@@ -192,14 +177,11 @@ where
             self.on_error(self, old_state, msg);
             return Ok(());
         }
-        Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "{} unexpected {current}->{:?}",
-                self.name(),
-                CoroutineState::<Yield, Return>::Error(msg)
-            ),
-        ))
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Error(msg)
+        )))
     }
 }
 

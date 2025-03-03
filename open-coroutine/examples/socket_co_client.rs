@@ -1,5 +1,5 @@
 use open_coroutine::task;
-use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Read, Write};
+use std::io::{Error, IoSlice, IoSliceMut, Read, Write};
 use std::net::{Shutdown, TcpListener, ToSocketAddrs};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
@@ -170,8 +170,7 @@ pub fn main() -> std::io::Result<()> {
         )
         .unwrap();
     if result.1.timed_out() {
-        Err(Error::new(
-            ErrorKind::Other,
+        Err(Error::other(
             "The coroutine client did not completed within the specified time",
         ))
     } else {
