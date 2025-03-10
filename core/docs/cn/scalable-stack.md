@@ -1,14 +1,14 @@
 ---
-title: Scalable Stack Overview
+title: 可伸缩栈总览
 date: 2025-01-08 08:44:00
 author: loongs-zhang
 ---
 
-# Scalable Stack Overview
+# 可伸缩栈总览
 
-English | [中文](../cn/scalable-stack.md)
+[English](../en/scalable-stack.md) | 中文
 
-## Usage
+## 使用方法
 
 ```rust
 use open_coroutine_core::co;
@@ -19,9 +19,9 @@ use open_coroutine_core::coroutine::Coroutine;
 fn main() -> std::io::Result<()> {
     let mut co = co!(|_: &Suspender<(), i32>, ()| {
         fn recurse(i: u32, p: &mut [u8; 10240]) {
-            // You can also use `maybe_grow` in thread.
+            // 你也可以在线程中使用`maybe_grow`
             Coroutine::<(), i32, ()>::maybe_grow(|| {
-                // Ensure the stack allocation isn't optimized away.
+                // 确保栈分配不会被优化掉
                 unsafe { std::ptr::read_volatile(&p) };
                 if i > 0 {
                     recurse(i - 1, &mut [0; 10240]);
@@ -29,7 +29,7 @@ fn main() -> std::io::Result<()> {
             })
             .expect("allocate stack failed")
         }
-        // Use ~500KB of stack.
+        // 使用约500KB的栈
         recurse(50, &mut [0; 10240]);
     })?;
     assert_eq!(co.resume()?, CoroutineState::Complete(()));
@@ -37,22 +37,20 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-## Why scalable stack?
+## 为什么需要可伸缩栈？
 
-The default stack size of coroutine is 128KB, which is sufficient for most scenarios, but there are still some scenarios
-that are not applicable, such as recursive algorithms. The scalable stack enables annotating fixed points in programs
-where the stack may want to grow larger. Spills over to the heap if the stack has hit its limit.
+协程的默认栈大小为128KB，这对于大多数场景来说已经足够，但仍有一些场景不适用，例如递归算法。可扩展栈允许在程序中标注可能需要更大栈的扩容点。如果栈达到其限制，则会溢出到堆中。
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    Cond1{In coroutine}
-    Cond2{Approach the limit}
-    Cond3{Is the first growing up?}
-    C[Create a new stack]
-    RC[Run code on current stack]
-    RN1[Run code on new stack]
+    Cond1{在协程中}
+    Cond2{达到限制}
+    Cond3{第一次扩容}
+    C[创建新栈]
+    RC[在当前栈上运行]
+    RN1[在新栈上运行]
     maybe_grow --> Cond1
     Cond1 -- Yes --> Cond2
     Cond2 -- Yes --> C

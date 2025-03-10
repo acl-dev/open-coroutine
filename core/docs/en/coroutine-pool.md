@@ -6,6 +6,8 @@ author: loongs-zhang
 
 # Coroutine Pool Overview
 
+English | [中文](../cn/coroutine-pool.md)
+
 ## Usage
 
 ```rust
@@ -49,8 +51,9 @@ Pooling the coroutines can bring several significant advantages:
 
 ## How it works
 
-In open-coroutine-core, the coroutine pool is lazy, which means if you don't call `try_timeout_schedule_task`, tasks
-will not be executed. Please refer to the sequence diagram below for details:
+In open-coroutine-core, the coroutine pool is lazy, which means if you don't call
+`CoroutinePool::try_timeout_schedule_task`, tasks will not be executed. Please refer to the sequence diagram below for
+details:
 
 ```mermaid
 sequenceDiagram
@@ -72,8 +75,8 @@ sequenceDiagram
     end
     CoroutinePool ->>+ WorkerCoroutine: schedule the worker coroutines
     alt run tasks
-        WorkerCoroutine ->>+ Task: try poll a task
-        alt poll success
+        WorkerCoroutine ->>+ Task: try pull a task
+        alt pull success
             Task ->>+ Task: run the task
             alt in execution
                 Task ->>+ WorkerCoroutine: be preempted or enter syscall
@@ -92,11 +95,11 @@ sequenceDiagram
                 CoroutineCreator ->>+ WorkerCoroutine: recreate worker coroutine only if the coroutine pool has not reached its maximum pool size
             end
         end
-        alt poll fail
-            Task ->>+ WorkerCoroutine: increase count and yield to the next coroutine
-            WorkerCoroutine ->>+ WorkerCoroutine: block for a while if the count has reached the current size of coroutine pool
+        alt pull fail
+            Task ->>+ WorkerCoroutine: increase the count of failed pulls and yield to the next coroutine
+            WorkerCoroutine ->>+ WorkerCoroutine: block the current thread for a while if the count has reached the current size of coroutine pool
         end
-        WorkerCoroutine ->>+ WorkerCoroutine: try poll the next task
+        WorkerCoroutine ->>+ WorkerCoroutine: try pull the next task
     end
     alt recycle coroutines
         WorkerCoroutine ->>+ WorkerCoroutine: the schedule has exceeded the timeout time

@@ -6,6 +6,8 @@ author: loongs-zhang
 
 # Hook Overview
 
+English | [中文](../cn/hook.md)
+
 ## Why hook?
 
 After a `Coroutine::resume_with`, a coroutine may occupy the scheduling thread for a long time (e.g. getting stuck in

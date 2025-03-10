@@ -6,6 +6,8 @@ author: loongs-zhang
 
 # Coroutine Overview
 
+English | [中文](../cn/coroutine.md)
+
 ## Usage
 
 ```rust
@@ -42,8 +44,7 @@ fn main() -> std::io::Result<()> {
 
 A [coroutine](https://en.wikipedia.org/wiki/Coroutine) is a function that can be paused and resumed, yielding values to
 the caller. A coroutine can suspend itself from any point in its call stack. In addition to receiving yielded values
-from a coroutine, you can also pass data into the coroutine each time it is
-resumed.
+from a coroutine, you can also pass data into the coroutine each time it is resumed.
 
 The above is excerpted from [corosensei](https://github.com/Amanieu/corosensei).
 
@@ -79,7 +80,7 @@ Suspend ← Running ⇄ Syscall
 ```
 
 In open-coroutine, a coroutine created is in `Ready` state, once you call the `Coroutine::resume_with` method, the state
-will change from `Ready` to `Running`. After that, the coroutine maybe suspend by `Suspender::delay_with`, then the
+will change from `Ready` to `Running`. After that, the coroutine maybe suspend by `Suspender::suspend_with`, then the
 state will change from `Running` to `Suspend`, the `Suspend` state also records the timestamp that can be awakened, and
 its unit is ns.
 
@@ -88,11 +89,11 @@ completed, the state will change from `Syscall` to `Running`(Note: if you
 use [open-coroutine-core](https://crates.io/crates/open-coroutine-core), you will need to manually switch the coroutine
 state by calling `Coroutine::syscall` and `Coroutine::running` at the appropriate time, which is a huge workload and
 prone to errors, so please use [open-coroutine](https://crates.io/crates/open-coroutine) and enable `hook`). BTW,
-the `Syscall` state records the syscall name and a helpful state which used in open-coroutine inner.
+the `Syscall` state records the syscall name and a state which used in open-coroutine inner.
 
-When the coroutine is successfully completed, the state will change from `Running` to `Complete`. If an error occurs
-during the coroutine execution, and the coroutine does not handle the error, the state will change from `Running`
-to `Error`, the error message will be recorded at the same time.
+When the coroutine is successfully completed, the state will change from `Running` to `Complete`. If a panic occurs
+during the coroutine execution, and the user doesn't handle the panic, the state will change from `Running` to `Error`,
+the panic message will be recorded at the same time.
 
 ## `Listener` Design
 
@@ -100,11 +101,11 @@ To enhance extension, we provide the `Listener` API, which notifies `Listener` w
 
 ## `CoroutineLocal` Design
 
-The original design intention of `ThreadLocal` is to solve thread safety issues in multi-thread environments. In
-multi-thread programs, multiple threads may simultaneously access and modify the same shared variable, which can lead
-to thread safety issues such as data inconsistency and race conditions. To solve these issues, the traditional approach
-is to synchronize access to shared resources through locking, but this can lead to performance degradation, especially
-in high concurrency scenarios. `ThreadLocal` provides a new solution by providing independent copies of variables for each
+The design intention of `ThreadLocal` is to solve thread safety issues in multi-thread environments. In multi-thread
+programs, multiple threads may simultaneously access and modify the same shared variable, which can lead to thread
+safety issues such as data inconsistency and race conditions. To solve these issues, the traditional approach is to
+synchronize access to shared resources through locking, but this can lead to performance degradation, especially in high
+concurrency scenarios. `ThreadLocal` provides a new solution by providing independent copies of variables for each
 thread, thereby avoiding shared variable conflicts between multiple threads, ensuring thread safety, and improving
 program concurrency performance.
 
