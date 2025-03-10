@@ -44,7 +44,7 @@ fn main() -> std::io::Result<()> {
 
 ## 为什么需要抢占？
 
-在调用`Coroutine::resume_with`后，协程可能会长时间占用调度线程，从而拖慢由该调度线程调度的其他协程。协程在两种情况下会长时间占用调度线程：陷入大量计算或系统调用。为了解决陷入大量计算的问题，我们引入抢占式调度，它会自动挂起长时间执行的协程，并允许其他协程执行。
+在调用`Coroutine::resume_with`后，协程可能会长时间占用调度线程，从而拖慢由该调度线程调度的其他协程。协程在两种情况下会长时间占用调度线程：陷入重度计算或系统调用。为了解决陷入重度计算的问题，我们引入抢占式调度，它会自动挂起长时间执行的协程，并允许其他协程执行。
 
 ## 什么是monitor？
 
@@ -58,7 +58,6 @@ sequenceDiagram
     participant 协程
     participant MonitorListener
     participant Monitor线程
-
     用户线程 ->>+ 协程: Coroutine::resume_with
     协程 ->>+ MonitorListener: Listener::on_state_changed
     MonitorListener ->>+ Monitor线程: Monitor::submit

@@ -62,7 +62,6 @@ sequenceDiagram
     participant WorkerCoroutine
     participant Task
     participant CoroutineCreator
-
     Schedule Thread ->>+ CoroutinePool: CoroutinePool::try_timeout_schedule_task
     alt the coroutine pool is stopped
         CoroutinePool ->>+ Schedule Thread: return error

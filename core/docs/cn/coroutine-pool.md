@@ -53,7 +53,6 @@ sequenceDiagram
     participant WorkerCoroutine
     participant Task
     participant CoroutineCreator
-
     Schedule Thread ->>+ CoroutinePool: CoroutinePool::try_timeout_schedule_task
     alt 协程池已停止
         CoroutinePool ->>+ Schedule Thread: 返回错误

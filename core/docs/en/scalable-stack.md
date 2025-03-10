@@ -47,8 +47,8 @@ where the stack may want to grow larger. Spills over to the heap if the stack ha
 
 ```mermaid
 flowchart TD
-    Cond1{In coroutine}
-    Cond2{Approach the limit}
+    Cond1{In coroutine?}
+    Cond2{Approach the limit?}
     Cond3{Is the first growing up?}
     C[Create a new stack]
     RC[Run code on current stack]
