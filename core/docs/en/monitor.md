@@ -65,7 +65,6 @@ sequenceDiagram
     participant Coroutine
     participant MonitorListener
     participant Monitor Thread
-
     User Thread ->>+ Coroutine: Coroutine::resume_with
     Coroutine ->>+ MonitorListener: Listener::on_state_changed
     MonitorListener ->>+ Monitor Thread: Monitor::submit

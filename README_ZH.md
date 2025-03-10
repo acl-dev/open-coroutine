@@ -8,7 +8,7 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "解决issue的平均时间")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/acl-dev/open-coroutine.svg)](http://isitmaintained.com/project/acl-dev/open-coroutine "仍未关闭issue的百分比")
 
-`open-coroutine`是一个简单、高效、通用的有栈协程库，您可以将其用作IO线程池的性能替代，查看[为什么更好](core/docs/en/why-better.md).
+`open-coroutine`是一个简单、高效、通用的有栈协程库，您可以将其用作IO线程池的性能替代，查看[为什么更好](core/docs/cn/why-better.md).
 
 [English](README.md) | 中文
 
@@ -31,7 +31,7 @@
 - [ ] 
   增加性能[基准测试](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
 - [ ] 取消协程/任务;
-- [ ] 增加性能指标;
+- [ ] 增加性能指标监控;
 - [ ] 增加并发工具包;
 - [ ] 支持AF_XDP套接字;
 
@@ -181,8 +181,16 @@ fn main() {
 
 ## ⚓ 了解更多
 
+- [项目总览](core/docs/cn/overview.md)
 - [诞生之因](docs/cn/background.md)
 - [语言选择](docs/cn/why-rust.md)
+- [协程总览](core/docs/cn/coroutine.md)
+- [可伸缩栈总览](core/docs/cn/scalable-stack.md)
+- [Monitor总览](core/docs/cn/monitor.md)
+- [工作窃取总览](core/docs/cn/work-steal.md)
+- [有序工作窃取总览](core/docs/cn/ordered-work-steal.md)
+- [协程池总览](core/docs/cn/coroutine-pool.md)
+- [Hook总览](hook/docs/cn/hook.md)
 
 [旧版文档在这](https://github.com/acl-dev/open-coroutine-docs)
 

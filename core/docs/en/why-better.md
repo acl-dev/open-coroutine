@@ -6,6 +6,8 @@ author: loongs-zhang
 
 # Why Better
 
+English | [中文](../cn/why-better.md)
+
 ## Syscall will not block
 
 Firstly, let's take a look at how thread collaborate with syscall.
@@ -14,18 +16,16 @@ Firstly, let's take a look at how thread collaborate with syscall.
 sequenceDiagram
     actor User Thread
     participant Operation System
-
     User Thread ->>+ User Thread: execute
     alt User Thread blocked
-    User Thread ->>+ Operation System: slow syscall
-    Operation System ->> User Thread: return
+        User Thread ->>+ Operation System: slow syscall
+        Operation System ->> User Thread: return
     end
     User Thread ->>+ User Thread: execute
 ```
 
-If the syscall is a slow syscall, such as `accept` without setting non-blocking, the thread will be blocked for a long
-time and unable to do anything until the OS returns. Now, let's take a look at how open-coroutine collaborate with 
-syscall.
+If the syscall is a slow syscall, such as the default blocked `accept`, the thread will be blocked for a long time and
+unable to do anything until the OS returns. Now, let's take a look at how open-coroutine collaborate with syscall.
 
 ```mermaid
 sequenceDiagram
@@ -34,29 +34,28 @@ sequenceDiagram
     participant Coroutine2
     participant Hooked Syscall
     participant Operation System
-
     EventLoop Thread ->>+ Coroutine1: schedule
     alt Coroutine1 blocked logically
-    Coroutine1 ->>+ Hooked Syscall: slow syscall
-    Hooked Syscall ->>+ Operation System: fast syscall
-    Operation System ->> Hooked Syscall: return errno
-    Hooked Syscall ->> Coroutine1: suspend the coroutine for a period of time
+        Coroutine1 ->>+ Hooked Syscall: slow syscall
+        Hooked Syscall ->>+ Operation System: fast syscall
+        Operation System ->> Hooked Syscall: return errno
+        Hooked Syscall ->> Coroutine1: suspend the coroutine for a period of time
     end
     Coroutine1 ->>+ EventLoop Thread: suspended
     EventLoop Thread ->>+ Coroutine2: schedule
     alt Coroutine2 blocked logically
-    Coroutine2 ->>+ Hooked Syscall: slow syscall
-    Hooked Syscall ->>+ Operation System: fast syscall
-    Operation System ->> Hooked Syscall: return
-    Hooked Syscall ->> Coroutine2: return
+        Coroutine2 ->>+ Hooked Syscall: slow syscall
+        Hooked Syscall ->>+ Operation System: fast syscall
+        Operation System ->> Hooked Syscall: return
+        Hooked Syscall ->> Coroutine2: return
     end
     Coroutine2 ->>+ EventLoop Thread: return
     EventLoop Thread ->>+ Coroutine1: schedule
     alt Coroutine1 blocked logically
-    Coroutine1 ->>+ Hooked Syscall: resume from the last pause
-    Hooked Syscall ->>+ Operation System: fast syscall
-    Operation System ->> Hooked Syscall: return
-    Hooked Syscall ->> Coroutine1: return
+        Coroutine1 ->>+ Hooked Syscall: resume from the last pause
+        Hooked Syscall ->>+ Operation System: fast syscall
+        Operation System ->> Hooked Syscall: return
+        Hooked Syscall ->> Coroutine1: return
     end
     Coroutine1 ->>+ EventLoop Thread: return
     EventLoop Thread ->>+ EventLoop Thread: schedule other coroutines
@@ -73,13 +72,12 @@ Secondly, let's take a look at how threads handle heavy computations.
 ```mermaid
 sequenceDiagram
     actor User Thread
-
     alt User Thread gets stuck in a loop
-    User Thread ->>+ User Thread: execute loop
+        User Thread ->>+ User Thread: execute loop
     end
 ```
 
-Just like syscall above, thread will always block in the loop. Then, let's take a look at how open-coroutine handle 
+Just like syscall above, thread will always block in the loop. Then, let's take a look at how open-coroutine handle
 heavy computations.
 
 ```mermaid
@@ -88,27 +86,27 @@ sequenceDiagram
     participant Coroutine1
     participant Coroutine2
     participant Monitor
-
     EventLoop Thread ->>+ Coroutine1: schedule
     alt Coroutine1 enters loop
-    Coroutine1 ->>+ Coroutine1: execute loop for a period of time
-    Monitor ->> Coroutine1: suspend the coroutine
+        Coroutine1 ->>+ Coroutine1: execute loop for a period of time
+        Monitor ->> Coroutine1: suspend the coroutine
     end
     Coroutine1 ->>+ EventLoop Thread: suspended
     EventLoop Thread ->>+ Coroutine2: schedule
     alt Coroutine2 enters loop
-    Coroutine2 ->>+ Coroutine2: execute loop for a period of time
-    Monitor ->> Coroutine1: suspend the coroutine
+        Coroutine2 ->>+ Coroutine2: execute loop for a period of time
+        Monitor ->> Coroutine1: suspend the coroutine
     end
     Coroutine2 ->>+ EventLoop Thread: suspended
     EventLoop Thread ->>+ Coroutine1: schedule
     alt Coroutine1 enters loop
-    Coroutine1 ->>+ Coroutine1: resume from the last pause
+        Coroutine1 ->>+ Coroutine1: resume from the last pause
     end
     Coroutine1 ->>+ EventLoop Thread: return
     EventLoop Thread ->>+ EventLoop Thread: schedule other coroutines
 ```
 
-`Monitor` will monitor the execution of coroutines, and once it found that the execution time of a coroutine is too 
-long, it will force the coroutine to suspend. So now, we can even use just one `EventLoop Thread` to execute multiple 
-loops, which cannot be achieved under the single threaded model.
+`Monitor` will monitor the execution of coroutines, and once it found that the execution time of a coroutine is too
+long, it will force the coroutine to suspend. So now, we can even
+[use just one `EventLoop Thread` to execute multiple loops](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs),
+which cannot be achieved under the single threaded model.

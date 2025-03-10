@@ -6,6 +6,8 @@ author: loongs-zhang
 
 # Work Steal Overview
 
+English | [中文](../cn/work-steal.md)
+
 ## Why work steal?
 
 In the real world, there are always threads that complete their own tasks first, while other threads have tasks to be
@@ -37,7 +39,6 @@ flowchart TD
     push --> Cond
     Cond -- No --> PS
     Cond -- Yes --> PTG --- PG
-    
 ```
 
 ## How `pop` works

@@ -6,6 +6,8 @@ author: loongs-zhang
 
 # Ordered Work Steal Overview
 
+English | [中文](../cn/ordered-work-steal.md)
+
 ## Why ordered work steal?
 
 In the real world, there are always threads that complete their own tasks first, while other threads have tasks to be
@@ -16,8 +18,8 @@ processed. Then, a spectacular scene emerged where one core was in difficulty an
 </div>
 
 Obviously, we don't want this to happen. For idle threads, instead of letting them watch other threads working, it's
-better to let them help other threads work. In addition, we hope to pop tasks based on priority, the higher the
-priority, the earlier it will be popped up.
+better to let them help other threads work. In addition, we hope to execute tasks based on priority, the higher the
+priority, the earlier it will be executed.
 
 ## What is ordered work steal queue?
 
@@ -39,7 +41,6 @@ flowchart TD
     push --> Cond
     Cond -- No --> PS
     Cond -- Yes --> PTG --- PG
-    
 ```
 
 ## How `pop` works
