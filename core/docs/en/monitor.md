@@ -17,7 +17,7 @@ The `preemptive` feature currently supports the following targets:
 | `AArch64`     | ✅                                | ✅                       | ❌     |
 | `ARM`         | ✅                                | ❌                       | ❌     |
 | `RISC-V`      | ✅                                | ❌                       | ❌     |
-| `LoongArch64` | ⚠️                                | ❌                       | ❌     |
+| `LoongArch64` | ✅                                | ❌                       | ❌     |
 
 ✅ Tested and stable; ⚠️ Tested but unstable; ❌ Not supported.
 
