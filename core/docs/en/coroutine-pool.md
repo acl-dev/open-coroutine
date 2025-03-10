@@ -57,7 +57,7 @@ details:
 
 ```mermaid
 sequenceDiagram
-    Actor Schedule Thread
+    actor Schedule Thread
     participant CoroutinePool
     participant WorkerCoroutine
     participant Task

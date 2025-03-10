@@ -12,7 +12,7 @@ Firstly, let's take a look at how thread collaborate with syscall.
 
 ```mermaid
 sequenceDiagram
-    Actor User Thread
+    actor User Thread
     participant Operation System
 
     User Thread ->>+ User Thread: execute
@@ -29,7 +29,7 @@ syscall.
 
 ```mermaid
 sequenceDiagram
-    Actor EventLoop Thread
+    actor EventLoop Thread
     participant Coroutine1
     participant Coroutine2
     participant Hooked Syscall
@@ -72,7 +72,7 @@ Secondly, let's take a look at how threads handle heavy computations.
 
 ```mermaid
 sequenceDiagram
-    Actor User Thread
+    actor User Thread
 
     alt User Thread gets stuck in a loop
     User Thread ->>+ User Thread: execute loop
@@ -84,7 +84,7 @@ heavy computations.
 
 ```mermaid
 sequenceDiagram
-    Actor EventLoop Thread
+    actor EventLoop Thread
     participant Coroutine1
     participant Coroutine2
     participant Monitor
