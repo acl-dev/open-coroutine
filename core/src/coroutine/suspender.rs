@@ -34,6 +34,22 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
         self.suspend_with(arg)
     }
 
+    pub(crate) fn timestamp() -> u64 {
+        TIMESTAMP
+            .with(|s| unsafe {
+                s.as_ptr()
+                    .as_mut()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "thread:{} get TIMESTAMP current failed",
+                            std::thread::current().name().unwrap_or("unknown")
+                        )
+                    })
+                    .pop_front()
+            })
+            .unwrap_or(0)
+    }
+
     /// Cancel the execution of the coroutine.
     pub fn cancel(&self) -> ! {
         CANCEL.with(|s| unsafe {
@@ -49,22 +65,6 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
         });
         _ = self.suspend_with(unsafe { std::mem::zeroed() });
         unreachable!()
-    }
-
-    pub(crate) fn timestamp() -> u64 {
-        TIMESTAMP
-            .with(|s| unsafe {
-                s.as_ptr()
-                    .as_mut()
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "thread:{} get TIMESTAMP current failed",
-                            std::thread::current().name().unwrap_or("unknown")
-                        )
-                    })
-                    .pop_front()
-            })
-            .unwrap_or(0)
     }
 
     pub(crate) fn is_cancel() -> bool {

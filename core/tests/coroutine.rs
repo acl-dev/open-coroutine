@@ -280,3 +280,47 @@ fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
         ))
     }
 }
+
+#[cfg(all(
+    unix,
+    not(feature = "preemptive"),
+    not(target_os = "linux"),
+    not(target_arch = "x86_64")
+))]
+#[test]
+fn coroutine_cancel() -> std::io::Result<()> {
+    use std::os::unix::prelude::JoinHandleExt;
+    let pair = std::sync::Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
+    let pair2 = pair.clone();
+    let handle = std::thread::Builder::new()
+        .name("cancel".to_string())
+        .spawn(move || {
+            let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| { loop {} })?;
+            assert_eq!(CoroutineState::Cancelled, coroutine.resume()?);
+            assert_eq!(CoroutineState::Cancelled, coroutine.state());
+            // should execute to here
+            let (lock, cvar) = &*pair2;
+            let mut pending = lock.lock().unwrap();
+            *pending = false;
+            cvar.notify_one();
+            Ok::<(), std::io::Error>(())
+        })?;
+    // wait for the thread to start up
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    nix::sys::pthread::pthread_kill(handle.as_pthread_t(), nix::sys::signal::Signal::SIGVTALRM)?;
+    let (lock, cvar) = &*pair;
+    let result = cvar
+        .wait_timeout_while(
+            lock.lock().unwrap(),
+            std::time::Duration::from_millis(3000),
+            |&mut pending| pending,
+        )
+        .unwrap();
+    if result.1.timed_out() {
+        Err(std::io::Error::other(
+            "The test thread should send signals to coroutines in running state",
+        ))
+    } else {
+        Ok(())
+    }
+}

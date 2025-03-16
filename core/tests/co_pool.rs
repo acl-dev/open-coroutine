@@ -1,7 +1,6 @@
 #[cfg(not(all(unix, feature = "preemptive")))]
 #[test]
 fn co_pool_basic() -> std::io::Result<()> {
-    let task_name = "test_simple";
     let mut pool = open_coroutine_core::co_pool::CoroutinePool::default();
     pool.set_max_size(1);
     assert!(pool.is_empty());
@@ -13,7 +12,7 @@ fn co_pool_basic() -> std::io::Result<()> {
     )?;
     assert!(!pool.is_empty());
     pool.submit_task(
-        Some(String::from(task_name)),
+        Some(String::from("test_simple")),
         |_| {
             println!("2");
             Some(2)
@@ -73,4 +72,30 @@ fn co_pool_stop() -> std::io::Result<()> {
         None,
     )
     .map(|_| ())
+}
+
+#[cfg(not(all(unix, feature = "preemptive")))]
+#[test]
+fn co_pool_cancel() -> std::io::Result<()> {
+    let mut pool = open_coroutine_core::co_pool::CoroutinePool::default();
+    pool.set_max_size(1);
+    assert!(pool.is_empty());
+    let task_name = pool.submit_task(
+        Some(String::from("test_panic")),
+        |_| panic!("test panic, just ignore it"),
+        None,
+        None,
+    )?;
+    assert!(!pool.is_empty());
+    open_coroutine_core::co_pool::CoroutinePool::try_cancel_task(&task_name);
+    pool.submit_task(
+        Some(String::from("test_simple")),
+        |_| {
+            println!("2");
+            Some(2)
+        },
+        None,
+        None,
+    )?;
+    pool.try_schedule_task()
 }
