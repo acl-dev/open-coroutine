@@ -195,9 +195,11 @@ pub enum CoroutineState<Y, R> {
     Suspend(Y, u64),
     ///The coroutine enters the syscall.
     Syscall(Y, SyscallName, SyscallState),
+    /// The coroutine cancelled.
+    Cancelled,
     /// The coroutine completed with a return value.
     Complete(R),
-    /// The coroutine completed with a error message.
+    /// The coroutine completed with an error message.
     Error(&'static str),
 }
 

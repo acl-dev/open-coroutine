@@ -34,7 +34,6 @@ English | [中文](README_ZH.md)
 
 - [ ] add
   performance [benchmark](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
-- [ ] cancel coroutine/task;
 - [ ] add metrics;
 - [ ] add synchronization toolkit;
 - [ ] support and compatibility for AF_XDP socket;

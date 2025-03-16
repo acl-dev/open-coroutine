@@ -135,6 +135,35 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             callback,
         )
     }
+
+    /// handle SIGVTALRM
+    #[cfg(unix)]
+    fn setup_sigvtalrm_handler() {
+        use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static CANCEL_HANDLER_INITED: AtomicBool = AtomicBool::new(false);
+        if CANCEL_HANDLER_INITED
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            extern "C" fn sigvtalrm_handler<Param, Yield>(_: libc::c_int) {
+                if let Some(suspender) = suspender::Suspender::<Param, Yield>::current() {
+                    suspender.cancel();
+                }
+            }
+            // install SIGVTALRM signal handler
+            let mut set = SigSet::empty();
+            set.add(Signal::SIGVTALRM);
+            let sa = SigAction::new(
+                SigHandler::Handler(sigvtalrm_handler::<Param, Yield>),
+                SaFlags::SA_RESTART,
+                set,
+            );
+            unsafe {
+                _ = sigaction(Signal::SIGVTALRM, &sa).expect("install SIGVTALRM handler failed !");
+            }
+        }
+    }
 }
 
 impl<Yield, Return> Coroutine<'_, (), Yield, Return>
@@ -170,6 +199,8 @@ where
         }
         Self::init_current(self);
         self.running()?;
+        #[cfg(unix)]
+        Self::setup_sigvtalrm_handler();
         let r = self.raw_resume(arg);
         Self::clean_current();
         r

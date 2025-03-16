@@ -199,6 +199,7 @@ impl<Yield, Return> Listener<Yield, Return> for MonitorListener {
             }
             CoroutineState::Suspend(_, _)
             | CoroutineState::Syscall(_, _, _)
+            | CoroutineState::Cancelled
             | CoroutineState::Complete(_)
             | CoroutineState::Error(_) => {
                 if let Some(node) = local.get(NOTIFY_NODE) {

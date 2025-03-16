@@ -6,8 +6,9 @@ use crate::common::ordered_work_steal::{OrderedLocalQueue, OrderedWorkStealQueue
 use crate::common::{get_timeout_time, now, CondvarBlocker};
 use crate::coroutine::suspender::Suspender;
 use crate::scheduler::{SchedulableCoroutine, Scheduler};
-use crate::{error, impl_current_for, impl_display_by_debug, impl_for_named, trace};
+use crate::{error, impl_current_for, impl_display_by_debug, impl_for_named, trace, warn};
 use dashmap::{DashMap, DashSet};
+use once_cell::sync::Lazy;
 use std::cell::Cell;
 use std::ffi::c_longlong;
 use std::io::{Error, ErrorKind};
@@ -24,6 +25,11 @@ mod state;
 
 /// Creator for coroutine pool.
 mod creator;
+
+/// `task_name` -> `co_name`
+static RUNNING_TASKS: Lazy<DashMap<&str, &str>> = Lazy::new(DashMap::new);
+
+static CANCEL_TASKS: Lazy<DashSet<&str>> = Lazy::new(DashSet::new);
 
 /// The coroutine pool impls.
 #[repr(C)]
@@ -383,7 +389,17 @@ impl<'p> CoroutinePool<'p> {
 
     fn try_run(&self) -> Option<()> {
         self.task_queue.pop().map(|task| {
+            let tname = task.get_name().to_string().leak();
+            if CANCEL_TASKS.contains(tname) {
+                _ = CANCEL_TASKS.remove(tname);
+                warn!("Cancel task:{} successfully !", tname);
+                return;
+            }
+            if let Some(co) = SchedulableCoroutine::current() {
+                _ = RUNNING_TASKS.insert(tname, co.name());
+            }
             let (task_name, result) = task.run();
+            _ = RUNNING_TASKS.remove(tname);
             let n = task_name.clone().leak();
             if self.no_waits.contains(n) {
                 _ = self.no_waits.remove(n);
@@ -403,6 +419,44 @@ impl<'p> CoroutinePool<'p> {
             let mut pending = lock.lock().expect("notify task failed");
             *pending = false;
             cvar.notify_one();
+        }
+    }
+
+    /// Try to cancel a task.
+    pub fn try_cancel_task(task_name: &str) {
+        // 检查正在运行的任务是否是要取消的任务
+        if let Some(info) = RUNNING_TASKS.get(task_name) {
+            let co_name = *info;
+            // todo windows support
+            #[allow(unused_variables)]
+            if let Some(pthread) = Scheduler::get_scheduling_thread(co_name) {
+                // 发送SIGVTALRM信号，在运行时取消任务
+                #[cfg(unix)]
+                if nix::sys::pthread::pthread_kill(pthread, nix::sys::signal::Signal::SIGVTALRM)
+                    .is_ok()
+                {
+                    warn!(
+                        "Attempt to cancel task:{} running on coroutine:{} by thread:{}, cancelling...",
+                        task_name, co_name, pthread
+                    );
+                } else {
+                    error!(
+                        "Attempt to cancel task:{} running on coroutine:{} by thread:{} failed !",
+                        task_name, co_name, pthread
+                    );
+                }
+            } else {
+                // 添加到待取消队列
+                Scheduler::try_cancel_coroutine(co_name);
+                warn!(
+                    "Attempt to cancel task:{} running on coroutine:{}, cancelling...",
+                    task_name, co_name
+                );
+            }
+        } else {
+            // 添加到待取消队列
+            _ = CANCEL_TASKS.insert(Box::leak(Box::from(task_name)));
+            warn!("Attempt to cancel task:{}, cancelling...", task_name);
         }
     }
 

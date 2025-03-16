@@ -103,6 +103,18 @@ pub extern "C" fn task_crate(f: UserTaskFunc, param: usize, priority: c_longlong
     )
 }
 
+///尝试异步取消任务
+#[no_mangle]
+pub extern "C" fn task_cancel(handle: &JoinHandle) -> c_longlong {
+    match handle.get_name() {
+        Ok(name) => {
+            EventLoops::try_cancel_task(name);
+            0
+        }
+        Err(_) => -1,
+    }
+}
+
 ///等待任务完成
 #[no_mangle]
 pub extern "C" fn task_join(handle: &JoinHandle) -> c_longlong {

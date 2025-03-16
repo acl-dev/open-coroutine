@@ -29,7 +29,7 @@ impl Listener<(), Option<usize>> for CoroutineCreator {
                         .store(pool.get_running_size().saturating_sub(1), Ordering::Release);
                 }
             }
-            CoroutineState::Error(_) => {
+            CoroutineState::Cancelled | CoroutineState::Error(_) => {
                 if let Some(pool) = CoroutinePool::current() {
                     //worker协程异常退出，需要先回收再创建
                     pool.running

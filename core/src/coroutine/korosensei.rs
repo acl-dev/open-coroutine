@@ -445,6 +445,10 @@ where
                 let current = self.state();
                 match current {
                     CoroutineState::Running => {
+                        if Suspender::<Yield, Param>::is_cancel() {
+                            self.cancel()?;
+                            return Ok(CoroutineState::Cancelled);
+                        }
                         let timestamp = Suspender::<Yield, Param>::timestamp();
                         self.suspend(y, timestamp)?;
                         Ok(CoroutineState::Suspend(y, timestamp))
