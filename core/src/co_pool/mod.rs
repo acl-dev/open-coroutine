@@ -378,7 +378,7 @@ impl<'p> CoroutinePool<'p> {
                 "The coroutine pool has reached its maximum size !",
             ));
         }
-        self.deref().submit_co(f, stack_size, priority).map(|()| {
+        self.deref().submit_co(f, stack_size, priority).map(|_| {
             _ = self.running.fetch_add(1, Ordering::Release);
         })
     }

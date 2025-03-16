@@ -375,6 +375,14 @@ mod tests {
     fn test() {
         init(Config::single());
         _ = any_join!(task!(|_| 1, ()), task!(|_| 2, ()), task!(|_| 3, ()));
+        task!(
+            |_| {
+                println!("Try cancel!");
+            },
+            (),
+        )
+        .try_cancel()
+        .expect("cancel failed");
         let join = task!(
             |_| {
                 println!("Hello, world!");

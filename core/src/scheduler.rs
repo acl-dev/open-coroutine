@@ -186,7 +186,7 @@ impl<'s> Scheduler<'s> {
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + 'static,
         stack_size: Option<usize>,
         priority: Option<c_longlong>,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<String> {
         self.submit_raw_co(co!(
             Some(format!("{}@{}", self.name(), uuid::Uuid::new_v4())),
             f,
@@ -204,12 +204,13 @@ impl<'s> Scheduler<'s> {
     ///
     /// Allow multiple threads to concurrently submit coroutine to the scheduler,
     /// but only allow one thread to execute scheduling.
-    pub fn submit_raw_co(&self, mut co: SchedulableCoroutine<'s>) -> std::io::Result<()> {
+    pub fn submit_raw_co(&self, mut co: SchedulableCoroutine<'s>) -> std::io::Result<String> {
         for listener in self.listeners.clone() {
             co.add_raw_listener(listener);
         }
+        let co_name = co.name().to_string();
         self.ready.push(co);
-        Ok(())
+        Ok(co_name)
     }
 
     /// Resume a coroutine from the syscall table to the ready queue,

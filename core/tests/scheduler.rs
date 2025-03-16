@@ -117,10 +117,38 @@ fn scheduler_listener() -> std::io::Result<()> {
 
     let mut scheduler = Scheduler::default();
     scheduler.add_listener(TestListener::default());
-    scheduler.submit_co(|_, _| panic!("test panic, just ignore it"), None, None)?;
-    scheduler.submit_co(
+    _ = scheduler.submit_co(|_, _| panic!("test panic, just ignore it"), None, None)?;
+    _ = scheduler.submit_co(
         |_, _| {
             println!("2");
+            None
+        },
+        None,
+        None,
+    )?;
+    scheduler.try_schedule()?;
+    Ok(())
+}
+
+#[test]
+fn scheduler_try_cancel_coroutine() -> std::io::Result<()> {
+    let mut scheduler = Scheduler::default();
+    let co_name = scheduler.submit_co(
+        |suspender, _| {
+            println!("[coroutine1] suspend");
+            suspender.suspend();
+            println!("[coroutine1] back");
+            None
+        },
+        None,
+        None,
+    )?;
+    Scheduler::try_cancel_coroutine(&co_name);
+    _ = scheduler.submit_co(
+        |suspender, _| {
+            println!("[coroutine2] suspend");
+            suspender.suspend();
+            println!("[coroutine2] back");
             None
         },
         None,
