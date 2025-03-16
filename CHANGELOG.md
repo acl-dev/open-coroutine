@@ -1,3 +1,7 @@
+### 0.7.x
+
+- [x] support cancel coroutine/task
+
 ### 0.6.x
 
 - [x] support custom task and coroutine priority.

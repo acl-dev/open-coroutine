@@ -6,6 +6,10 @@ thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
     static TIMESTAMP: crossbeam_utils::atomic::AtomicCell<std::collections::VecDeque<u64>> =
         const { crossbeam_utils::atomic::AtomicCell::new(std::collections::VecDeque::new()) };
+
+    #[allow(clippy::missing_const_for_thread_local)]
+    static CANCEL: crossbeam_utils::atomic::AtomicCell<std::collections::VecDeque<bool>> =
+        const { crossbeam_utils::atomic::AtomicCell::new(std::collections::VecDeque::new()) };
 }
 
 impl<Param, Yield> Suspender<'_, Param, Yield> {
@@ -30,6 +34,23 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
         self.suspend_with(arg)
     }
 
+    /// Cancel the execution of the coroutine.
+    pub fn cancel(&self) -> ! {
+        CANCEL.with(|s| unsafe {
+            s.as_ptr()
+                .as_mut()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "thread:{} init CANCEL current failed",
+                        std::thread::current().name().unwrap_or("unknown")
+                    )
+                })
+                .push_front(true);
+        });
+        _ = self.suspend_with(unsafe { std::mem::zeroed() });
+        unreachable!()
+    }
+
     pub(crate) fn timestamp() -> u64 {
         TIMESTAMP
             .with(|s| unsafe {
@@ -44,6 +65,22 @@ impl<Param, Yield> Suspender<'_, Param, Yield> {
                     .pop_front()
             })
             .unwrap_or(0)
+    }
+
+    pub(crate) fn is_cancel() -> bool {
+        CANCEL
+            .with(|s| unsafe {
+                s.as_ptr()
+                    .as_mut()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "thread:{} get CANCEL current failed",
+                            std::thread::current().name().unwrap_or("unknown")
+                        )
+                    })
+                    .pop_front()
+            })
+            .unwrap_or(false)
     }
 }
 

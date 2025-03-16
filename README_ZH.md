@@ -30,7 +30,6 @@
 
 - [ ] 
   增加性能[基准测试](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview);
-- [ ] 取消协程/任务;
 - [ ] 增加性能指标监控;
 - [ ] 增加并发工具包;
 - [ ] 支持AF_XDP套接字;

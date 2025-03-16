@@ -87,6 +87,8 @@ extern "C" {
 
     fn task_join(handle: &open_coroutine_core::net::join::JoinHandle) -> c_longlong;
 
+    fn task_cancel(handle: &open_coroutine_core::net::join::JoinHandle) -> c_longlong;
+
     fn task_timeout_join(
         handle: &open_coroutine_core::net::join::JoinHandle,
         ns_time: u64,
@@ -202,6 +204,14 @@ impl<R> JoinHandle<R> {
 
     pub fn any_join<I: IntoIterator<Item = Self>>(iter: I) -> std::io::Result<Option<R>> {
         Self::any_timeout_join(Duration::MAX, Vec::from_iter(iter).as_slice())
+    }
+
+    pub fn try_cancel(self) -> std::io::Result<()> {
+        let r = unsafe { task_cancel(&self) };
+        match r.cmp(&0) {
+            Ordering::Equal => Ok(()),
+            _ => Err(Error::other("cancel failed")),
+        }
     }
 }
 

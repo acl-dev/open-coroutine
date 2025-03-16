@@ -27,6 +27,9 @@ pub trait Listener<Yield, Return>: Debug {
     /// callback when the coroutine enters syscall.
     fn on_syscall(&self, local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>) {}
 
+    /// Callback when the coroutine is cancelled.
+    fn on_cancel(&self, local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>) {}
+
     /// Callback when the coroutine is completed.
     fn on_complete(
         &self,
@@ -90,6 +93,11 @@ where
         local: &CoroutineLocal,
         old_state: CoroutineState<Yield, Return>
     ), "on_syscall");
+
+    broadcast!(on_cancel(
+        local: &CoroutineLocal,
+        old_state: CoroutineState<Yield, Return>
+    ), "on_cancel");
 
     broadcast!(on_complete(
         local: &CoroutineLocal,

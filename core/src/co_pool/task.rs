@@ -33,6 +33,12 @@ impl<'t> Task<'t> {
         }
     }
 
+    /// get the task name.
+    #[must_use]
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
     /// execute the task
     ///
     /// # Errors

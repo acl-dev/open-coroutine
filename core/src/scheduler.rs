@@ -5,8 +5,11 @@ use crate::common::{get_timeout_time, now};
 use crate::coroutine::listener::Listener;
 use crate::coroutine::suspender::Suspender;
 use crate::coroutine::Coroutine;
-use crate::{co, impl_current_for, impl_display_by_debug, impl_for_named};
-use dashmap::DashMap;
+use crate::{co, impl_current_for, impl_display_by_debug, impl_for_named, warn};
+use dashmap::{DashMap, DashSet};
+#[cfg(unix)]
+use nix::sys::pthread::Pthread;
+use once_cell::sync::Lazy;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::ffi::c_longlong;
 use std::io::Error;
@@ -77,6 +80,13 @@ impl Ord for SyscallSuspendItem<'_> {
         other.timestamp.cmp(&self.timestamp)
     }
 }
+
+#[cfg(unix)]
+static RUNNING_COROUTINES: Lazy<DashMap<&str, Pthread>> = Lazy::new(DashMap::new);
+#[cfg(windows)]
+static RUNNING_COROUTINES: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
+
+static CANCEL_COROUTINES: Lazy<DashSet<&str>> = Lazy::new(DashSet::new);
 
 /// The scheduler impls.
 #[repr(C)]
@@ -280,10 +290,27 @@ impl<'s> Scheduler<'s> {
             self.check_ready()?;
             // schedule coroutines
             if let Some(mut coroutine) = self.ready.pop() {
-                match coroutine.resume()? {
+                let co_name = coroutine.name().to_string().leak();
+                if CANCEL_COROUTINES.contains(co_name) {
+                    _ = CANCEL_COROUTINES.remove(co_name);
+                    warn!("Cancel coroutine:{} successfully !", co_name);
+                    continue;
+                }
+                cfg_if::cfg_if! {
+                    if #[cfg(windows)] {
+                        let current_thread = unsafe {
+                            windows_sys::Win32::System::Threading::GetCurrentThread()
+                        } as usize;
+                    } else {
+                        let current_thread = nix::sys::pthread::pthread_self();
+                    }
+                }
+                _ = RUNNING_COROUTINES.insert(co_name, current_thread);
+                match coroutine.resume().inspect(|_| {
+                    _ = RUNNING_COROUTINES.remove(co_name);
+                })? {
                     CoroutineState::Syscall((), _, state) => {
                         //挂起协程到系统调用表
-                        let co_name = Box::leak(Box::from(coroutine.name()));
                         //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
                         _ = self.syscall.insert(co_name, coroutine);
                         if let SyscallState::Suspend(timestamp) = state {
@@ -303,15 +330,14 @@ impl<'s> Scheduler<'s> {
                             self.ready.push(coroutine);
                         }
                     }
+                    CoroutineState::Cancelled => {}
                     CoroutineState::Complete(result) => {
-                        let co_name = Box::leak(Box::from(coroutine.name()));
                         assert!(
                             results.insert(co_name, Ok(result)).is_none(),
                             "not consume result"
                         );
                     }
                     CoroutineState::Error(message) => {
-                        let co_name = Box::leak(Box::from(coroutine.name()));
                         assert!(
                             results.insert(co_name, Err(message)).is_none(),
                             "not consume result"
@@ -358,6 +384,27 @@ impl<'s> Scheduler<'s> {
             }
         }
         Ok(())
+    }
+
+    /// Cancel the coroutine by name.
+    pub fn try_cancel_coroutine(co_name: &str) {
+        _ = CANCEL_COROUTINES.insert(Box::leak(Box::from(co_name)));
+    }
+
+    /// Get the scheduling thread of the coroutine.
+    #[cfg(unix)]
+    pub fn get_scheduling_thread(co_name: &str) -> Option<Pthread> {
+        let co_name: &str = Box::leak(Box::from(co_name));
+        RUNNING_COROUTINES.get(co_name).map(|r| *r)
+    }
+
+    /// Get the scheduling thread of the coroutine.
+    #[cfg(windows)]
+    pub fn get_scheduling_thread(co_name: &str) -> Option<windows_sys::Win32::Foundation::HANDLE> {
+        let co_name: &str = Box::leak(Box::from(co_name));
+        RUNNING_COROUTINES
+            .get(co_name)
+            .map(|r| *r as windows_sys::Win32::Foundation::HANDLE)
     }
 }
 

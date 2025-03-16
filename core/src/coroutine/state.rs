@@ -146,6 +146,25 @@ where
         )))
     }
 
+    /// running -> cancel
+    ///
+    /// # Errors
+    /// if change state fails.
+    pub(super) fn cancel(&self) -> std::io::Result<()> {
+        let current = self.state();
+        if CoroutineState::Running == current {
+            let new_state = CoroutineState::Cancelled;
+            let old_state = self.change_state(new_state);
+            self.on_cancel(self, old_state);
+            return Ok(());
+        }
+        Err(Error::other(format!(
+            "{} unexpected {current}->{:?}",
+            self.name(),
+            CoroutineState::<Yield, Return>::Cancelled
+        )))
+    }
+
     /// running -> complete
     ///
     /// # Errors

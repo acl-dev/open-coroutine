@@ -136,6 +136,11 @@ impl<'e> EventLoop<'e> {
         })
     }
 
+    /// Try to cancel a task from `CoroutinePool`.
+    pub(super) fn try_cancel_task(name: &str) {
+        CoroutinePool::try_cancel_task(name);
+    }
+
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
     fn token(syscall: SyscallName) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
