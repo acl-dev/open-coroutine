@@ -377,7 +377,7 @@ mod tests {
         _ = any_join!(task!(|_| 1, ()), task!(|_| 2, ()), task!(|_| 3, ()));
         task!(
             |_| {
-                println!("Try cancel!");
+                unreachable!("Try cancel!");
             },
             (),
         )

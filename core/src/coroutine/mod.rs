@@ -147,8 +147,14 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             .is_ok()
         {
             extern "C" fn sigvtalrm_handler<Param, Yield>(_: libc::c_int) {
-                if let Some(suspender) = suspender::Suspender::<Param, Yield>::current() {
-                    suspender.cancel();
+                if let Ok(mut set) = SigSet::thread_get_mask() {
+                    //删除对SIGVTALRM信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                    set.remove(Signal::SIGVTALRM);
+                    set.thread_set_mask()
+                        .expect("Failed to remove SIGVTALRM signal mask!");
+                    if let Some(suspender) = suspender::Suspender::<Param, Yield>::current() {
+                        suspender.cancel();
+                    }
                 }
             }
             // install SIGVTALRM signal handler
