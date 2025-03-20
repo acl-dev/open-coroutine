@@ -159,6 +159,20 @@ fn main() {
 }
 ```
 
+### wait until any task is completed or timed out
+
+```rust
+#[open_coroutine::main]
+fn main() {
+    let result = open_coroutine::any_timeout_join!(
+        std::time::Duration::from_secs(1),
+        open_coroutine::task!(|_| 1, ()),
+        open_coroutine::task!(|_| 2, ()),
+        open_coroutine::task!(|_| 3, ())
+    ).expect("timeout");
+}
+```
+
 ### scalable stack
 
 ```rust

@@ -255,6 +255,7 @@ impl<'p> CoroutinePool<'p> {
             return;
         }
         _ = self.no_waits.insert(Box::leak(Box::from(task_name)));
+        _ = CANCEL_TASKS.remove(task_name);
     }
 
     /// Use the given `task_name` to obtain task results, and if no results are found,
