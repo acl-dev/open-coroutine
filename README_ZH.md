@@ -155,6 +155,20 @@ fn main() {
 }
 ```
 
+### 等待任一任务完成或超时
+
+```rust
+#[open_coroutine::main]
+fn main() {
+    let result = open_coroutine::any_timeout_join!(
+        std::time::Duration::from_secs(1),
+        open_coroutine::task!(|_| 1, ()),
+        open_coroutine::task!(|_| 2, ()),
+        open_coroutine::task!(|_| 3, ())
+    ).expect("timeout");
+}
+```
+
 ### 可伸缩栈
 
 ```rust

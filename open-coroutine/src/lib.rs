@@ -203,7 +203,12 @@ impl<R> JoinHandle<R> {
     }
 
     pub fn any_join<I: IntoIterator<Item = Self>>(iter: I) -> std::io::Result<Option<R>> {
-        Self::any_timeout_join(Duration::MAX, Vec::from_iter(iter).as_slice())
+        let vec = Vec::from_iter(iter);
+        Self::any_timeout_join(Duration::MAX, &vec).inspect(|_| {
+            for handle in vec {
+                _ = handle.try_cancel();
+            }
+        })
     }
 
     pub fn try_cancel(self) -> std::io::Result<()> {
@@ -239,7 +244,7 @@ impl<R> Deref for JoinHandle<R> {
 #[macro_export]
 macro_rules! any_timeout_join {
     ($time:expr, $($x:expr),+ $(,)?) => {
-        $crate::JoinHandle::any_timeout_join($time, vec![$($x),+].as_slice())
+        $crate::JoinHandle::any_timeout_join($time, &vec![$($x),+])
     }
 }
 
