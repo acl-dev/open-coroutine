@@ -192,6 +192,7 @@ impl<'o> Operator<'o> {
         Ok((cq.len(), cq, timeout.map(|t| t.saturating_sub(cost))))
     }
 
+    #[allow(warnings)]
     pub(crate) fn async_cancel(&self, user_data: usize) -> std::io::Result<()> {
         todo!("CancelIoEx")
     }

@@ -80,6 +80,35 @@ impl Monitor {
         match self.state.get() {
             MonitorState::Created => {
                 self.state.set(MonitorState::Running);
+                // install panic hook
+                std::panic::set_hook(Box::new(|panic_hook_info| {
+                    let syscall = crate::common::constants::SyscallName::panicking;
+                    if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
+                        let new_state = crate::common::constants::SyscallState::Executing;
+                        if co.syscall((), syscall, new_state).is_err() {
+                            error!(
+                                "{} change to syscall {} {} failed !",
+                                co.name(),
+                                syscall,
+                                new_state
+                            );
+                        }
+                    }
+                    eprintln!(
+                        "panic hooked in open-coroutine, thread '{}' {}",
+                        std::thread::current().name().unwrap_or("unknown"),
+                        panic_hook_info
+                    );
+                    eprintln!(
+                        "stack backtrace:\n{}",
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                    if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
+                        if co.running().is_err() {
+                            error!("{} change to running state failed !", co.name());
+                        }
+                    }
+                }));
                 // install SIGURG signal handler
                 let mut set = SigSet::empty();
                 set.add(Signal::SIGURG);

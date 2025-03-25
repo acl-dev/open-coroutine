@@ -129,6 +129,8 @@ pub enum SyscallName {
     WaitOnAddress,
     #[cfg(windows)]
     WSAPoll,
+    /// panic!
+    panicking,
 }
 
 impl SyscallName {
