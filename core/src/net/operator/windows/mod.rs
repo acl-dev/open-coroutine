@@ -85,7 +85,8 @@ impl<'o> Operator<'o> {
         unsafe {
             let ret = CreateIoCompletionPort(handle, self.iocp, self.cpu, 0);
             if ret.is_null()
-                && ERROR_INVALID_PARAMETER == WSAGetLastError().try_into().expect("overflow")
+                && ERROR_INVALID_PARAMETER
+                    == TryInto::<u32>::try_into(WSAGetLastError()).expect("overflow")
             {
                 // duplicate bind
                 return Ok(());
