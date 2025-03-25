@@ -52,7 +52,7 @@ mod tests {
         let local = CoroutineLocal::default();
         assert!(local.put("1", 1).is_none());
         assert_eq!(Some(1), local.put("1", 2));
-        assert_eq!(2, *local.get("1").unwrap());
+        assert_eq!(2, *local.get::<i32>("1").unwrap());
         *local.get_mut("1").unwrap() = 3;
         assert_eq!(Some(3), local.remove("1"));
     }

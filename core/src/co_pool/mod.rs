@@ -201,16 +201,30 @@ impl<'p> CoroutinePool<'p> {
         match self.state() {
             PoolState::Running => {
                 assert_eq!(PoolState::Running, self.stopping()?);
-                _ = self.try_timed_schedule_task(dur)?;
-                assert_eq!(PoolState::Stopping, self.stopped()?);
+                self.do_stop(dur)?;
             }
-            PoolState::Stopping => {
-                _ = self.try_timed_schedule_task(dur)?;
-                assert_eq!(PoolState::Stopping, self.stopped()?);
-            }
-            PoolState::Stopped => {}
+            PoolState::Stopping => self.do_stop(dur)?,
+            PoolState::Stopped => self.do_clean(),
         }
         Ok(())
+    }
+
+    fn do_stop(&mut self, dur: Duration) -> std::io::Result<()> {
+        _ = self.try_timed_schedule_task(dur)?;
+        assert_eq!(PoolState::Stopping, self.stopped()?);
+        self.do_clean();
+        Ok(())
+    }
+
+    fn do_clean(&mut self) {
+        // clean up remaining wait tasks
+        for r in &self.waits {
+            let task_name = *r.key();
+            _ = self
+                .results
+                .insert(task_name.to_string(), Err("The coroutine pool has stopped"));
+            self.notify(task_name);
+        }
     }
 
     /// Submit a new task to this pool.
@@ -271,7 +285,6 @@ impl<'p> CoroutinePool<'p> {
         let key = Box::leak(Box::from(task_name));
         if let Some(r) = self.try_take_task_result(key) {
             self.notify(key);
-            drop(self.waits.remove(key));
             return Ok(r);
         }
         if SchedulableCoroutine::current().is_some() {
@@ -304,7 +317,6 @@ impl<'p> CoroutinePool<'p> {
         );
         if let Some(r) = self.try_take_task_result(key) {
             self.notify(key);
-            assert!(self.waits.remove(key).is_some());
             return Ok(r);
         }
         Err(Error::new(ErrorKind::TimedOut, "wait timeout"))
@@ -415,8 +427,8 @@ impl<'p> CoroutinePool<'p> {
     }
 
     fn notify(&self, task_name: &str) {
-        if let Some(arc) = self.waits.get(task_name) {
-            let (lock, cvar) = &**arc;
+        if let Some((_, arc)) = self.waits.remove(task_name) {
+            let (lock, cvar) = &*arc;
             let mut pending = lock.lock().expect("notify task failed");
             *pending = false;
             cvar.notify_one();

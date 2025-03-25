@@ -85,7 +85,8 @@ impl<'o> Operator<'o> {
         unsafe {
             let ret = CreateIoCompletionPort(handle, self.iocp, self.cpu, 0);
             if ret.is_null()
-                && ERROR_INVALID_PARAMETER == WSAGetLastError().try_into().expect("overflow")
+                && ERROR_INVALID_PARAMETER
+                    == TryInto::<u32>::try_into(WSAGetLastError()).expect("overflow")
             {
                 // duplicate bind
                 return Ok(());
@@ -190,6 +191,11 @@ impl<'o> Operator<'o> {
         }
         let cost = Instant::now().saturating_duration_since(start_time);
         Ok((cq.len(), cq, timeout.map(|t| t.saturating_sub(cost))))
+    }
+
+    #[allow(warnings)]
+    pub(crate) fn async_cancel(&self, user_data: usize) -> std::io::Result<()> {
+        todo!("CancelIoEx")
     }
 
     pub(crate) fn accept(
