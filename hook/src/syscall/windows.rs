@@ -36,7 +36,10 @@ macro_rules! impl_hook {
                     open_coroutine_core::common::constants::SyscallName::$syscall
                 )
             });
-            if $crate::hook() {
+            if $crate::hook()
+                || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
+                || cfg!(feature = "ci")
+            {
                 return open_coroutine_core::syscall::$syscall(Some(fn_ptr), $($arg),*);
             }
             (fn_ptr)($($arg),*)
