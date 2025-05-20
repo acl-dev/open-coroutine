@@ -101,7 +101,7 @@ impl<I: RecvmsgSyscall> RecvmsgSyscall for NioRecvmsgSyscall<I> {
                     msg_controllen: msghdr.msg_controllen,
                     msg_flags: msghdr.msg_flags,
                 };
-                r = self.inner.recvmsg(fn_ptr, fd, &mut arg, flags);
+                r = self.inner.recvmsg(fn_ptr, fd, &raw mut arg, flags);
                 if r == 0 {
                     std::mem::forget(vec);
                     if blocking {

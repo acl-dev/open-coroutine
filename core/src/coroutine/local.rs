@@ -27,6 +27,7 @@ impl<'c> CoroutineLocal<'c> {
     }
 
     /// Get a mut value ref from the coroutine local.
+    #[allow(clippy::mut_from_ref)]
     pub fn get_mut<V>(&self, key: &'c str) -> Option<&mut V> {
         self.0
             .get(key)

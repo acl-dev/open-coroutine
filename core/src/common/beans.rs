@@ -56,6 +56,7 @@ impl BeanFactory<'_> {
     ///
     /// # Safety
     /// Only one mutable reference can be held for a given bean at a time.
+    #[allow(clippy::mut_from_ref)]
     #[must_use]
     pub unsafe fn get_mut_bean<B>(bean_name: &str) -> Option<&mut B> {
         Self::get_instance()
