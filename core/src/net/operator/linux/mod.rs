@@ -235,7 +235,9 @@ impl Operator<'_> {
                 self,
                 SUPPORT_TIMEOUT_ADD,
                 Timeout,
-                Timeout::new(&timeout).build().user_data(user_data as u64)
+                Timeout::new(&raw const timeout)
+                    .build()
+                    .user_data(user_data as u64)
             )
         }
         Ok(())
@@ -254,7 +256,7 @@ impl Operator<'_> {
                 self,
                 SUPPORT_TIMEOUT_UPDATE,
                 TimeoutUpdate,
-                TimeoutUpdate::new(user_data as u64, &timeout)
+                TimeoutUpdate::new(user_data as u64, &raw const timeout)
                     .build()
                     .user_data(user_data as u64)
             )

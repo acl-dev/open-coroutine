@@ -886,7 +886,7 @@ extern "system" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
         windows_sys::Win32::Networking::WinSock::ioctlsocket(
             fd,
             windows_sys::Win32::Networking::WinSock::FIONBIO,
-            &mut argp,
+            &raw mut argp,
         ) == 0
     }
 }
@@ -913,7 +913,7 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
                     SOL_SOCKET,
                     SO_SNDTIMEO,
                     std::ptr::from_mut(&mut ms).cast(),
-                    &mut len,
+                    &raw mut len,
                 )
             } == -1
             {
@@ -950,7 +950,7 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
                     SOL_SOCKET,
                     SO_RCVTIMEO,
                     std::ptr::from_mut(&mut ms).cast(),
-                    &mut len,
+                    &raw mut len,
                 )
             } == -1
             {
