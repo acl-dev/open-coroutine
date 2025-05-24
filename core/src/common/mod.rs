@@ -160,7 +160,7 @@ pub fn page_size() -> usize {
             cfg_if::cfg_if! {
                 if #[cfg(windows)] {
                     let mut info = std::mem::zeroed();
-                    windows_sys::Win32::System::SystemInformation::GetSystemInfo(&mut info);
+                    windows_sys::Win32::System::SystemInformation::GetSystemInfo(&raw mut info);
                     ret = usize::try_from(info.dwPageSize).expect("get page size failed");
                 } else {
                     ret = usize::try_from(libc::sysconf(libc::_SC_PAGESIZE)).expect("get page size failed");

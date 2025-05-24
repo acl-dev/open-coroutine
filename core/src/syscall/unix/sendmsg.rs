@@ -101,7 +101,7 @@ impl<I: SendmsgSyscall> SendmsgSyscall for NioSendmsgSyscall<I> {
                     msg_controllen: msghdr.msg_controllen,
                     msg_flags: msghdr.msg_flags,
                 };
-                r = self.inner.sendmsg(fn_ptr, fd, &arg, flags);
+                r = self.inner.sendmsg(fn_ptr, fd, &raw const arg, flags);
                 if r != -1 {
                     reset_errno();
                     sent += libc::size_t::try_from(r).expect("r overflow");

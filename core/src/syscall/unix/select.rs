@@ -84,7 +84,7 @@ impl<I: SelectSyscall> SelectSyscall for NioSelectSyscall<I> {
         loop {
             r = self
                 .inner
-                .select(fn_ptr, nfds, readfds, writefds, errorfds, &mut o);
+                .select(fn_ptr, nfds, readfds, writefds, errorfds, &raw mut o);
             if r != 0 || t == 0 {
                 break;
             }

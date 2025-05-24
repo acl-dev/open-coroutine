@@ -71,7 +71,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                         SOL_SOCKET,
                         SO_ERROR,
                         std::ptr::addr_of_mut!(err).cast::<u8>(),
-                        &mut len,
+                        &raw mut len,
                     );
                 }
                 if r != 0 {
@@ -86,7 +86,7 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 unsafe {
                     let mut address = std::mem::zeroed();
                     let mut address_len = c_int::try_from(size_of_val(&address)).expect("overflow");
-                    r = getpeername(fd, &mut address, &mut address_len);
+                    r = getpeername(fd, &raw mut address, &raw mut address_len);
                 }
             } else if errno != Some(WSAEINTR) {
                 break;

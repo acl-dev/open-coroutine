@@ -367,7 +367,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
                         //本地队列超过一半，不再steal
                         break;
                     }
-                    if std::ptr::eq(&another, &self.queue) {
+                    if std::ptr::eq(&raw const another, &raw const self.queue) {
                         //不能偷自己
                         continue;
                     }

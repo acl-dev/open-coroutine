@@ -177,7 +177,7 @@ fn main() {
         .arg(out_dir.clone())
         .status()
     {
-        panic!("failed to build dylib {}", e);
+        panic!("failed to build dylib {e}");
     }
     // correct dylib path
     let hook_deps = out_dir

@@ -1027,7 +1027,7 @@ pub extern "C" fn send_time_limit(fd: c_int) -> u64 {
                 libc::SOL_SOCKET,
                 libc::SO_SNDTIMEO,
                 std::ptr::from_mut(&mut tv).cast(),
-                &mut len,
+                &raw mut len,
             ) == -1
             {
                 let error = std::io::Error::last_os_error();
@@ -1056,7 +1056,7 @@ pub extern "C" fn recv_time_limit(fd: c_int) -> u64 {
                 libc::SOL_SOCKET,
                 libc::SO_RCVTIMEO,
                 std::ptr::from_mut(&mut tv).cast(),
-                &mut len,
+                &raw mut len,
             ) == -1
             {
                 let error = std::io::Error::last_os_error();
