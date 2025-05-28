@@ -8,6 +8,7 @@ keywords = ["open-coroutine", "macro"]
 categories = ["concurrency", "asynchronous", "os", "network-programming", "wasm"]
 license.workspace = true
 readme.workspace = true
+exclude.workspace = true
 
 [dependencies]
 syn = { workspace = true, features = ["full"] }
