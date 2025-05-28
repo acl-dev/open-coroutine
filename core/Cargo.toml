@@ -9,6 +9,7 @@ keywords = ["runtime", "coroutine", "hook", "preempt", "work-steal"]
 categories = ["concurrency", "asynchronous", "os", "network-programming", "wasm"]
 license.workspace = true
 readme.workspace = true
+exclude.workspace = true
 
 [dependencies]
 tracing = { workspace = true, default-features = false, optional = true }
