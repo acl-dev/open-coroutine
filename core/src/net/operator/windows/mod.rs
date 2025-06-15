@@ -142,7 +142,7 @@ impl<'o> Operator<'o> {
                     self.iocp,
                     uninit.as_mut_ptr().cast(),
                     uninit.len().try_into().expect("overflow"),
-                    &mut recv_count,
+                    &raw mut recv_count,
                     left_ns
                         .saturating_div(1_000_000)
                         .try_into()
@@ -242,7 +242,7 @@ impl<'o> Operator<'o> {
                 SOL_SOCKET,
                 SO_PROTOCOL_INFO,
                 std::ptr::from_mut(&mut sock_info).cast(),
-                &mut sock_info_len,
+                &raw mut sock_info_len,
             ) != 0
             {
                 return Err(Error::other("get socket info failed"));
@@ -252,7 +252,7 @@ impl<'o> Operator<'o> {
                 sock_info.iAddressFamily,
                 sock_info.iSocketType,
                 sock_info.iProtocol,
-                &sock_info,
+                &raw const sock_info,
                 0,
                 WSA_FLAG_OVERLAPPED,
             );

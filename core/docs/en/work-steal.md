@@ -23,7 +23,7 @@ better to let them help other threads work.
 ## What is work steal queue?
 
 A work steal queue consists of a global queue and multiple local queues, the global queue is unbounded, while the local
-queue has a bounded RingBuffer. To ensure high performance, the number of local queues is usually equal to the number of
+queue has a bounded `RingBuffer`. To ensure high performance, the number of local queues is usually equal to the number of
 threads. I's worth mentioning that if all threads prioritize local tasks, there will be an extreme situation where tasks
 on the shared queue will never have a chance to be scheduled. To avoid this imbalance, refer to goroutine, every time a
 thread has scheduled 60 tasks from the local queue, it will be forced to pop a task from the shared queue.

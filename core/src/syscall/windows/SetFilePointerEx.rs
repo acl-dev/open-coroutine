@@ -1,5 +1,6 @@
 use std::ffi::c_longlong;
-use windows_sys::Win32::Foundation::{BOOL, HANDLE};
+use windows_sys::core::BOOL;
+use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Storage::FileSystem::SET_FILE_POINTER_MOVE_METHOD;
 
 trait SetFilePointerExSyscall {

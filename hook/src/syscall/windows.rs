@@ -1,7 +1,7 @@
 use std::ffi::{c_int, c_longlong, c_uint, c_void};
 use std::io::Error;
-use windows_sys::core::{PCSTR, PCWSTR, PSTR};
-use windows_sys::Win32::Foundation::{BOOL, HANDLE, TRUE};
+use windows_sys::core::{BOOL, PCSTR, PCWSTR, PSTR};
+use windows_sys::Win32::Foundation::{HANDLE, TRUE};
 use windows_sys::Win32::Networking::WinSock::{
     FD_SET, IPPROTO, LPCONDITIONPROC, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS,
     SOCKADDR, SOCKET, TIMEVAL, WINSOCK_SHUTDOWN_HOW, WINSOCK_SOCKET_TYPE, WSABUF, WSAPOLLFD,
