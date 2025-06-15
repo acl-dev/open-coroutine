@@ -1,6 +1,7 @@
 use std::ffi::{c_uint, c_void};
 use std::time::Duration;
-use windows_sys::Win32::Foundation::{BOOL, ERROR_TIMEOUT, FALSE, TRUE};
+use windows_sys::core::BOOL;
+use windows_sys::Win32::Foundation::{ERROR_TIMEOUT, FALSE, TRUE};
 use crate::common::{get_timeout_time, now};
 use crate::net::EventLoops;
 use crate::syscall::reset_errno;

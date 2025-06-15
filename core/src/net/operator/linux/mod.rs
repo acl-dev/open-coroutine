@@ -93,7 +93,7 @@ impl Operator<'_> {
         &self,
         timeout: Option<Duration>,
         want: usize,
-    ) -> std::io::Result<(usize, CompletionQueue, Option<Duration>)> {
+    ) -> std::io::Result<(usize, CompletionQueue<'_>, Option<Duration>)> {
         if support_io_uring() {
             if self
                 .entering
@@ -113,7 +113,7 @@ impl Operator<'_> {
         &self,
         timeout: Option<Duration>,
         want: usize,
-    ) -> std::io::Result<(usize, CompletionQueue, Option<Duration>)> {
+    ) -> std::io::Result<(usize, CompletionQueue<'_>, Option<Duration>)> {
         let start_time = Instant::now();
         self.timeout_add(crate::common::constants::IO_URING_TIMEOUT_USERDATA, timeout)?;
         let mut cq = unsafe { self.inner.completion_shared() };

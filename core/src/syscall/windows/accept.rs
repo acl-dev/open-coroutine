@@ -90,7 +90,7 @@ impl<I: AcceptSyscall> AcceptSyscall for IocpAcceptSyscall<I> {
                     SOL_SOCKET,
                     SO_PROTOCOL_INFO,
                     std::ptr::from_mut(&mut sock_info).cast(),
-                    &mut sock_info_len,
+                    &raw mut sock_info_len,
                 ) != 0
                 {
                     return INVALID_SOCKET;

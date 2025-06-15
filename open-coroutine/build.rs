@@ -51,7 +51,7 @@ fn main() {
         metadata
             .packages
             .iter()
-            .find(|pkg| pkg.name.eq("open-coroutine"))
+            .find(|pkg| pkg.name.as_str().eq("open-coroutine"))
             .expect("read current package failed")
     } else {
         metadata
