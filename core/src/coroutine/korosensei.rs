@@ -57,7 +57,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                             any(target_os = "linux", target_os = "android"),
                             target_arch = "x86",
                         ))] {
-                            let sp = u64::from(std::mem::transmute::<_, std::ffi::c_uint>(context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")]));
+                            let sp = u64::from(std::ffi::c_uint::from_ne_bytes(context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")].to_ne_bytes()));
                         } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
                             let sp = u64::try_from((*context.uc_mcontext).__ss.__rsp).expect("overflow");
                         } else if #[cfg(all(
@@ -108,11 +108,11 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                                 target_arch = "x86",
                             ))] {
                                 let TrapHandlerRegs { eip, esp, ebp, ecx, edx } = regs;
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EIP).expect("overflow")] = std::mem::transmute(eip);
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")] = std::mem::transmute(esp);
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EBP).expect("overflow")] = std::mem::transmute(ebp);
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_ECX).expect("overflow")] = std::mem::transmute(ecx);
-                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EDX).expect("overflow")] = std::mem::transmute(edx);
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EIP).expect("overflow")] = i32::from_ne_bytes(eip.to_ne_bytes());
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")] = i32::from_ne_bytes(esp.to_ne_bytes());
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EBP).expect("overflow")] = i32::from_ne_bytes(ebp.to_ne_bytes());
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_ECX).expect("overflow")] = i32::from_ne_bytes(ecx.to_ne_bytes());
+                                context.uc_mcontext.gregs[usize::try_from(libc::REG_EDX).expect("overflow")] = i32::from_ne_bytes(edx.to_ne_bytes());
                             } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
                                 let TrapHandlerRegs { rip, rsp, rbp, rdi, rsi } = regs;
                                 (*context.uc_mcontext).__ss.__rip = rip;

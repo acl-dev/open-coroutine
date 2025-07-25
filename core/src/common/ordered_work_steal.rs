@@ -347,7 +347,7 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     /// ```
     pub fn pop(&self) -> Option<T> {
         //每从本地弹出61次，就从全局队列弹出
-        if self.tick() % 61 == 0 {
+        if self.tick().is_multiple_of(61) {
             if let Some(val) = self.shared.pop() {
                 return Some(val);
             }
