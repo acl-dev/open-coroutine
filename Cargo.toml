@@ -49,7 +49,7 @@ windows-sys = "0.60"
 anyhow = "1.0"
 slab = "0.4"
 backtrace = "0.3"
-minhook = "0.7"
+minhook = "0.8"
 psm = "0.1"
 
 once_cell = "1"
