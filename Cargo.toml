@@ -31,7 +31,7 @@ cargo_metadata = { version = "0.22", default-features = false }
 mio = { version = "1.0", default-features = false }
 
 cfg-if = "1.0.0"
-polling = "2.8.0"
+polling = "3.11.0"
 educe = "0.6.0"
 
 libc = "0.2"
