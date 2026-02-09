@@ -1,6 +1,6 @@
 use crossbeam_deque::{Injector, Steal};
 use crossbeam_skiplist::SkipMap;
-use rand::Rng;
+use rand::RngExt;
 use st3::fifo::Worker;
 use std::collections::VecDeque;
 use std::ffi::c_longlong;

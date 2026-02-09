@@ -1,5 +1,5 @@
 use crossbeam_deque::{Injector, Steal};
-use rand::Rng;
+use rand::RngExt;
 use st3::fifo::Worker;
 use std::collections::VecDeque;
 use std::fmt::Debug;

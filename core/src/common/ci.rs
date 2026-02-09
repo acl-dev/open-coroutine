@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 pub fn init() {
     let _ = std::thread::spawn(|| {
         // exit after 600 seconds, just for CI
-        let sleep_time = Duration::from_secs(600);
+        let sleep_time = Duration::from_mins(10);
         let start_time = Instant::now();
         std::thread::sleep(sleep_time);
         let cost = Instant::now().saturating_duration_since(start_time);

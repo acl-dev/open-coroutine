@@ -6,7 +6,7 @@ use crate::scheduler::SchedulableCoroutine;
 use crate::{error, impl_current_for, impl_display_by_debug, info};
 use dashmap::DashSet;
 use once_cell::sync::Lazy;
-use rand::Rng;
+use rand::RngExt;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
