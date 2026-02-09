@@ -57,7 +57,7 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                             any(target_os = "linux", target_os = "android"),
                             target_arch = "x86",
                         ))] {
-                            let sp = u64::from(std::ffi::c_uint::from_ne_bytes(context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")].to_ne_bytes()));
+                            let sp = u64::from(u32::from_ne_bytes(context.uc_mcontext.gregs[usize::try_from(libc::REG_ESP).expect("overflow")].to_ne_bytes()));
                         } else if #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))] {
                             let sp = u64::try_from((*context.uc_mcontext).__ss.__rsp).expect("overflow");
                         } else if #[cfg(all(

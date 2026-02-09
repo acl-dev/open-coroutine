@@ -128,9 +128,7 @@ pub fn now() -> u64 {
 /// current ns time add `dur`.
 #[must_use]
 pub fn get_timeout_time(dur: Duration) -> u64 {
-    u64::try_from(dur.as_nanos())
-        .map(|d| d.saturating_add(now()))
-        .unwrap_or(u64::MAX)
+    u64::try_from(dur.as_nanos()).map_or(u64::MAX, |d| d.saturating_add(now()))
 }
 
 /// Make the total time into slices.
