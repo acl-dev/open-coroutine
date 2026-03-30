@@ -1,7 +1,7 @@
+use crate::syscall::windows::{RECV_TIME_LIMIT, SEND_TIME_LIMIT};
 use std::ffi::c_int;
 use windows_sys::core::PSTR;
-use crate::syscall::windows::{RECV_TIME_LIMIT, SEND_TIME_LIMIT};
-use windows_sys::Win32::Networking::WinSock::{SO_RCVTIMEO, SO_SNDTIMEO, SOCKET, SOL_SOCKET};
+use windows_sys::Win32::Networking::WinSock::{SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO};
 
 trait SetsockoptSyscall {
     extern "system" fn setsockopt(
@@ -11,7 +11,7 @@ trait SetsockoptSyscall {
         level: c_int,
         name: c_int,
         value: PSTR,
-        option_len: c_int
+        option_len: c_int,
     ) -> c_int;
 }
 
@@ -38,9 +38,11 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
         level: c_int,
         name: c_int,
         value: PSTR,
-        option_len: c_int
+        option_len: c_int,
     ) -> c_int {
-        let r= self.inner.setsockopt(fn_ptr, socket, level, name, value, option_len);
+        let r = self
+            .inner
+            .setsockopt(fn_ptr, socket, level, name, value, option_len);
         if 0 == r && SOL_SOCKET == level {
             if SO_SNDTIMEO == name {
                 let ms = unsafe { *value.cast::<c_int>() };
