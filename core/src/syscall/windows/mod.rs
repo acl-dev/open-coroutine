@@ -903,39 +903,35 @@ pub extern "system" fn is_non_blocking(fd: SOCKET) -> bool {
 
 #[must_use]
 pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
-    SEND_TIME_LIMIT.get(&fd).map_or_else(
-        || {
-            let mut ms = 0;
-            let mut len = c_int::try_from(size_of::<PSTR>()).expect("overflow");
-            if unsafe {
-                getsockopt(
-                    fd,
-                    SOL_SOCKET,
-                    SO_SNDTIMEO,
-                    std::ptr::from_mut(&mut ms).cast(),
-                    &raw mut len,
-                )
-            } == -1
-            {
-                let error = std::io::Error::last_os_error();
-                if Some(WSAENOTSOCK) == error.raw_os_error() {
-                    // not a socket
-                    return u64::MAX;
-                }
-                panic!("getsockopt failed: {error}");
+    *SEND_TIME_LIMIT.entry(fd).or_insert_with(|| {
+        let mut ms = 0;
+        let mut len = c_int::try_from(size_of_val(&ms)).expect("overflow");
+        if unsafe {
+            getsockopt(
+                fd,
+                SOL_SOCKET,
+                SO_SNDTIMEO,
+                std::ptr::from_mut(&mut ms).cast(),
+                &raw mut len,
+            )
+        } == -1
+        {
+            let error = std::io::Error::last_os_error();
+            if Some(WSAENOTSOCK) == error.raw_os_error() {
+                // not a socket
+                return u64::MAX;
             }
-            let mut time_limit = u64::try_from(ms)
-                .expect("overflow")
-                .saturating_mul(1_000_000);
-            if 0 == time_limit {
-                // 取消超时
-                time_limit = u64::MAX;
-            }
-            assert!(SEND_TIME_LIMIT.insert(fd, time_limit).is_none());
-            time_limit
-        },
-        |v| *v.value(),
-    )
+            panic!("getsockopt failed: {error}");
+        }
+        let mut time_limit = u64::try_from(ms)
+            .expect("overflow")
+            .saturating_mul(1_000_000);
+        if 0 == time_limit {
+            // 取消超时
+            time_limit = u64::MAX;
+        }
+        time_limit
+    })
 }
 
 #[must_use]

@@ -35,13 +35,11 @@ where
         let current = self.state();
         match current {
             CoroutineState::Ready => return Ok(()),
-            CoroutineState::Suspend(_, timestamp) => {
-                if timestamp <= now() {
-                    let new_state = CoroutineState::Ready;
-                    let old_state = self.change_state(new_state);
-                    self.on_ready(self, old_state);
-                    return Ok(());
-                }
+            CoroutineState::Suspend(_, timestamp) if timestamp <= now() => {
+                let new_state = CoroutineState::Ready;
+                let old_state = self.change_state(new_state);
+                self.on_ready(self, old_state);
+                return Ok(());
             }
             _ => {}
         }
@@ -71,13 +69,11 @@ where
                 return Ok(());
             }
             // #[cfg(test)] preemptive.rs use this
-            CoroutineState::Suspend(_, timestamp) => {
-                if timestamp <= now() {
-                    let new_state = CoroutineState::Running;
-                    let old_state = self.change_state(new_state);
-                    self.on_running(self, old_state);
-                    return Ok(());
-                }
+            CoroutineState::Suspend(_, timestamp) if timestamp <= now() => {
+                let new_state = CoroutineState::Running;
+                let old_state = self.change_state(new_state);
+                self.on_running(self, old_state);
+                return Ok(());
             }
             CoroutineState::Syscall(_, _, SyscallState::Callback | SyscallState::Timeout) => {
                 return Ok(());
@@ -129,13 +125,11 @@ where
                 self.on_syscall(self, old_state);
                 return Ok(());
             }
-            CoroutineState::Syscall(_, original_syscall, _) => {
-                if original_syscall == syscall {
-                    let new_state = CoroutineState::Syscall(val, syscall, syscall_state);
-                    let old_state = self.change_state(new_state);
-                    self.on_syscall(self, old_state);
-                    return Ok(());
-                }
+            CoroutineState::Syscall(_, original_syscall, _) if original_syscall == syscall => {
+                let new_state = CoroutineState::Syscall(val, syscall, syscall_state);
+                let old_state = self.change_state(new_state);
+                self.on_syscall(self, old_state);
+                return Ok(());
             }
             _ => {}
         }
