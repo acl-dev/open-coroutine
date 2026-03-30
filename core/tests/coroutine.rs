@@ -215,10 +215,14 @@ fn coroutine_preemptive() -> std::io::Result<()> {
                 CoroutineState::Suspend((), 0) => {
                     assert_eq!(CoroutineState::Suspend((), 0), coroutine.state());
                 }
-                CoroutineState::Error(_) => {
+                CoroutineState::Error(msg) => {
                     // In optimized (release) builds, signal-based preemption can
                     // cause SIGSEGV ("invalid memory reference") instead of a
                     // clean suspend due to signal handler stack switching.
+                    assert!(
+                        msg.contains("invalid memory reference"),
+                        "unexpected error: {msg}"
+                    );
                 }
                 other => panic!("unexpected coroutine state: {other:?}"),
             }
