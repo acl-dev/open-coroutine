@@ -51,7 +51,7 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
                     // 取消超时
                     time_limit = u64::MAX;
                 }
-                assert!(SEND_TIME_LIMIT.insert(socket, time_limit).is_none());
+                _ = SEND_TIME_LIMIT.insert(socket, time_limit);
             } else if SO_RCVTIMEO == name {
                 let ms = unsafe { *value.cast::<c_int>() };
                 let mut time_limit = u64::try_from(ms)
@@ -61,7 +61,7 @@ impl<I: SetsockoptSyscall> SetsockoptSyscall for NioSetsockoptSyscall<I> {
                     // 取消超时
                     time_limit = u64::MAX;
                 }
-                assert!(RECV_TIME_LIMIT.insert(socket, time_limit).is_none());
+                _ = RECV_TIME_LIMIT.insert(socket, time_limit);
             }
         }
         r

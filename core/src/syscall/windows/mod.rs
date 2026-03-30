@@ -1,7 +1,6 @@
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
-use windows_sys::core::PSTR;
 use windows_sys::Win32::Networking::WinSock::{
     getsockopt, SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, WSAENOTSOCK,
 };
@@ -882,13 +881,21 @@ extern "system" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
         return true;
     }
     let mut argp = on.into();
-    unsafe {
+    let r = unsafe {
         windows_sys::Win32::Networking::WinSock::ioctlsocket(
             fd,
             windows_sys::Win32::Networking::WinSock::FIONBIO,
             &raw mut argp,
         ) == 0
+    };
+    if r {
+        if on {
+            NON_BLOCKING.insert(fd);
+        } else {
+            NON_BLOCKING.remove(&fd);
+        }
     }
+    r
 }
 
 #[must_use]
@@ -903,10 +910,11 @@ pub extern "system" fn is_non_blocking(fd: SOCKET) -> bool {
 
 #[must_use]
 pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
-    SEND_TIME_LIMIT.get(&fd).map_or_else(
-        || {
+    *SEND_TIME_LIMIT
+        .entry(fd)
+        .or_insert_with(|| {
             let mut ms = 0;
-            let mut len = c_int::try_from(size_of::<PSTR>()).expect("overflow");
+            let mut len = c_int::try_from(size_of_val(&ms)).expect("overflow");
             if unsafe {
                 getsockopt(
                     fd,
@@ -931,19 +939,17 @@ pub extern "system" fn send_time_limit(fd: SOCKET) -> u64 {
                 // 取消超时
                 time_limit = u64::MAX;
             }
-            assert!(SEND_TIME_LIMIT.insert(fd, time_limit).is_none());
             time_limit
-        },
-        |v| *v.value(),
-    )
+        })
 }
 
 #[must_use]
 pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
-    RECV_TIME_LIMIT.get(&fd).map_or_else(
-        || {
+    *RECV_TIME_LIMIT
+        .entry(fd)
+        .or_insert_with(|| {
             let mut ms = 0;
-            let mut len = c_int::try_from(size_of::<PSTR>()).expect("overflow");
+            let mut len = c_int::try_from(size_of_val(&ms)).expect("overflow");
             if unsafe {
                 getsockopt(
                     fd,
@@ -968,9 +974,6 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
                 // 取消超时
                 time_limit = u64::MAX;
             }
-            assert!(RECV_TIME_LIMIT.insert(fd, time_limit).is_none());
             time_limit
-        },
-        |v| *v.value(),
-    )
+        })
 }
