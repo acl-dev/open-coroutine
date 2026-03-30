@@ -238,7 +238,7 @@ fn coroutine_preemptive() -> std::io::Result<()> {
     let result = cvar
         .wait_timeout_while(
             lock.lock().unwrap(),
-            std::time::Duration::from_millis(60_000),
+            std::time::Duration::from_millis(3000),
             |&mut pending| pending,
         )
         .unwrap();

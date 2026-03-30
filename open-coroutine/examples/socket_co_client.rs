@@ -143,7 +143,7 @@ pub fn start_co_client<A: ToSocketAddrs>(addr: A) {
             stream.shutdown(Shutdown::Write).expect("shutdown failed");
             println!("Client Closed");
         },
-        open_coroutine::connect_timeout(addr, Duration::from_secs(10)).expect("connect failed"),
+        open_coroutine::connect_timeout(addr, Duration::from_secs(3)).expect("connect failed"),
     );
 }
 
@@ -165,7 +165,7 @@ pub fn main() -> std::io::Result<()> {
     let result = cvar
         .wait_timeout_while(
             lock.lock().unwrap(),
-            Duration::from_secs(60),
+            Duration::from_secs(30),
             |&mut pending| pending,
         )
         .unwrap();

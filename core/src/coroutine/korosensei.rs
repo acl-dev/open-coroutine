@@ -333,7 +333,25 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             }
             return DefaultStack::new(stack_size).map(|stack| {
                 co.stack_infos_mut().push_back(StackInfo::from(&stack));
-                let r = corosensei::on_stack(stack, callback);
+                // Block SIGURG during on_stack to prevent preemptive signal from
+                // corrupting the stack context. When the coroutine is executing on
+                // a grown stack via on_stack(), a SIGURG-triggered suspend would
+                // context-switch back to the scheduler with an inconsistent stack,
+                // causing SIGSEGV on resume (especially on aarch64).
+                cfg_if::cfg_if! {
+                    if #[cfg(all(unix, feature = "preemptive"))] {
+                        let mut sigurg_mask = SigSet::empty();
+                        sigurg_mask.add(Signal::SIGURG);
+                        let old_mask = SigSet::thread_get_mask();
+                        _ = sigurg_mask.thread_block();
+                        let r = corosensei::on_stack(stack, callback);
+                        if let Ok(old) = &old_mask {
+                            _ = old.thread_set_mask();
+                        }
+                    } else {
+                        let r = corosensei::on_stack(stack, callback);
+                    }
+                }
                 _ = co.stack_infos_mut().pop_back();
                 r
             });

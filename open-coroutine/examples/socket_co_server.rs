@@ -79,7 +79,7 @@ pub fn start_co_server<A: ToSocketAddrs>(addr: A, server_finished: Arc<(Mutex<bo
 
 pub fn start_client<A: ToSocketAddrs>(addr: A) {
     let mut stream =
-        open_coroutine::connect_timeout(addr, Duration::from_secs(10)).expect("connect failed");
+        open_coroutine::connect_timeout(addr, Duration::from_secs(3)).expect("connect failed");
     let mut buffer1 = [0; 256];
     for i in 0..3 {
         assert_eq!(
@@ -167,7 +167,7 @@ pub fn main() -> std::io::Result<()> {
     let result = cvar
         .wait_timeout_while(
             lock.lock().unwrap(),
-            Duration::from_secs(60),
+            Duration::from_secs(30),
             |&mut pending| pending,
         )
         .unwrap();
