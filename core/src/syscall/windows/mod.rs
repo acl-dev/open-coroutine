@@ -1,7 +1,6 @@
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
-use windows_sys::core::PSTR;
 use windows_sys::Win32::Networking::WinSock::{
     getsockopt, SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, WSAENOTSOCK,
 };
