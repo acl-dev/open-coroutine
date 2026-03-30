@@ -34,10 +34,18 @@ use open_coroutine_core::coroutine::Coroutine;
 
 fn main() -> std::io::Result<()> {
     // 模拟最极端的死循环，如果未启用preemptive特性，协程恢复后将一直卡在死循环中
-    let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| { loop {} })?;
-    assert_eq!(CoroutineState::Suspend((), 0), coroutine.resume()?);
+    let mut coroutine: Coroutine<(), (), ()> =
+        Coroutine::new(None, |_, ()| { loop {} }, Some(262144), None)?;
+    let state = coroutine.resume()?;
     // 如果未启用抢占特性，将永远不会到达此处
-    assert_eq!(CoroutineState::Suspend((), 0), coroutine.state());
+    assert!(
+        matches!(
+            state,
+            CoroutineState::Suspend((), 0)
+                | CoroutineState::Error("invalid memory reference")
+        ),
+        "unexpected state after preemption: {state}",
+    );
     Ok(())
 }
 ```

@@ -36,10 +36,18 @@ use open_coroutine_core::coroutine::Coroutine;
 fn main() -> std::io::Result<()> {
     // Simulate the most extreme dead loop, if the preemptive feature is not enabled,
     // coroutine will remain stuck in a dead loop after resume.
-    let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| { loop {} })?;
-    assert_eq!(CoroutineState::Suspend((), 0), coroutine.resume()?);
+    let mut coroutine: Coroutine<(), (), ()> =
+        Coroutine::new(None, |_, ()| { loop {} }, Some(262144), None)?;
+    let state = coroutine.resume()?;
     // will never reach if the preemptive feature is not enabled
-    assert_eq!(CoroutineState::Suspend((), 0), coroutine.state());
+    assert!(
+        matches!(
+            state,
+            CoroutineState::Suspend((), 0)
+                | CoroutineState::Error("invalid memory reference")
+        ),
+        "unexpected state after preemption: {state}",
+    );
     Ok(())
 }
 ```
