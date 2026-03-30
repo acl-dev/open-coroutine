@@ -265,7 +265,11 @@ impl<'e> EventLoop<'e> {
 
         cfg_if::cfg_if! {
             if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-                left_time = self.adapt_io_uring(left_time)?;
+                match self.adapt_io_uring(left_time) {
+                    Ok(t) => left_time = t,
+                    Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+                    Err(e) => return Err(e),
+                }
             } else if #[cfg(all(windows, feature = "iocp"))] {
                 left_time = self.adapt_iocp(left_time)?;
             }
@@ -273,7 +277,12 @@ impl<'e> EventLoop<'e> {
 
         // use epoll/kevent/iocp
         let mut events = Events::with_capacity(1024);
-        self.selector.select(&mut events, left_time)?;
+        // mio 1.x does not internally retry on EINTR, so handle it here
+        match self.selector.select(&mut events, left_time) {
+            Ok(()) => {}
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
         #[allow(clippy::explicit_iter_loop)]
         for event in events.iter() {
             let token = event.get_token();
