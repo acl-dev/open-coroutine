@@ -7,7 +7,8 @@ use io_uring::squeue::Entry;
 use io_uring::types::{epoll_event, Fd, Timespec};
 use io_uring::{CompletionQueue, IoUring, Probe};
 use libc::{
-    c_char, c_int, c_uint, c_void, iovec, mode_t, msghdr, off_t, size_t, sockaddr, socklen_t, EBUSY,
+    c_char, c_int, c_uint, c_void, iovec, mode_t, msghdr, off_t, size_t, sockaddr, socklen_t,
+    EBUSY, EINTR,
 };
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
@@ -86,7 +87,12 @@ impl Operator<'_> {
                 .expect("backlog lock failed")
                 .push_back(entry);
         }
-        self.inner.submit().map(|_| ())
+        match self.inner.submit() {
+            Ok(_) => Ok(()),
+            // EINTR can happen when preemptive SIGURG interrupts io_uring_enter
+            Err(err) if err.raw_os_error() == Some(EINTR) => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 
     pub(crate) fn select(
@@ -121,7 +127,9 @@ impl Operator<'_> {
         let count = match self.inner.submit_and_wait(want) {
             Ok(count) => count,
             Err(err) => {
-                if err.raw_os_error() == Some(EBUSY) {
+                // EBUSY: SQ poll thread is busy; EINTR: interrupted by signal
+                // (e.g. preemptive SIGURG). In both cases, continue with 0.
+                if err.raw_os_error() == Some(EBUSY) || err.raw_os_error() == Some(EINTR) {
                     0
                 } else {
                     return Err(err);
@@ -137,7 +145,7 @@ impl Operator<'_> {
                 match self.inner.submit() {
                     Ok(_) => (),
                     Err(err) => {
-                        if err.raw_os_error() == Some(EBUSY) {
+                        if err.raw_os_error() == Some(EBUSY) || err.raw_os_error() == Some(EINTR) {
                             break;
                         }
                         return Err(err);

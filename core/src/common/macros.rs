@@ -113,7 +113,7 @@ macro_rules! impl_current_for {
             #[must_use]
             #[allow(unreachable_pub)]
             pub fn current<'current>() -> Option<&'current Self> {
-                $name.with(|s| unsafe {
+                $name.try_with(|s| unsafe {
                     s.as_ptr()
                         .as_ref()
                         .unwrap_or_else(|| {
@@ -126,11 +126,13 @@ macro_rules! impl_current_for {
                         .front()
                         .map(|ptr| &*(*ptr).cast::<Self>())
                 })
+                .ok()
+                .flatten()
             }
 
             /// Clean the current.
             pub(crate) fn clean_current() {
-                $name.with(|s| unsafe {
+                _ = $name.try_with(|s| unsafe {
                     _ = s.as_ptr()
                         .as_mut()
                         .unwrap_or_else(|| {

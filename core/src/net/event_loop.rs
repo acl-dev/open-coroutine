@@ -265,7 +265,11 @@ impl<'e> EventLoop<'e> {
 
         cfg_if::cfg_if! {
             if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
-                left_time = self.adapt_io_uring(left_time)?;
+                match self.adapt_io_uring(left_time) {
+                    Ok(t) => left_time = t,
+                    Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+                    Err(e) => return Err(e),
+                }
             } else if #[cfg(all(windows, feature = "iocp"))] {
                 left_time = self.adapt_iocp(left_time)?;
             }
@@ -273,7 +277,12 @@ impl<'e> EventLoop<'e> {
 
         // use epoll/kevent/iocp
         let mut events = Events::with_capacity(1024);
-        self.selector.select(&mut events, left_time)?;
+        // mio 1.x does not internally retry on EINTR, so handle it here
+        match self.selector.select(&mut events, left_time) {
+            Ok(()) => {}
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
         #[allow(clippy::explicit_iter_loop)]
         for event in events.iter() {
             let token = event.get_token();
@@ -288,23 +297,25 @@ impl<'e> EventLoop<'e> {
     fn adapt_io_uring(&self, mut left_time: Option<Duration>) -> std::io::Result<Option<Duration>> {
         if crate::net::operator::support_io_uring() {
             // use io_uring
-            let (count, mut cq, left) = self.operator.select(left_time, 0)?;
-            if count > 0 {
-                for cqe in &mut cq {
-                    let token = usize::try_from(cqe.user_data()).expect("token overflow");
-                    if crate::common::constants::IO_URING_TIMEOUT_USERDATA == token {
-                        continue;
-                    }
-                    // resolve completed read/write tasks
-                    let result = c_longlong::from(cqe.result());
-                    if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
-                        let (lock, cvar) = &*pair;
-                        let mut pending = lock.lock().expect("lock failed");
-                        *pending = Some(result);
-                        cvar.notify_one();
-                    }
-                    unsafe { self.resume(token) };
+            let (_count, mut cq, left) = self.operator.select(left_time, 0)?;
+            // Always process CQEs: `_count` is the number of SQEs submitted, not
+            // the number of CQEs available.  In SQPOLL mode the SQ poll thread may
+            // have already consumed all pending SQEs, making `_count == 0` even
+            // when completed CQEs are sitting in the completion queue.
+            for cqe in &mut cq {
+                let token = usize::try_from(cqe.user_data()).expect("token overflow");
+                if crate::common::constants::IO_URING_TIMEOUT_USERDATA == token {
+                    continue;
                 }
+                // resolve completed read/write tasks
+                let result = c_longlong::from(cqe.result());
+                if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
+                    let (lock, cvar) = &*pair;
+                    let mut pending = lock.lock().expect("lock failed");
+                    *pending = Some(result);
+                    cvar.notify_one();
+                }
+                unsafe { self.resume(token) };
             }
             if left != left_time {
                 left_time = Some(left.unwrap_or(Duration::ZERO));

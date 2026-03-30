@@ -1,7 +1,6 @@
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
-use windows_sys::core::PSTR;
 use windows_sys::Win32::Networking::WinSock::{
     getsockopt, SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, WSAENOTSOCK,
 };
@@ -882,13 +881,21 @@ extern "system" fn set_non_blocking_flag(fd: SOCKET, on: bool) -> bool {
         return true;
     }
     let mut argp = on.into();
-    unsafe {
+    let result = unsafe {
         windows_sys::Win32::Networking::WinSock::ioctlsocket(
             fd,
             windows_sys::Win32::Networking::WinSock::FIONBIO,
             &raw mut argp,
         ) == 0
+    };
+    if result {
+        if on {
+            _ = NON_BLOCKING.insert(fd);
+        } else {
+            _ = NON_BLOCKING.remove(&fd);
+        }
     }
+    result
 }
 
 #[must_use]
@@ -939,7 +946,7 @@ pub extern "system" fn recv_time_limit(fd: SOCKET) -> u64 {
     RECV_TIME_LIMIT.get(&fd).map_or_else(
         || {
             let mut ms = 0;
-            let mut len = c_int::try_from(size_of::<PSTR>()).expect("overflow");
+            let mut len = c_int::try_from(size_of_val(&ms)).expect("overflow");
             if unsafe {
                 getsockopt(
                     fd,

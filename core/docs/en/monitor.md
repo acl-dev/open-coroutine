@@ -28,7 +28,7 @@ The `preemptive` feature currently supports the following targets:
 
 ## Usage
 
-```rust
+```rust,no_run
 use open_coroutine_core::co;
 use open_coroutine_core::common::constants::CoroutineState;
 use open_coroutine_core::coroutine::Coroutine;

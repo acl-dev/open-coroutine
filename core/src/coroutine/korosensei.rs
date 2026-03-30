@@ -332,9 +332,57 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
                 return Ok(callback());
             }
             return DefaultStack::new(stack_size).map(|stack| {
+                // RAII guard to ensure stack info is popped and SIGURG mask is
+                // restored even if `callback` panics/unwinds during on_stack().
+                struct OnStackGuard<'a> {
+                    stack_infos: &'a mut VecDeque<StackInfo>,
+                    #[cfg(all(unix, feature = "preemptive"))]
+                    old_mask: Result<SigSet, nix::Error>,
+                    #[cfg(all(unix, feature = "preemptive"))]
+                    sigurg_mask: SigSet,
+                }
+                impl Drop for OnStackGuard<'_> {
+                    fn drop(&mut self) {
+                        #[cfg(all(unix, feature = "preemptive"))]
+                        {
+                            // Restore original signal mask to unblock SIGURG.
+                            // Use saved mask for correctness with nested maybe_grow_with;
+                            // fall back to thread_unblock if the old mask wasn't saved.
+                            match &self.old_mask {
+                                Ok(old) => {
+                                    _ = old.thread_set_mask();
+                                }
+                                Err(_) => {
+                                    _ = self.sigurg_mask.thread_unblock();
+                                }
+                            }
+                        }
+                        _ = self.stack_infos.pop_back();
+                    }
+                }
                 co.stack_infos_mut().push_back(StackInfo::from(&stack));
+                cfg_if::cfg_if! {
+                    if #[cfg(all(unix, feature = "preemptive"))] {
+                        let mut sigurg_mask = SigSet::empty();
+                        sigurg_mask.add(Signal::SIGURG);
+                        let old_mask = SigSet::thread_get_mask();
+                        _ = sigurg_mask.thread_block();
+                    }
+                }
+                // Block SIGURG during on_stack to prevent preemptive signal from
+                // corrupting the stack context. When the coroutine is executing on
+                // a grown stack via on_stack(), a SIGURG-triggered suspend would
+                // context-switch back to the scheduler with an inconsistent stack,
+                // causing SIGSEGV on resume (especially on aarch64).
+                let guard = OnStackGuard {
+                    stack_infos: co.stack_infos_mut(),
+                    #[cfg(all(unix, feature = "preemptive"))]
+                    old_mask,
+                    #[cfg(all(unix, feature = "preemptive"))]
+                    sigurg_mask,
+                };
                 let r = corosensei::on_stack(stack, callback);
-                _ = co.stack_infos_mut().pop_back();
+                drop(guard);
                 r
             });
         }
