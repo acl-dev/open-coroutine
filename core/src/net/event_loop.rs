@@ -288,23 +288,25 @@ impl<'e> EventLoop<'e> {
     fn adapt_io_uring(&self, mut left_time: Option<Duration>) -> std::io::Result<Option<Duration>> {
         if crate::net::operator::support_io_uring() {
             // use io_uring
-            let (count, mut cq, left) = self.operator.select(left_time, 0)?;
-            if count > 0 {
-                for cqe in &mut cq {
-                    let token = usize::try_from(cqe.user_data()).expect("token overflow");
-                    if crate::common::constants::IO_URING_TIMEOUT_USERDATA == token {
-                        continue;
-                    }
-                    // resolve completed read/write tasks
-                    let result = c_longlong::from(cqe.result());
-                    if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
-                        let (lock, cvar) = &*pair;
-                        let mut pending = lock.lock().expect("lock failed");
-                        *pending = Some(result);
-                        cvar.notify_one();
-                    }
-                    unsafe { self.resume(token) };
+            let (_count, mut cq, left) = self.operator.select(left_time, 0)?;
+            // Always process CQEs: `_count` is the number of SQEs submitted, not
+            // the number of CQEs available.  In SQPOLL mode the SQ poll thread may
+            // have already consumed all pending SQEs, making `_count == 0` even
+            // when completed CQEs are sitting in the completion queue.
+            for cqe in &mut cq {
+                let token = usize::try_from(cqe.user_data()).expect("token overflow");
+                if crate::common::constants::IO_URING_TIMEOUT_USERDATA == token {
+                    continue;
                 }
+                // resolve completed read/write tasks
+                let result = c_longlong::from(cqe.result());
+                if let Some((_, pair)) = self.syscall_wait_table.remove(&token) {
+                    let (lock, cvar) = &*pair;
+                    let mut pending = lock.lock().expect("lock failed");
+                    *pending = Some(result);
+                    cvar.notify_one();
+                }
+                unsafe { self.resume(token) };
             }
             if left != left_time {
                 left_time = Some(left.unwrap_or(Duration::ZERO));
