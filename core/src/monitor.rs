@@ -23,6 +23,10 @@ thread_local! {
     static IN_RESUME: Cell<bool> = const { Cell::new(false) };
 }
 
+/// Set whether a coroutine resume is currently in progress on this thread.
+/// This prevents the [`MonitorListener`] from submitting to the monitor
+/// during standalone state manipulations (e.g., unit tests calling
+/// `co.running()` directly), which would otherwise cause SIGURG delivery.
 pub(crate) fn set_in_resume(value: bool) {
     IN_RESUME.with(|f| f.set(value));
 }
