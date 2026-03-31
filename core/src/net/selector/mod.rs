@@ -67,9 +67,11 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             let token = event.get_token();
             let fd = TOKEN_FD.remove(&token).map_or(0, |r| r.1);
             if event.readable() {
+                _ = READABLE_RECORDS.remove(&fd);
                 _ = READABLE_TOKEN_RECORDS.remove(&fd);
             }
             if event.writable() {
+                _ = WRITABLE_RECORDS.remove(&fd);
                 _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
             }
         }
@@ -88,7 +90,8 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             self.reregister(fd, token, interests)
                 .or(self.register(fd, token, interests))
         } else {
-            self.register(fd, token, I::read(token))
+            self.reregister(fd, token, I::read(token))
+                .or_else(|_| self.register(fd, token, I::read(token)))
         }?;
         _ = READABLE_RECORDS.insert(fd);
         _ = READABLE_TOKEN_RECORDS.insert(fd, token);
@@ -107,7 +110,8 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             self.reregister(fd, token, interests)
                 .or(self.register(fd, token, interests))
         } else {
-            self.register(fd, token, I::write(token))
+            self.reregister(fd, token, I::write(token))
+                .or_else(|_| self.register(fd, token, I::write(token)))
         }?;
         _ = WRITABLE_RECORDS.insert(fd);
         _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);

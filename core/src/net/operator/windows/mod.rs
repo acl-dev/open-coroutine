@@ -285,6 +285,9 @@ impl<'o> Operator<'o> {
                     break;
                 }
             }
+            // AcceptEx writes local/remote addresses into buf when the I/O
+            // completes, so the buffer must remain valid until then.
+            std::mem::forget(buf);
             eprintln!("add {syscall_name} operation:{overlapped}");
         }
         Ok(())
