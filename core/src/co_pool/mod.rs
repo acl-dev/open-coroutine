@@ -188,7 +188,7 @@ impl<'p> CoroutinePool<'p> {
 
     /// Returns `true` if the task queue is empty.
     pub fn is_empty(&self) -> bool {
-        self.size() == 0
+        self.task_queue.is_empty()
     }
 
     /// Returns the number of tasks owned by this pool.

@@ -181,8 +181,22 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
     }
 
     /// Returns `true` if the local queue is empty.
+    ///
+    /// When the `len` counter indicates non-empty, this method verifies by
+    /// scanning all Workers. The counter can become stale-high when sibling
+    /// schedulers steal items via `stealer().steal()` without decrementing
+    /// our counter.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        if self.len() == 0 {
+            return true;
+        }
+        // len might be stale due to concurrent work-stealing — verify workers
+        for entry in self.queue {
+            if !entry.value().is_empty() {
+                return false;
+            }
+        }
+        true
     }
 
     /// Returns `true` if the local queue is full.
@@ -419,9 +433,6 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
                 return Some(val);
             }
         }
-        // All Workers are empty — reset len to 0 to account for items
-        // that may have been stolen by concurrent work-stealing schedulers.
-        self.len.store(0, Ordering::Release);
         None
     }
 }
