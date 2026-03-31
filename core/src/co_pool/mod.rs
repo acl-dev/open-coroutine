@@ -210,7 +210,14 @@ impl<'p> CoroutinePool<'p> {
     }
 
     fn do_stop(&mut self, dur: Duration) -> std::io::Result<()> {
-        _ = self.try_timed_schedule_task(dur)?;
+        let timeout_time = get_timeout_time(dur);
+        loop {
+            _ = self.try_timeout_schedule_task(timeout_time)?;
+            if self.get_running_size() == 0 || timeout_time.saturating_sub(now()) == 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
         assert_eq!(PoolState::Stopping, self.stopped()?);
         self.do_clean();
         Ok(())
