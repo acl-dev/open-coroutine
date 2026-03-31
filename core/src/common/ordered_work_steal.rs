@@ -419,6 +419,9 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
                 return Some(val);
             }
         }
+        // All Workers are empty — reset len to 0 to account for items
+        // that may have been stolen by concurrent work-stealing schedulers.
+        self.len.store(0, Ordering::Release);
         None
     }
 }
