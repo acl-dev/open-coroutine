@@ -384,6 +384,9 @@ macro_rules! impl_nio_read {
                 $fd: $fd_type,
                 $($arg: $arg_type),*
             ) -> $result {
+                if !$crate::syscall::is_socket($fd) {
+                    return self.inner.$syscall(fn_ptr, $fd, $($arg, )*);
+                }
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
                     $crate::syscall::set_non_blocking($fd);
@@ -456,6 +459,9 @@ macro_rules! impl_nio_read_buf {
                 $len: $len_type
                 $(, $($arg: $arg_type),*)?
             ) -> $result {
+                if !$crate::syscall::is_socket($fd) {
+                    return self.inner.$syscall(fn_ptr, $fd, $buf, $len, $($($arg, )*)?);
+                }
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
                     $crate::syscall::set_non_blocking($fd);
@@ -540,6 +546,9 @@ macro_rules! impl_nio_read_iovec {
                 $iovcnt: $iovcnt_type,
                 $($arg: $arg_type),*
             ) -> $result {
+                if !$crate::syscall::is_socket($fd) {
+                    return self.inner.$syscall(fn_ptr, $fd, $iov, $iovcnt, $($arg, )*);
+                }
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
                     $crate::syscall::set_non_blocking($fd);
@@ -673,6 +682,9 @@ macro_rules! impl_nio_write_buf {
                 $len: $len_type
                 $(, $($arg: $arg_type),*)?
             ) -> $result {
+                if !$crate::syscall::is_socket($fd) {
+                    return self.inner.$syscall(fn_ptr, $fd, $buf, $len, $($($arg, )*)?);
+                }
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
                     $crate::syscall::set_non_blocking($fd);
@@ -757,6 +769,9 @@ macro_rules! impl_nio_write_iovec {
                 $iovcnt: $iovcnt_type,
                 $($arg: $arg_type),*
             ) -> $result {
+                if !$crate::syscall::is_socket($fd) {
+                    return self.inner.$syscall(fn_ptr, $fd, $iov, $iovcnt, $($arg, )*);
+                }
                 let blocking = $crate::syscall::is_blocking($fd);
                 if blocking {
                     $crate::syscall::set_non_blocking($fd);
@@ -1014,6 +1029,21 @@ pub extern "C" fn is_non_blocking(fd: c_int) -> bool {
         return false;
     }
     (flags & libc::O_NONBLOCK) != 0
+}
+
+/// Check if the file descriptor refers to a socket.
+/// Non-socket fds (regular files, pipes, etc.) don't support epoll-based
+/// event notification and should bypass the NIO (non-blocking I/O + event loop) path.
+#[must_use]
+pub extern "C" fn is_socket(fd: c_int) -> bool {
+    unsafe {
+        let mut stat: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd, &raw mut stat) == 0 {
+            (stat.st_mode & libc::S_IFMT) == libc::S_IFSOCK
+        } else {
+            false
+        }
+    }
 }
 
 #[must_use]

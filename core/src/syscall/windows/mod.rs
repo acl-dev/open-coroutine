@@ -363,7 +363,15 @@ macro_rules! impl_nio_read {
                     }
                 }
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == windows_sys::Win32::Networking::WinSock::INVALID_SOCKET {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -410,7 +418,7 @@ macro_rules! impl_nio_read_buf {
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::recv_time_limit($fd);
                 let mut received = 0;
-                let mut r = -1;
+                let mut r = windows_sys::Win32::Networking::WinSock::SOCKET_ERROR;
                 while received < $len && left_time > 0 {
                     r = self.inner.$syscall(
                         fn_ptr,
@@ -419,7 +427,7 @@ macro_rules! impl_nio_read_buf {
                         $len - received,
                         $($($arg, )*)?
                     );
-                    if r != -1 {
+                    if r != windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
                         $crate::syscall::reset_errno();
                         received += r;
                         if received >= $len || r == 0 {
@@ -447,7 +455,15 @@ macro_rules! impl_nio_read_buf {
                     }
                 }
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -505,7 +521,7 @@ macro_rules! impl_nio_read_iovec {
                 };
                 let mut length = 0;
                 let mut received = 0usize;
-                let mut r = -1;
+                let mut r = windows_sys::Win32::Networking::WinSock::SOCKET_ERROR;
                 let mut index = 0;
                 for iovec in &vec {
                     let mut offset = received.saturating_sub(length);
@@ -535,7 +551,7 @@ macro_rules! impl_nio_read_iovec {
                             $recvd,
                             $($arg, )*
                         );
-                        if r != -1 {
+                        if r != windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
                             $crate::syscall::reset_errno();
                             received += usize::try_from(r).expect("overflow");
                             if received >= length {
@@ -568,7 +584,15 @@ macro_rules! impl_nio_read_iovec {
                         } else if error_kind != std::io::ErrorKind::Interrupted {
                             std::mem::forget(vec);
                             if blocking {
+                                let saved = std::io::Error::last_os_error();
                                 $crate::syscall::set_blocking($fd);
+                                if r == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+                                    if let Some(e) = saved.raw_os_error() {
+                                        $crate::syscall::set_errno(
+                                            u32::try_from(e).unwrap_or_default()
+                                        );
+                                    }
+                                }
                             }
                             return r;
                         }
@@ -579,7 +603,15 @@ macro_rules! impl_nio_read_iovec {
                 }
                 std::mem::forget(vec);
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -626,7 +658,7 @@ macro_rules! impl_nio_write_buf {
                 let start_time = $crate::common::now();
                 let mut left_time = $crate::syscall::send_time_limit($fd);
                 let mut sent = 0;
-                let mut r = -1;
+                let mut r = windows_sys::Win32::Networking::WinSock::SOCKET_ERROR;
                 while sent < $len && left_time > 0 {
                     r = self.inner.$syscall(
                         fn_ptr,
@@ -635,7 +667,7 @@ macro_rules! impl_nio_write_buf {
                         $len - sent,
                         $($($arg, )*)?
                     );
-                    if r != -1 {
+                    if r != windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
                         $crate::syscall::reset_errno();
                         sent += r;
                         if sent >= $len {
@@ -663,7 +695,15 @@ macro_rules! impl_nio_write_buf {
                     }
                 }
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -720,7 +760,7 @@ macro_rules! impl_nio_write_iovec {
                 };
                 let mut length = 0;
                 let mut sent = 0usize;
-                let mut r = -1;
+                let mut r = windows_sys::Win32::Networking::WinSock::SOCKET_ERROR;
                 let mut index = 0;
                 for iovec in &vec {
                     let mut offset = sent.saturating_sub(length);
@@ -750,7 +790,7 @@ macro_rules! impl_nio_write_iovec {
                             $sent,
                             $($arg, )*
                         );
-                        if r != -1 {
+                        if r != windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
                             $crate::syscall::reset_errno();
                             sent += usize::try_from(r).expect("overflow");
                             if sent >= length {
@@ -783,7 +823,15 @@ macro_rules! impl_nio_write_iovec {
                         } else if error_kind != std::io::ErrorKind::Interrupted {
                             std::mem::forget(vec);
                             if blocking {
+                                let saved = std::io::Error::last_os_error();
                                 $crate::syscall::set_blocking($fd);
+                                if r == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+                                    if let Some(e) = saved.raw_os_error() {
+                                        $crate::syscall::set_errno(
+                                            u32::try_from(e).unwrap_or_default()
+                                        );
+                                    }
+                                }
                             }
                             return r;
                         }
@@ -794,7 +842,15 @@ macro_rules! impl_nio_write_iovec {
                 }
                 std::mem::forget(vec);
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
