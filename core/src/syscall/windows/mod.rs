@@ -365,7 +365,7 @@ macro_rules! impl_nio_read {
                 if blocking {
                     let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
-                    if r == -1 {
+                    if r == windows_sys::Win32::Networking::WinSock::INVALID_SOCKET {
                         if let Some(e) = saved.raw_os_error() {
                             $crate::syscall::set_errno(
                                 u32::try_from(e).unwrap_or_default()
