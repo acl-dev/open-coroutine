@@ -489,6 +489,7 @@ macro_rules! impl_nio_read_iovec {
         }
 
         impl<I: $trait_name> $trait_name for $struct_name<I> {
+            #[allow(clippy::too_many_lines)]
             extern "system" fn $syscall(
                 &self,
                 fn_ptr: Option<
@@ -728,6 +729,7 @@ macro_rules! impl_nio_write_iovec {
         }
 
         impl<I: $trait_name> $trait_name for $struct_name<I> {
+            #[allow(clippy::too_many_lines)]
             extern "system" fn $syscall(
                 &self,
                 fn_ptr: Option<
