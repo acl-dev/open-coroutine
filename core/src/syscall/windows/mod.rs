@@ -363,7 +363,15 @@ macro_rules! impl_nio_read {
                     }
                 }
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == -1 {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -447,7 +455,15 @@ macro_rules! impl_nio_read_buf {
                     }
                 }
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == -1 {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -568,7 +584,15 @@ macro_rules! impl_nio_read_iovec {
                         } else if error_kind != std::io::ErrorKind::Interrupted {
                             std::mem::forget(vec);
                             if blocking {
+                                let saved = std::io::Error::last_os_error();
                                 $crate::syscall::set_blocking($fd);
+                                if r == -1 {
+                                    if let Some(e) = saved.raw_os_error() {
+                                        $crate::syscall::set_errno(
+                                            u32::try_from(e).unwrap_or_default()
+                                        );
+                                    }
+                                }
                             }
                             return r;
                         }
@@ -579,7 +603,15 @@ macro_rules! impl_nio_read_iovec {
                 }
                 std::mem::forget(vec);
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == -1 {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -663,7 +695,15 @@ macro_rules! impl_nio_write_buf {
                     }
                 }
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == -1 {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }
@@ -783,7 +823,15 @@ macro_rules! impl_nio_write_iovec {
                         } else if error_kind != std::io::ErrorKind::Interrupted {
                             std::mem::forget(vec);
                             if blocking {
+                                let saved = std::io::Error::last_os_error();
                                 $crate::syscall::set_blocking($fd);
+                                if r == -1 {
+                                    if let Some(e) = saved.raw_os_error() {
+                                        $crate::syscall::set_errno(
+                                            u32::try_from(e).unwrap_or_default()
+                                        );
+                                    }
+                                }
                             }
                             return r;
                         }
@@ -794,7 +842,15 @@ macro_rules! impl_nio_write_iovec {
                 }
                 std::mem::forget(vec);
                 if blocking {
+                    let saved = std::io::Error::last_os_error();
                     $crate::syscall::set_blocking($fd);
+                    if r == -1 {
+                        if let Some(e) = saved.raw_os_error() {
+                            $crate::syscall::set_errno(
+                                u32::try_from(e).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
                 r
             }

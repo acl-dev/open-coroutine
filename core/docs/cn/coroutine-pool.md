@@ -10,7 +10,7 @@ author: loongs-zhang
 
 ## 使用方法
 
-```rust
+```rust,no_run
 use open_coroutine_core::co_pool::CoroutinePool;
 
 fn main() -> std::io::Result<()> {

@@ -204,10 +204,14 @@ where
             return Ok(CoroutineState::Error(e));
         }
         Self::init_current(self);
+        #[cfg(all(unix, feature = "preemptive"))]
+        crate::monitor::set_in_resume(true);
         self.running()?;
         #[cfg(unix)]
         Self::setup_sigvtalrm_handler();
         let r = self.raw_resume(arg);
+        #[cfg(all(unix, feature = "preemptive"))]
+        crate::monitor::set_in_resume(false);
         Self::clean_current();
         r
     }

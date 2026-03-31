@@ -16,6 +16,21 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+thread_local! {
+    /// Flag indicating that a coroutine resume is in progress on this thread.
+    /// The MonitorListener only submits to the monitor when this flag is set,
+    /// preventing SIGURG delivery during standalone state tests.
+    static IN_RESUME: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) fn set_in_resume(value: bool) {
+    IN_RESUME.with(|f| f.set(value));
+}
+
+fn is_in_resume() -> bool {
+    IN_RESUME.with(Cell::get)
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct NotifyNode {
@@ -221,6 +236,9 @@ impl<Yield, Return> Listener<Yield, Return> for MonitorListener {
         match new_state {
             CoroutineState::Ready => {}
             CoroutineState::Running => {
+                if !is_in_resume() {
+                    return;
+                }
                 let timestamp = get_timeout_time(Duration::from_millis(10));
                 if let Ok(node) = Monitor::submit(timestamp) {
                     _ = local.put(NOTIFY_NODE, node);

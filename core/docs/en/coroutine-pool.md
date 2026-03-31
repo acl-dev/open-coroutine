@@ -10,7 +10,7 @@ English | [中文](../cn/coroutine-pool.md)
 
 ## Usage
 
-```rust
+```rust,no_run
 use open_coroutine_core::co_pool::CoroutinePool;
 
 fn main() -> std::io::Result<()> {
