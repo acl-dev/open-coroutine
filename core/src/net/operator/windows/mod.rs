@@ -269,7 +269,7 @@ impl<'o> Operator<'o> {
             overlapped.syscall_name = syscall_name;
             overlapped.socket = socket;
             overlapped.result = -c_longlong::from(WSAENETDOWN);
-            let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
+            let mut buf = std::mem::ManuallyDrop::new(vec![0u8; size as usize * 2]);
             while AcceptEx(
                 fd,
                 socket,
@@ -285,9 +285,6 @@ impl<'o> Operator<'o> {
                     break;
                 }
             }
-            // AcceptEx writes local/remote addresses into buf when the I/O
-            // completes, so the buffer must remain valid until then.
-            std::mem::forget(buf);
             eprintln!("add {syscall_name} operation:{overlapped}");
         }
         Ok(())
