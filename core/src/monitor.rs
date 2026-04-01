@@ -106,6 +106,13 @@ impl Default for Monitor {
     }
 }
 
+// CONTEXT_FULL constants for Windows thread context manipulation.
+// These include CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT.
+#[cfg(all(windows, target_arch = "x86_64"))]
+const CONTEXT_FULL_AMD64: u32 = 0x10_000B;
+#[cfg(all(windows, target_arch = "x86"))]
+const CONTEXT_FULL_I386: u32 = 0x1_000B;
+
 // On Windows, we use SuspendThread/GetThreadContext/SetThreadContext/ResumeThread
 // to preempt coroutines, similar to how Go implements goroutine preemption on Windows.
 // The assembly preempt function saves all registers, calls do_preempt() which suspends
@@ -406,9 +413,14 @@ impl Monitor {
                 return false;
             }
             let mut context: CONTEXT = std::mem::zeroed();
-            // CONTEXT_FULL for x86_64 = 0x10000B
-            context.ContextFlags = 0x10_000B;
+            context.ContextFlags = CONTEXT_FULL_AMD64;
             if GetThreadContext(thread_handle, &raw mut context) == 0 {
+                ResumeThread(thread_handle);
+                return false;
+            }
+            // Validate that the stack pointer is reasonable before modifying it.
+            // The stack must have at least 8 bytes of space below the current RSP.
+            if context.Rsp < 8 {
                 ResumeThread(thread_handle);
                 return false;
             }
@@ -436,9 +448,13 @@ impl Monitor {
                 return false;
             }
             let mut context: CONTEXT = std::mem::zeroed();
-            // CONTEXT_FULL for x86 = 0x1000B
-            context.ContextFlags = 0x1_000B;
+            context.ContextFlags = CONTEXT_FULL_I386;
             if GetThreadContext(thread_handle, &raw mut context) == 0 {
+                ResumeThread(thread_handle);
+                return false;
+            }
+            // Validate that the stack pointer is reasonable before modifying it.
+            if context.Esp < 4 {
                 ResumeThread(thread_handle);
                 return false;
             }
@@ -504,7 +520,7 @@ impl Monitor {
         let queue = unsafe { &mut *instance.notify_queue.get() };
         let removed = queue.remove(node);
         #[cfg(windows)]
-        if removed {
+        if removed && node.thread_handle != 0 {
             unsafe {
                 CloseHandle(node.thread_handle as HANDLE);
             }
