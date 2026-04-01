@@ -67,27 +67,9 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             let token = event.get_token();
             let fd = TOKEN_FD.remove(&token).map_or(0, |r| r.1);
             if event.readable() {
-                #[cfg(windows)]
-                {
-                    // On Windows there is no closesocket hook, so *_RECORDS must be
-                    // cleaned here to prevent stale entries for closed+reused fds.
-                    // On Unix the close() hook already calls del_event(), and persistent
-                    // edge-triggered epoll means we can skip the removal to avoid an
-                    // extra epoll_ctl on every NIO retry.
-                    _ = READABLE_RECORDS.remove(&fd);
-                }
                 _ = READABLE_TOKEN_RECORDS.remove(&fd);
             }
             if event.writable() {
-                #[cfg(windows)]
-                {
-                    // On Windows there is no closesocket hook, so *_RECORDS must be
-                    // cleaned here to prevent stale entries for closed+reused fds.
-                    // On Unix the close() hook already calls del_event(), and persistent
-                    // edge-triggered epoll means we can skip the removal to avoid an
-                    // extra epoll_ctl on every NIO retry.
-                    _ = WRITABLE_RECORDS.remove(&fd);
-                }
                 _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
             }
         }
@@ -103,13 +85,6 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             I::read(token)
         };
         if READABLE_RECORDS.contains(&fd) {
-            // On Unix, the fd is still in epoll with the old token.  Reregister
-            // to update the token so the next event can be routed via TOKEN_FD.
-            #[cfg(unix)]
-            {
-                self.reregister(fd, token, interests)?;
-                _ = READABLE_TOKEN_RECORDS.insert(fd, token);
-            }
             return Ok(());
         }
         self.reregister(fd, token, interests)
@@ -128,13 +103,6 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             I::write(token)
         };
         if WRITABLE_RECORDS.contains(&fd) {
-            // On Unix, the fd is still in epoll with the old token.  Reregister
-            // to update the token so the next event can be routed via TOKEN_FD.
-            #[cfg(unix)]
-            {
-                self.reregister(fd, token, interests)?;
-                _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
-            }
             return Ok(());
         }
         self.reregister(fd, token, interests)

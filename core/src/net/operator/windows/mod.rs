@@ -269,7 +269,7 @@ impl<'o> Operator<'o> {
             overlapped.syscall_name = syscall_name;
             overlapped.socket = socket;
             overlapped.result = -c_longlong::from(WSAENETDOWN);
-            let mut buf = std::mem::ManuallyDrop::new(vec![0u8; size as usize * 2]);
+            let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
             while AcceptEx(
                 fd,
                 socket,
