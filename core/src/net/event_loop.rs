@@ -8,7 +8,7 @@ use dashmap::DashSet;
 use once_cell::sync::Lazy;
 use rand::RngExt;
 use std::collections::hash_map::DefaultHasher;
-use std::ffi::{c_char, c_int, c_void, CStr};
+use std::ffi::c_int;
 use std::hash::{Hash, Hasher};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
@@ -350,12 +350,7 @@ impl<'e> EventLoop<'e> {
         if COROUTINE_TOKENS.remove(&token).is_none() {
             return;
         }
-        if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
-            // Do NOT remove from COROUTINE_TOKEN_CACHE — the cache is
-            // intentionally kept for the lifetime of the coroutine so that
-            // subsequent NIO retries produce the same token.
-            self.try_resume(co_name);
-        }
+        self.try_resume(token);
     }
 
     pub(super) fn start(self) -> std::io::Result<Arc<Self>>

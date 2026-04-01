@@ -55,26 +55,26 @@ impl Ord for SuspendItem<'_> {
 
 #[repr(C)]
 #[derive(Debug)]
-struct SyscallSuspendItem<'s> {
+struct SyscallSuspendItem {
     timestamp: u64,
-    co_name: &'s str,
+    co_id: usize,
 }
 
-impl PartialEq<Self> for SyscallSuspendItem<'_> {
+impl PartialEq<Self> for SyscallSuspendItem {
     fn eq(&self, other: &Self) -> bool {
         self.timestamp.eq(&other.timestamp)
     }
 }
 
-impl Eq for SyscallSuspendItem<'_> {}
+impl Eq for SyscallSuspendItem {}
 
-impl PartialOrd<Self> for SyscallSuspendItem<'_> {
+impl PartialOrd<Self> for SyscallSuspendItem {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for SyscallSuspendItem<'_> {
+impl Ord for SyscallSuspendItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // BinaryHeap defaults to a large top heap, but we need a small top heap
         other.timestamp.cmp(&self.timestamp)
@@ -98,8 +98,8 @@ pub struct Scheduler<'s> {
     #[doc = include_str!("../docs/en/ordered-work-steal.md")]
     ready: OrderedLocalQueue<'s, SchedulableCoroutine<'s>>,
     suspend: BinaryHeap<SuspendItem<'s>>,
-    syscall: DashMap<&'s str, SchedulableCoroutine<'s>>,
-    syscall_suspend: BinaryHeap<SyscallSuspendItem<'s>>,
+    syscall: DashMap<usize, SchedulableCoroutine<'s>>,
+    syscall_suspend: BinaryHeap<SyscallSuspendItem>,
 }
 
 impl Default for Scheduler<'_> {
@@ -220,8 +220,8 @@ impl<'s> Scheduler<'s> {
     ///
     /// # Errors
     /// if change to ready fails.
-    pub fn try_resume(&self, co_name: &'s str) {
-        if let Some((_, co)) = self.syscall.remove(&co_name) {
+    pub fn try_resume(&self, co_id: usize) {
+        if let Some((_, co)) = self.syscall.remove(&co_id) {
             match co.state() {
                 CoroutineState::Syscall(val, syscall, SyscallState::Suspend(_)) => {
                     co.syscall(val, syscall, SyscallState::Callback)
@@ -313,10 +313,11 @@ impl<'s> Scheduler<'s> {
                     CoroutineState::Syscall((), _, state) => {
                         //挂起协程到系统调用表
                         //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
-                        _ = self.syscall.insert(co_name, coroutine);
+                        let co_id = coroutine.id();
+                        _ = self.syscall.insert(co_id, coroutine);
                         if let SyscallState::Suspend(timestamp) = state {
                             self.syscall_suspend
-                                .push(SyscallSuspendItem { timestamp, co_name });
+                                .push(SyscallSuspendItem { timestamp, co_id });
                         }
                     }
                     CoroutineState::Suspend((), timestamp) => {
@@ -373,7 +374,7 @@ impl<'s> Scheduler<'s> {
                 break;
             }
             if let Some(item) = self.syscall_suspend.pop() {
-                if let Some((_, co)) = self.syscall.remove(item.co_name) {
+                if let Some((_, co)) = self.syscall.remove(&item.co_id) {
                     match co.state() {
                         CoroutineState::Syscall(val, syscall, SyscallState::Suspend(_)) => {
                             co.syscall(val, syscall, SyscallState::Timeout)?;
@@ -420,7 +421,7 @@ mod tests {
         for timestamp in (0..10).rev() {
             heap.push(SyscallSuspendItem {
                 timestamp,
-                co_name: "test",
+                co_id: 1,
             });
         }
         for timestamp in 0..10 {
