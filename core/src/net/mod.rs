@@ -254,7 +254,7 @@ impl EventLoops {
                 error!("open-coroutine stop timeout !");
                 return Err(Error::new(ErrorKind::TimedOut, "stop timeout !"));
             }
-            #[cfg(all(unix, feature = "preemptive"))]
+            #[cfg(feature = "preemptive")]
             crate::monitor::Monitor::stop();
         }
         Ok(())

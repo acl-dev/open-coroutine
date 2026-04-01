@@ -59,7 +59,7 @@ impl<I: PthreadCondTimedwaitSyscall> PthreadCondTimedwaitSyscall
             }
         }
 
-        #[cfg(all(unix, feature = "preemptive"))]
+        #[cfg(feature = "preemptive")]
         if crate::monitor::Monitor::current().is_some() {
             return self.inner.pthread_cond_timedwait(
                 fn_ptr,

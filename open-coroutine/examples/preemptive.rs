@@ -12,7 +12,7 @@
 #[open_coroutine::main(event_loop_size = 1, max_size = 3)]
 pub fn main() -> std::io::Result<()> {
     cfg_if::cfg_if! {
-        if #[cfg(all(unix, feature = "preemptive"))] {
+        if #[cfg(feature = "preemptive")] {
             use open_coroutine::task;
             use std::sync::{Arc, Condvar, Mutex};
             use std::time::Duration;
@@ -29,7 +29,7 @@ pub fn main() -> std::io::Result<()> {
                             println!("coroutine1 launched");
                             while unsafe { TEST_FLAG1 } {
                                 println!("loop1");
-                                _ = unsafe { libc::usleep(10_000) };
+                                std::thread::sleep(Duration::from_millis(10));
                             }
                             println!("loop1 end");
                         },
@@ -40,7 +40,7 @@ pub fn main() -> std::io::Result<()> {
                             println!("coroutine2 launched");
                             while unsafe { TEST_FLAG2 } {
                                 println!("loop2");
-                                _ = unsafe { libc::usleep(10_000) };
+                                std::thread::sleep(Duration::from_millis(10));
                             }
                             println!("loop2 end");
                             unsafe { TEST_FLAG1 = false };

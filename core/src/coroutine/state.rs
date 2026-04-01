@@ -198,7 +198,7 @@ where
     }
 }
 
-#[cfg(all(test, not(all(unix, feature = "preemptive"))))]
+#[cfg(all(test, not(feature = "preemptive")))]
 mod tests {
     use super::*;
     use crate::coroutine::suspender::Suspender;

@@ -24,7 +24,7 @@ fn scheduler_basic() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
+#[cfg(not(feature = "preemptive"))]
 #[test]
 fn scheduler_backtrace() -> std::io::Result<()> {
     let mut scheduler = Scheduler::default();
@@ -87,7 +87,7 @@ fn scheduler_delay() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
+#[cfg(not(feature = "preemptive"))]
 #[test]
 fn scheduler_listener() -> std::io::Result<()> {
     use open_coroutine_core::coroutine::listener::Listener;
