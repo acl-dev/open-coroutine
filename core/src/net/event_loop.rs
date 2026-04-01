@@ -4,11 +4,11 @@ use crate::common::constants::{CoroutineState, PoolState, SyscallName, SyscallSt
 use crate::net::selector::{Event, Events, Poller, Selector};
 use crate::scheduler::SchedulableCoroutine;
 use crate::{error, impl_current_for, impl_display_by_debug, info};
-use dashmap::{DashMap, DashSet};
+use dashmap::DashSet;
 use once_cell::sync::Lazy;
 use rand::RngExt;
 use std::collections::hash_map::DefaultHasher;
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{c_char, c_int, c_void, CStr};
 use std::hash::{Hash, Hasher};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
@@ -20,6 +20,7 @@ use std::time::Duration;
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+        use dashmap::DashMap;
         use libc::{epoll_event, iovec, mode_t, msghdr, off_t, size_t, sockaddr, socklen_t};
         use std::ffi::{c_longlong, c_uint};
     }
@@ -27,6 +28,7 @@ cfg_if::cfg_if! {
 
 cfg_if::cfg_if! {
     if #[cfg(all(windows, feature = "iocp"))] {
+        use dashmap::DashMap;
         use std::ffi::{c_longlong, c_uint};
         use windows_sys::core::{PCSTR, PSTR};
         use windows_sys::Win32::Networking::WinSock::{
@@ -106,11 +108,6 @@ impl Default for EventLoop<'_> {
 
 static COROUTINE_TOKENS: Lazy<DashSet<usize>> = Lazy::new(DashSet::new);
 
-/// Cache coroutine name → leaked CString token so the same coroutine always
-/// gets the same token across NIO retries.  This keeps TOKEN_FD consistent
-/// with the token stored in epoll, avoiding stale-token event losses.
-static COROUTINE_TOKEN_CACHE: Lazy<DashMap<String, usize>> = Lazy::new(DashMap::new);
-
 impl<'e> EventLoop<'e> {
     pub(super) fn new(
         name: String,
@@ -148,25 +145,9 @@ impl<'e> EventLoop<'e> {
 
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
     fn token(syscall: SyscallName) -> usize {
+        // Coroutine path: consistent hash of (coroutine_name).
         if let Some(co) = SchedulableCoroutine::current() {
-            let name = co.name();
-            // Return cached token for this coroutine so every NIO retry uses
-            // the same value — keeping TOKEN_FD in sync with epoll.
-            let token = if let Some(cached) = COROUTINE_TOKEN_CACHE.get(name) {
-                *cached.value()
-            } else {
-                let boxed: &'static mut CString = Box::leak(Box::from(
-                    CString::new(name).expect("build name failed!"),
-                ));
-                let cstr: &'static CStr = boxed.as_c_str();
-                let t = cstr.as_ptr().cast::<c_void>() as usize;
-                _ = COROUTINE_TOKEN_CACHE.insert(name.to_string(), t);
-                t
-            };
-            // May already be present after a timeout-based resume (no resume()
-            // call), so do not assert.
-            _ = COROUTINE_TOKENS.insert(token);
-            return token;
+            return co.id();
         }
         // Thread path: consistent hash of (thread_id, syscall_name).
         unsafe {

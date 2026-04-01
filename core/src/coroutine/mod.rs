@@ -6,6 +6,7 @@ use crate::{impl_current_for, impl_display_by_debug, impl_for_named};
 use std::collections::VecDeque;
 use std::ffi::c_longlong;
 use std::fmt::{Debug, Formatter};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Deref;
 
 /// Coroutine suspender abstraction and impl.
@@ -64,6 +65,14 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     /// Get the name of this coroutine.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Get the id of this coroutine.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn id(&self) -> usize {
+        let mut hasher = DefaultHasher::new();
+        self.name.hash(&mut hasher);
+        hasher.finish() as usize
     }
 
     /// Returns the current state of this `StateCoroutine`.
