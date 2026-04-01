@@ -11,6 +11,7 @@ use std::cell::{Cell, RefCell, UnsafeCell};
 use std::collections::VecDeque;
 use std::ffi::c_longlong;
 use std::fmt::Debug;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Error;
 
 cfg_if::cfg_if! {
@@ -25,6 +26,7 @@ cfg_if::cfg_if! {
 /// Use `corosensei` as the low-level coroutine.
 #[repr(C)]
 pub struct Coroutine<'c, Param, Yield, Return> {
+    pub(crate) id: u64,
     pub(crate) name: String,
     inner: corosensei::Coroutine<Param, Yield, Result<Return, &'static str>, DefaultStack>,
     pub(crate) state: Cell<CoroutineState<Yield, Return>>,
@@ -427,8 +429,12 @@ where
                 co_name
             )
         });
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        let id = hasher.finish();
         #[allow(unused_mut)]
         let mut co = Coroutine {
+            id,
             name,
             inner,
             stack_infos,

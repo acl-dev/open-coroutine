@@ -66,6 +66,12 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
         &self.name
     }
 
+    /// Get the id of this coroutine.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
     /// Returns the current state of this `StateCoroutine`.
     pub fn state(&self) -> CoroutineState<Yield, Return>
     where

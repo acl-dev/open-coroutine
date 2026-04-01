@@ -133,7 +133,7 @@ fn scheduler_listener() -> std::io::Result<()> {
 #[test]
 fn scheduler_try_cancel_coroutine() -> std::io::Result<()> {
     let mut scheduler = Scheduler::default();
-    let co_name = scheduler.submit_co(
+    let co_id = scheduler.submit_co(
         |suspender, _| {
             println!("[coroutine1] suspend");
             suspender.suspend();
@@ -143,7 +143,7 @@ fn scheduler_try_cancel_coroutine() -> std::io::Result<()> {
         None,
         None,
     )?;
-    Scheduler::try_cancel_coroutine(&co_name);
+    Scheduler::try_cancel_coroutine(co_id);
     _ = scheduler.submit_co(
         |suspender, _| {
             println!("[coroutine2] suspend");

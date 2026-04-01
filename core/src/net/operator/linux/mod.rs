@@ -169,20 +169,18 @@ impl Operator<'_> {
         Ok((count, cq, timeout.map(|t| t.saturating_sub(cost))))
     }
 
-    pub(crate) fn async_cancel(&self, user_data: usize) -> std::io::Result<()> {
+    pub(crate) fn async_cancel(&self, user_data: u64) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_ASYNC_CANCEL,
             AsyncCancel,
-            AsyncCancel::new(user_data as u64)
-                .build()
-                .user_data(user_data as u64)
+            AsyncCancel::new(user_data).build().user_data(user_data)
         )
     }
 
     pub(crate) fn epoll_ctl(
         &self,
-        user_data: usize,
+        user_data: u64,
         epfd: c_int,
         op: c_int,
         fd: c_int,
@@ -199,40 +197,33 @@ impl Operator<'_> {
                 event.cast_const().cast::<epoll_event>(),
             )
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
-    pub(crate) fn poll_add(
-        &self,
-        user_data: usize,
-        fd: c_int,
-        flags: c_int,
-    ) -> std::io::Result<()> {
+    pub(crate) fn poll_add(&self, user_data: u64, fd: c_int, flags: c_int) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_POLL_ADD,
             PollAdd,
             PollAdd::new(Fd(fd), flags.try_into().expect("flags overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
-    pub(crate) fn poll_remove(&self, user_data: usize) -> std::io::Result<()> {
+    pub(crate) fn poll_remove(&self, user_data: u64) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_POLL_REMOVE,
             PollRemove,
-            PollRemove::new(user_data as u64)
-                .build()
-                .user_data(user_data as u64)
+            PollRemove::new(user_data).build().user_data(user_data)
         )
     }
 
     pub(crate) fn timeout_add(
         &self,
-        user_data: usize,
+        user_data: u64,
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
         if let Some(duration) = timeout {
@@ -245,7 +236,7 @@ impl Operator<'_> {
                 Timeout,
                 Timeout::new(&raw const timeout)
                     .build()
-                    .user_data(user_data as u64)
+                    .user_data(user_data)
             )
         }
         Ok(())
@@ -253,7 +244,7 @@ impl Operator<'_> {
 
     pub(crate) fn timeout_update(
         &self,
-        user_data: usize,
+        user_data: u64,
         timeout: Option<Duration>,
     ) -> std::io::Result<()> {
         if let Some(duration) = timeout {
@@ -264,26 +255,26 @@ impl Operator<'_> {
                 self,
                 SUPPORT_TIMEOUT_UPDATE,
                 TimeoutUpdate,
-                TimeoutUpdate::new(user_data as u64, &raw const timeout)
+                TimeoutUpdate::new(user_data, &raw const timeout)
                     .build()
-                    .user_data(user_data as u64)
+                    .user_data(user_data)
             )
         }
         self.timeout_remove(user_data)
     }
 
-    pub(crate) fn timeout_remove(&self, user_data: usize) -> std::io::Result<()> {
+    pub(crate) fn timeout_remove(&self, user_data: u64) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_TIMEOUT_REMOVE,
             TimeoutRemove,
-            TimeoutRemove::new(user_data as u64).build()
+            TimeoutRemove::new(user_data).build()
         )
     }
 
     pub(crate) fn openat(
         &self,
-        user_data: usize,
+        user_data: u64,
         dir_fd: c_int,
         pathname: *const c_char,
         flags: c_int,
@@ -297,13 +288,13 @@ impl Operator<'_> {
                 .flags(flags)
                 .mode(mode)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn mkdirat(
         &self,
-        user_data: usize,
+        user_data: u64,
         dir_fd: c_int,
         pathname: *const c_char,
         mode: mode_t,
@@ -315,13 +306,13 @@ impl Operator<'_> {
             MkDirAt::new(Fd(dir_fd), pathname)
                 .mode(mode)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn renameat(
         &self,
-        user_data: usize,
+        user_data: u64,
         old_dir_fd: c_int,
         old_path: *const c_char,
         new_dir_fd: c_int,
@@ -333,13 +324,13 @@ impl Operator<'_> {
             RenameAt,
             RenameAt::new(Fd(old_dir_fd), old_path, Fd(new_dir_fd), new_path)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn renameat2(
         &self,
-        user_data: usize,
+        user_data: u64,
         old_dir_fd: c_int,
         old_path: *const c_char,
         new_dir_fd: c_int,
@@ -353,22 +344,22 @@ impl Operator<'_> {
             RenameAt::new(Fd(old_dir_fd), old_path, Fd(new_dir_fd), new_path)
                 .flags(flags)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
-    pub(crate) fn fsync(&self, user_data: usize, fd: c_int) -> std::io::Result<()> {
+    pub(crate) fn fsync(&self, user_data: u64, fd: c_int) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_FSYNC,
             Fsync,
-            Fsync::new(Fd(fd)).build().user_data(user_data as u64)
+            Fsync::new(Fd(fd)).build().user_data(user_data)
         )
     }
 
     pub(crate) fn socket(
         &self,
-        user_data: usize,
+        user_data: u64,
         domain: c_int,
         ty: c_int,
         protocol: c_int,
@@ -379,13 +370,13 @@ impl Operator<'_> {
             Socket,
             Socket::new(domain, ty, protocol)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn accept(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         address: *mut sockaddr,
         address_len: *mut socklen_t,
@@ -396,13 +387,13 @@ impl Operator<'_> {
             Accept,
             Accept::new(Fd(fd), address, address_len)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn accept4(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         addr: *mut sockaddr,
         len: *mut socklen_t,
@@ -415,13 +406,13 @@ impl Operator<'_> {
             Accept::new(Fd(fd), addr, len)
                 .flags(flg)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn connect(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         address: *const sockaddr,
         len: socklen_t,
@@ -432,33 +423,31 @@ impl Operator<'_> {
             Connect,
             Connect::new(Fd(fd), address, len)
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
-    pub(crate) fn shutdown(&self, user_data: usize, fd: c_int, how: c_int) -> std::io::Result<()> {
+    pub(crate) fn shutdown(&self, user_data: u64, fd: c_int, how: c_int) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_SHUTDOWN,
             Shutdown,
-            Shutdown::new(Fd(fd), how)
-                .build()
-                .user_data(user_data as u64)
+            Shutdown::new(Fd(fd), how).build().user_data(user_data)
         )
     }
 
-    pub(crate) fn close(&self, user_data: usize, fd: c_int) -> std::io::Result<()> {
+    pub(crate) fn close(&self, user_data: u64, fd: c_int) -> std::io::Result<()> {
         support!(
             self,
             SUPPORT_CLOSE,
             Close,
-            Close::new(Fd(fd)).build().user_data(user_data as u64)
+            Close::new(Fd(fd)).build().user_data(user_data)
         )
     }
 
     pub(crate) fn recv(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *mut c_void,
         len: size_t,
@@ -475,13 +464,13 @@ impl Operator<'_> {
             )
             .flags(flags)
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn read(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *mut c_void,
         count: size_t,
@@ -496,13 +485,13 @@ impl Operator<'_> {
                 count.try_into().expect("count overflow")
             )
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn pread(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *mut c_void,
         count: size_t,
@@ -519,13 +508,13 @@ impl Operator<'_> {
             )
             .offset(offset.try_into().expect("offset overflow"))
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn readv(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
@@ -536,13 +525,13 @@ impl Operator<'_> {
             Readv,
             Readv::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn preadv(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
@@ -555,13 +544,13 @@ impl Operator<'_> {
             Readv::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
                 .offset(offset.try_into().expect("offset overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn recvmsg(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         msg: *mut msghdr,
         flags: c_int,
@@ -573,13 +562,13 @@ impl Operator<'_> {
             RecvMsg::new(Fd(fd), msg)
                 .flags(flags.try_into().expect("flags overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn send(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *const c_void,
         len: size_t,
@@ -596,13 +585,13 @@ impl Operator<'_> {
             )
             .flags(flags)
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn sendto(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *const c_void,
         len: size_t,
@@ -623,13 +612,13 @@ impl Operator<'_> {
             .dest_addr(addr)
             .dest_addr_len(addrlen)
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn write(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *const c_void,
         count: size_t,
@@ -644,13 +633,13 @@ impl Operator<'_> {
                 count.try_into().expect("count overflow")
             )
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn pwrite(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         buf: *const c_void,
         count: size_t,
@@ -667,13 +656,13 @@ impl Operator<'_> {
             )
             .offset(offset.try_into().expect("offset overflow"))
             .build()
-            .user_data(user_data as u64)
+            .user_data(user_data)
         )
     }
 
     pub(crate) fn writev(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
@@ -684,13 +673,13 @@ impl Operator<'_> {
             Writev,
             Writev::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn pwritev(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         iov: *const iovec,
         iovcnt: c_int,
@@ -703,13 +692,13 @@ impl Operator<'_> {
             Writev::new(Fd(fd), iov, iovcnt.try_into().expect("iovcnt overflow"))
                 .offset(offset.try_into().expect("offset overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 
     pub(crate) fn sendmsg(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: c_int,
         msg: *const msghdr,
         flags: c_int,
@@ -721,7 +710,7 @@ impl Operator<'_> {
             SendMsg::new(Fd(fd), msg)
                 .flags(flags.try_into().expect("flags overflow"))
                 .build()
-                .user_data(user_data as u64)
+                .user_data(user_data)
         )
     }
 }

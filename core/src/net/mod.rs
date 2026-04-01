@@ -150,13 +150,13 @@ impl EventLoops {
             .submit_task(name, func, param, priority)
             .map_or_else(
                 |_| JoinHandle::err(event_loop),
-                |n| JoinHandle::new(event_loop, n.as_str()),
+                |task_id| JoinHandle::new(event_loop, task_id),
             )
     }
 
     /// Try to cancel a task from event-loop.
-    pub fn try_cancel_task(name: &str) {
-        EventLoop::try_cancel_task(name);
+    pub fn try_cancel_task(task_id: u64) {
+        EventLoop::try_cancel_task(task_id);
     }
 
     /// Submit a new coroutine to event-loop.

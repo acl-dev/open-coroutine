@@ -1,6 +1,7 @@
 use crate::catch;
 use crate::common::ordered_work_steal::Ordered;
 use std::ffi::c_longlong;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// 做C兼容时会用到
 pub type UserTaskFunc = extern "C" fn(usize) -> usize;
@@ -10,6 +11,7 @@ pub type UserTaskFunc = extern "C" fn(usize) -> usize;
 #[derive(educe::Educe)]
 #[educe(Debug)]
 pub struct Task<'t> {
+    id: u64,
     name: String,
     #[educe(Debug(ignore))]
     func: Box<dyn FnOnce(Option<usize>) -> Option<usize> + 't>,
@@ -25,7 +27,11 @@ impl<'t> Task<'t> {
         param: Option<usize>,
         priority: Option<c_longlong>,
     ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        let id = hasher.finish();
         Task {
+            id,
             name,
             func: Box::new(func),
             param,
@@ -35,8 +41,14 @@ impl<'t> Task<'t> {
 
     /// get the task name.
     #[must_use]
-    pub fn get_name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// get the task id.
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     /// execute the task
