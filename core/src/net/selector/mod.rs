@@ -85,6 +85,11 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             I::read(token)
         };
         if READABLE_RECORDS.contains(&fd) {
+            // Refresh TOKEN_FD so select() can route the next event back to
+            // the correct fd.  With consistent tokens the mapping is the same,
+            // but select() removes it after each event.
+            _ = TOKEN_FD.insert(token, fd);
+            _ = READABLE_TOKEN_RECORDS.insert(fd, token);
             return Ok(());
         }
         self.reregister(fd, token, interests)
@@ -103,6 +108,11 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             I::write(token)
         };
         if WRITABLE_RECORDS.contains(&fd) {
+            // Refresh TOKEN_FD so select() can route the next event back to
+            // the correct fd.  With consistent tokens the mapping is the same,
+            // but select() removes it after each event.
+            _ = TOKEN_FD.insert(token, fd);
+            _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
             return Ok(());
         }
         self.reregister(fd, token, interests)
