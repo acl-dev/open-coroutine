@@ -67,11 +67,18 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             let token = event.get_token();
             let fd = TOKEN_FD.remove(&token).map_or(0, |r| r.1);
             if event.readable() {
-                _ = READABLE_RECORDS.remove(&fd);
+                // On Windows there is no closesocket hook, so *_RECORDS must be
+                // cleaned here to prevent stale entries for closed+reused fds.
+                // On Unix the close() hook already calls del_event(), and persistent
+                // edge-triggered epoll means we can skip the removal to avoid an
+                // extra epoll_ctl on every NIO retry.
+                #[cfg(windows)]
+                { _ = READABLE_RECORDS.remove(&fd); }
                 _ = READABLE_TOKEN_RECORDS.remove(&fd);
             }
             if event.writable() {
-                _ = WRITABLE_RECORDS.remove(&fd);
+                #[cfg(windows)]
+                { _ = WRITABLE_RECORDS.remove(&fd); }
                 _ = WRITABLE_TOKEN_RECORDS.remove(&fd);
             }
         }
@@ -82,6 +89,18 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
     /// if add failed.
     fn add_read_event(&self, fd: c_int, token: usize) -> std::io::Result<()> {
         if READABLE_RECORDS.contains(&fd) {
+            // On Unix, the fd is still in epoll with the old token.  Reregister
+            // to update the token so the next event can be routed via TOKEN_FD.
+            #[cfg(unix)]
+            {
+                let interests = if WRITABLE_RECORDS.contains(&fd) {
+                    I::read_and_write(token)
+                } else {
+                    I::read(token)
+                };
+                self.reregister(fd, token, interests)?;
+                _ = READABLE_TOKEN_RECORDS.insert(fd, token);
+            }
             return Ok(());
         }
         if WRITABLE_RECORDS.contains(&fd) {
@@ -102,6 +121,16 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
     /// if add failed.
     fn add_write_event(&self, fd: c_int, token: usize) -> std::io::Result<()> {
         if WRITABLE_RECORDS.contains(&fd) {
+            #[cfg(unix)]
+            {
+                let interests = if READABLE_RECORDS.contains(&fd) {
+                    I::read_and_write(token)
+                } else {
+                    I::write(token)
+                };
+                self.reregister(fd, token, interests)?;
+                _ = WRITABLE_TOKEN_RECORDS.insert(fd, token);
+            }
             return Ok(());
         }
         if READABLE_RECORDS.contains(&fd) {
