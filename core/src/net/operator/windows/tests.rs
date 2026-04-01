@@ -66,7 +66,7 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
     server_started.store(true, Ordering::Release);
 
     operator.accept(
-        token_alloc.insert(Token::Accept),
+        token_alloc.insert(Token::Accept) as _,
         listener.as_raw_socket() as _,
         std::ptr::null_mut(),
         std::ptr::null_mut(),
@@ -77,7 +77,7 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
         let (_, mut cq, _) = operator.select(None, 1)?;
         for cqe in &mut cq {
             let token_index = cqe.token;
-            let token = &mut token_alloc[token_index];
+            let token = &mut token_alloc[token_index as _];
             match token.clone() {
                 Token::Accept => {
                     println!("server accepted");
@@ -107,7 +107,7 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
                     let ret = cqe.result as _;
                     if ret == 0 {
                         bufpool.push(buf_index);
-                        _ = token_alloc.remove(token_index);
+                        _ = token_alloc.remove(token_index as _);
                         println!("shutdown connection1");
                         _ = unsafe { closesocket(fd) };
                         println!("Server closed1");
@@ -149,7 +149,7 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
                             .is_err()
                         {
                             bufpool.push(buf_index);
-                            _ = token_alloc.remove(token_index);
+                            _ = token_alloc.remove(token_index as _);
                             println!("shutdown connection2");
                             _ = unsafe { closesocket(fd) };
                             println!("Server closed2");
