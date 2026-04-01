@@ -7,7 +7,7 @@ pub const DEFAULT_STACK_SIZE: usize = 128 * 1024;
 
 /// A user data used to indicate the timeout of `io_uring_enter`.
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
-pub const IO_URING_TIMEOUT_USERDATA: usize = usize::MAX - 1;
+pub const IO_URING_TIMEOUT_USERDATA: u64 = u64::MAX - 1;
 
 /// Coroutine global queue bean name.
 pub const COROUTINE_GLOBAL_QUEUE_BEAN: &str = "coroutineGlobalQueueBean";

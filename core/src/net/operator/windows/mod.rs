@@ -34,7 +34,7 @@ pub(crate) struct Overlapped {
     #[educe(Debug(ignore))]
     base: OVERLAPPED,
     from_fd: SOCKET,
-    pub token: usize,
+    pub token: u64,
     syscall_name: SyscallName,
     socket: SOCKET,
     pub result: c_longlong,
@@ -194,13 +194,13 @@ impl<'o> Operator<'o> {
     }
 
     #[allow(warnings)]
-    pub(crate) fn async_cancel(&self, user_data: usize) -> std::io::Result<()> {
+    pub(crate) fn async_cancel(&self, user_data: u64) -> std::io::Result<()> {
         todo!("CancelIoEx")
     }
 
     pub(crate) fn accept(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         _address: *mut SOCKADDR,
         _address_len: *mut c_int,
@@ -210,7 +210,7 @@ impl<'o> Operator<'o> {
 
     pub(crate) fn WSAAccept(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         _address: *mut SOCKADDR,
         _address_len: *mut c_int,
@@ -228,7 +228,7 @@ impl<'o> Operator<'o> {
 
     fn acceptex(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         syscall_name: SyscallName,
     ) -> std::io::Result<()> {
@@ -292,7 +292,7 @@ impl<'o> Operator<'o> {
 
     pub(crate) fn recv(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         buf: PSTR,
         len: c_int,
@@ -316,7 +316,7 @@ impl<'o> Operator<'o> {
 
     pub(crate) fn WSARecv(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         buf: *const WSABUF,
         dwbuffercount: c_uint,
@@ -345,7 +345,7 @@ impl<'o> Operator<'o> {
 
     fn wsarecv(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         buf: *const WSABUF,
         dwbuffercount: c_uint,
@@ -385,7 +385,7 @@ impl<'o> Operator<'o> {
 
     pub(crate) fn send(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         buf: PCSTR,
         len: c_int,
@@ -409,7 +409,7 @@ impl<'o> Operator<'o> {
 
     pub(crate) fn WSASend(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         buf: *const WSABUF,
         dwbuffercount: c_uint,
@@ -438,7 +438,7 @@ impl<'o> Operator<'o> {
 
     fn wsasend(
         &self,
-        user_data: usize,
+        user_data: u64,
         fd: SOCKET,
         buf: *const WSABUF,
         dwbuffercount: c_uint,

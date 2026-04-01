@@ -55,26 +55,26 @@ impl Ord for SuspendItem<'_> {
 
 #[repr(C)]
 #[derive(Debug)]
-struct SyscallSuspendItem<'s> {
+struct SyscallSuspendItem {
     timestamp: u64,
-    co_name: &'s str,
+    co_id: u64,
 }
 
-impl PartialEq<Self> for SyscallSuspendItem<'_> {
+impl PartialEq<Self> for SyscallSuspendItem {
     fn eq(&self, other: &Self) -> bool {
         self.timestamp.eq(&other.timestamp)
     }
 }
 
-impl Eq for SyscallSuspendItem<'_> {}
+impl Eq for SyscallSuspendItem {}
 
-impl PartialOrd<Self> for SyscallSuspendItem<'_> {
+impl PartialOrd<Self> for SyscallSuspendItem {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for SyscallSuspendItem<'_> {
+impl Ord for SyscallSuspendItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // BinaryHeap defaults to a large top heap, but we need a small top heap
         other.timestamp.cmp(&self.timestamp)
@@ -82,11 +82,11 @@ impl Ord for SyscallSuspendItem<'_> {
 }
 
 #[cfg(unix)]
-static RUNNING_COROUTINES: Lazy<DashMap<&str, Pthread>> = Lazy::new(DashMap::new);
+static RUNNING_COROUTINES: Lazy<DashMap<u64, Pthread>> = Lazy::new(DashMap::new);
 #[cfg(windows)]
-static RUNNING_COROUTINES: Lazy<DashMap<&str, usize>> = Lazy::new(DashMap::new);
+static RUNNING_COROUTINES: Lazy<DashMap<u64, usize>> = Lazy::new(DashMap::new);
 
-static CANCEL_COROUTINES: Lazy<DashSet<&str>> = Lazy::new(DashSet::new);
+static CANCEL_COROUTINES: Lazy<DashSet<u64>> = Lazy::new(DashSet::new);
 
 /// The scheduler impls.
 #[repr(C)]
@@ -98,8 +98,8 @@ pub struct Scheduler<'s> {
     #[doc = include_str!("../docs/en/ordered-work-steal.md")]
     ready: OrderedLocalQueue<'s, SchedulableCoroutine<'s>>,
     suspend: BinaryHeap<SuspendItem<'s>>,
-    syscall: DashMap<&'s str, SchedulableCoroutine<'s>>,
-    syscall_suspend: BinaryHeap<SyscallSuspendItem<'s>>,
+    syscall: DashMap<u64, SchedulableCoroutine<'s>>,
+    syscall_suspend: BinaryHeap<SyscallSuspendItem>,
 }
 
 impl Default for Scheduler<'_> {
@@ -186,7 +186,7 @@ impl<'s> Scheduler<'s> {
         f: impl FnOnce(&Suspender<(), ()>, ()) -> Option<usize> + 'static,
         stack_size: Option<usize>,
         priority: Option<c_longlong>,
-    ) -> std::io::Result<String> {
+    ) -> std::io::Result<u64> {
         self.submit_raw_co(co!(
             Some(format!("{}@{}", self.name(), uuid::Uuid::new_v4())),
             f,
@@ -204,13 +204,13 @@ impl<'s> Scheduler<'s> {
     ///
     /// Allow multiple threads to concurrently submit coroutine to the scheduler,
     /// but only allow one thread to execute scheduling.
-    pub fn submit_raw_co(&self, mut co: SchedulableCoroutine<'s>) -> std::io::Result<String> {
+    pub fn submit_raw_co(&self, mut co: SchedulableCoroutine<'s>) -> std::io::Result<u64> {
         for listener in self.listeners.clone() {
             co.add_raw_listener(listener);
         }
-        let co_name = co.name().to_string();
+        let co_id = co.id;
         self.ready.push(co);
-        Ok(co_name)
+        Ok(co_id)
     }
 
     /// Resume a coroutine from the syscall table to the ready queue,
@@ -220,8 +220,8 @@ impl<'s> Scheduler<'s> {
     ///
     /// # Errors
     /// if change to ready fails.
-    pub fn try_resume(&self, co_name: &'s str) {
-        if let Some((_, co)) = self.syscall.remove(&co_name) {
+    pub fn try_resume(&self, co_id: u64) {
+        if let Some((_, co)) = self.syscall.remove(&co_id) {
             match co.state() {
                 CoroutineState::Syscall(val, syscall, SyscallState::Suspend(_)) => {
                     co.syscall(val, syscall, SyscallState::Callback)
@@ -240,7 +240,7 @@ impl<'s> Scheduler<'s> {
     ///
     /// # Errors
     /// see `try_timeout_schedule`.
-    pub fn try_schedule(&mut self) -> std::io::Result<HashMap<&str, Result<Option<usize>, &str>>> {
+    pub fn try_schedule(&mut self) -> std::io::Result<HashMap<u64, Result<Option<usize>, &str>>> {
         self.try_timeout_schedule(u64::MAX)
             .map(|(_, results)| results)
     }
@@ -255,7 +255,7 @@ impl<'s> Scheduler<'s> {
     pub fn try_timed_schedule(
         &mut self,
         dur: Duration,
-    ) -> std::io::Result<(u64, HashMap<&str, Result<Option<usize>, &str>>)> {
+    ) -> std::io::Result<(u64, HashMap<u64, Result<Option<usize>, &str>>)> {
         self.try_timeout_schedule(get_timeout_time(dur))
     }
 
@@ -271,7 +271,7 @@ impl<'s> Scheduler<'s> {
     pub fn try_timeout_schedule(
         &mut self,
         timeout_time: u64,
-    ) -> std::io::Result<(u64, HashMap<&str, Result<Option<usize>, &str>>)> {
+    ) -> std::io::Result<(u64, HashMap<u64, Result<Option<usize>, &str>>)> {
         Self::init_current(self);
         let r = self.do_schedule(timeout_time);
         Self::clean_current();
@@ -281,7 +281,7 @@ impl<'s> Scheduler<'s> {
     fn do_schedule(
         &mut self,
         timeout_time: u64,
-    ) -> std::io::Result<(u64, HashMap<&str, Result<Option<usize>, &str>>)> {
+    ) -> std::io::Result<(u64, HashMap<u64, Result<Option<usize>, &str>>)> {
         let mut results = HashMap::new();
         loop {
             let left_time = timeout_time.saturating_sub(now());
@@ -291,10 +291,10 @@ impl<'s> Scheduler<'s> {
             self.check_ready()?;
             // schedule coroutines
             if let Some(mut coroutine) = self.ready.pop() {
-                let co_name = coroutine.name().to_string().leak();
-                if CANCEL_COROUTINES.contains(co_name) {
-                    _ = CANCEL_COROUTINES.remove(co_name);
-                    warn!("Cancel coroutine:{} successfully !", co_name);
+                let co_id = coroutine.id;
+                if CANCEL_COROUTINES.contains(&co_id) {
+                    _ = CANCEL_COROUTINES.remove(&co_id);
+                    warn!("Cancel coroutine:{} successfully !", co_id);
                     continue;
                 }
                 cfg_if::cfg_if! {
@@ -306,17 +306,17 @@ impl<'s> Scheduler<'s> {
                         let current_thread = nix::sys::pthread::pthread_self();
                     }
                 }
-                _ = RUNNING_COROUTINES.insert(co_name, current_thread);
+                _ = RUNNING_COROUTINES.insert(co_id, current_thread);
                 match coroutine.resume().inspect(|_| {
-                    _ = RUNNING_COROUTINES.remove(co_name);
+                    _ = RUNNING_COROUTINES.remove(&co_id);
                 })? {
                     CoroutineState::Syscall((), _, state) => {
                         //挂起协程到系统调用表
                         //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
-                        _ = self.syscall.insert(co_name, coroutine);
+                        _ = self.syscall.insert(co_id, coroutine);
                         if let SyscallState::Suspend(timestamp) = state {
                             self.syscall_suspend
-                                .push(SyscallSuspendItem { timestamp, co_name });
+                                .push(SyscallSuspendItem { timestamp, co_id });
                         }
                     }
                     CoroutineState::Suspend((), timestamp) => {
@@ -334,13 +334,13 @@ impl<'s> Scheduler<'s> {
                     CoroutineState::Cancelled => {}
                     CoroutineState::Complete(result) => {
                         assert!(
-                            results.insert(co_name, Ok(result)).is_none(),
+                            results.insert(co_id, Ok(result)).is_none(),
                             "not consume result"
                         );
                     }
                     CoroutineState::Error(message) => {
                         assert!(
-                            results.insert(co_name, Err(message)).is_none(),
+                            results.insert(co_id, Err(message)).is_none(),
                             "not consume result"
                         );
                     }
@@ -373,7 +373,7 @@ impl<'s> Scheduler<'s> {
                 break;
             }
             if let Some(item) = self.syscall_suspend.pop() {
-                if let Some((_, co)) = self.syscall.remove(item.co_name) {
+                if let Some((_, co)) = self.syscall.remove(&item.co_id) {
                     match co.state() {
                         CoroutineState::Syscall(val, syscall, SyscallState::Suspend(_)) => {
                             co.syscall(val, syscall, SyscallState::Timeout)?;
@@ -388,23 +388,21 @@ impl<'s> Scheduler<'s> {
     }
 
     /// Cancel the coroutine by name.
-    pub fn try_cancel_coroutine(co_name: &str) {
-        _ = CANCEL_COROUTINES.insert(Box::leak(Box::from(co_name)));
+    pub fn try_cancel_coroutine(co_id: u64) {
+        _ = CANCEL_COROUTINES.insert(co_id);
     }
 
     /// Get the scheduling thread of the coroutine.
     #[cfg(unix)]
-    pub fn get_scheduling_thread(co_name: &str) -> Option<Pthread> {
-        let co_name: &str = Box::leak(Box::from(co_name));
-        RUNNING_COROUTINES.get(co_name).map(|r| *r)
+    pub fn get_scheduling_thread(co_id: u64) -> Option<Pthread> {
+        RUNNING_COROUTINES.get(&co_id).map(|r| *r)
     }
 
     /// Get the scheduling thread of the coroutine.
     #[cfg(windows)]
-    pub fn get_scheduling_thread(co_name: &str) -> Option<windows_sys::Win32::Foundation::HANDLE> {
-        let co_name: &str = Box::leak(Box::from(co_name));
+    pub fn get_scheduling_thread(co_id: u64) -> Option<windows_sys::Win32::Foundation::HANDLE> {
         RUNNING_COROUTINES
-            .get(co_name)
+            .get(&co_id)
             .map(|r| *r as windows_sys::Win32::Foundation::HANDLE)
     }
 }
@@ -420,7 +418,7 @@ mod tests {
         for timestamp in (0..10).rev() {
             heap.push(SyscallSuspendItem {
                 timestamp,
-                co_name: "test",
+                co_id: 1,
             });
         }
         for timestamp in 0..10 {

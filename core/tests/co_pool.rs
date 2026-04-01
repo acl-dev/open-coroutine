@@ -80,14 +80,14 @@ fn co_pool_cancel() -> std::io::Result<()> {
     let mut pool = open_coroutine_core::co_pool::CoroutinePool::default();
     pool.set_max_size(1);
     assert!(pool.is_empty());
-    let task_name = pool.submit_task(
+    let task_id = pool.submit_task(
         Some(String::from("test_panic")),
         |_| panic!("test panic, just ignore it"),
         None,
         None,
     )?;
     assert!(!pool.is_empty());
-    open_coroutine_core::co_pool::CoroutinePool::try_cancel_task(&task_name);
+    open_coroutine_core::co_pool::CoroutinePool::try_cancel_task(task_id);
     pool.submit_task(
         Some(String::from("test_simple")),
         |_| {

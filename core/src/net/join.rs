@@ -1,5 +1,4 @@
 use crate::net::event_loop::EventLoop;
-use std::ffi::{c_char, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,12 +6,12 @@ use std::time::Duration;
 #[allow(missing_docs)]
 #[repr(C)]
 #[derive(Debug)]
-pub struct JoinHandle(&'static Arc<EventLoop<'static>>, *const c_char);
+pub struct JoinHandle(&'static Arc<EventLoop<'static>>, u64);
 
 impl Drop for JoinHandle {
     fn drop(&mut self) {
-        if let Ok(name) = self.get_name() {
-            self.0.clean_task_result(name);
+        if let Ok(task_id) = self.id() {
+            self.0.clean_task_result(task_id);
         }
     }
 }
@@ -20,26 +19,23 @@ impl Drop for JoinHandle {
 impl JoinHandle {
     /// create `JoinHandle` instance.
     pub(crate) fn err(pool: &'static Arc<EventLoop<'static>>) -> Self {
-        Self::new(pool, "")
+        Self::new(pool, 0)
     }
 
     /// create `JoinHandle` instance.
-    pub(crate) fn new(pool: &'static Arc<EventLoop<'static>>, name: &str) -> Self {
-        let boxed: &'static mut CString = Box::leak(Box::from(
-            CString::new(name).expect("init JoinHandle failed!"),
-        ));
-        let cstr: &'static CStr = boxed.as_c_str();
-        JoinHandle(pool, cstr.as_ptr())
+    pub(crate) fn new(pool: &'static Arc<EventLoop<'static>>, task_id: u64) -> Self {
+        JoinHandle(pool, task_id)
     }
 
-    /// get the task name.
+    /// get the task id.
     ///
     /// # Errors
-    /// if the task name is invalid.
-    pub fn get_name(&self) -> std::io::Result<&str> {
-        unsafe { CStr::from_ptr(self.1) }
-            .to_str()
-            .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid task name"))
+    /// if the task id is invalid.
+    pub fn id(&self) -> std::io::Result<u64> {
+        if 0 == self.1 {
+            return Err(Error::new(ErrorKind::InvalidInput, "Invalid task id"));
+        }
+        Ok(self.1)
     }
 
     /// join with `Duration`.
@@ -66,12 +62,9 @@ impl JoinHandle {
         &self,
         timeout_time: u64,
     ) -> std::io::Result<Result<Option<usize>, &str>> {
-        let name = self.get_name()?;
-        if name.is_empty() {
-            return Err(Error::new(ErrorKind::InvalidInput, "Invalid task name"));
-        }
+        let task_id = self.id()?;
         self.0.wait_task_result(
-            name,
+            task_id,
             Duration::from_nanos(timeout_time.saturating_sub(crate::common::now())),
         )
     }

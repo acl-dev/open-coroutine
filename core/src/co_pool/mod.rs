@@ -26,10 +26,10 @@ mod state;
 /// Creator for coroutine pool.
 mod creator;
 
-/// `task_name` -> `co_name`
-static RUNNING_TASKS: Lazy<DashMap<&str, &str>> = Lazy::new(DashMap::new);
+/// `task_id` -> `co_id`
+static RUNNING_TASKS: Lazy<DashMap<u64, u64>> = Lazy::new(DashMap::new);
 
-static CANCEL_TASKS: Lazy<DashSet<&str>> = Lazy::new(DashSet::new);
+static CANCEL_TASKS: Lazy<DashSet<u64>> = Lazy::new(DashSet::new);
 
 /// The coroutine pool impls.
 #[repr(C)]
@@ -55,10 +55,10 @@ pub struct CoroutinePool<'p> {
     //阻滞器
     blocker: Arc<CondvarBlocker>,
     //正在等待结果的
-    waits: DashMap<&'p str, Arc<(Mutex<bool>, Condvar)>>,
+    waits: DashMap<u64, Arc<(Mutex<bool>, Condvar)>>,
     //任务执行结果
-    results: DashMap<String, Result<Option<usize>, &'p str>>,
-    no_waits: DashSet<&'p str>,
+    results: DashMap<u64, Result<Option<usize>, &'p str>>,
+    no_waits: DashSet<u64>,
 }
 
 impl Drop for CoroutinePool<'_> {
@@ -188,7 +188,7 @@ impl<'p> CoroutinePool<'p> {
 
     /// Returns `true` if the task queue is empty.
     pub fn is_empty(&self) -> bool {
-        self.size() == 0
+        self.task_queue.is_empty()
     }
 
     /// Returns the number of tasks owned by this pool.
@@ -210,7 +210,14 @@ impl<'p> CoroutinePool<'p> {
     }
 
     fn do_stop(&mut self, dur: Duration) -> std::io::Result<()> {
-        _ = self.try_timed_schedule_task(dur)?;
+        let timeout_time = get_timeout_time(dur);
+        loop {
+            _ = self.try_timeout_schedule_task(timeout_time)?;
+            if self.get_running_size() == 0 || timeout_time.saturating_sub(now()) == 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
         assert_eq!(PoolState::Stopping, self.stopped()?);
         self.do_clean();
         Ok(())
@@ -219,11 +226,11 @@ impl<'p> CoroutinePool<'p> {
     fn do_clean(&mut self) {
         // clean up remaining wait tasks
         for r in &self.waits {
-            let task_name = *r.key();
+            let task_id = *r.key();
             _ = self
                 .results
-                .insert(task_name.to_string(), Err("The coroutine pool has stopped"));
-            self.notify(task_name);
+                .insert(task_id, Err("The coroutine pool has stopped"));
+            self.notify(task_id);
         }
     }
 
@@ -237,16 +244,22 @@ impl<'p> CoroutinePool<'p> {
         func: impl FnOnce(Option<usize>) -> Option<usize> + 'p,
         param: Option<usize>,
         priority: Option<c_longlong>,
-    ) -> std::io::Result<String> {
+    ) -> std::io::Result<u64> {
         match self.state() {
             PoolState::Running => {}
             PoolState::Stopping | PoolState::Stopped => {
                 return Err(Error::other("The coroutine pool is stopping or stopped !"))
             }
         }
-        let name = name.unwrap_or(format!("{}@{}", self.name(), uuid::Uuid::new_v4()));
-        self.submit_raw_task(Task::new(name.clone(), func, param, priority));
-        Ok(name)
+        let task = Task::new(
+            name.unwrap_or(format!("{}@{}", self.name(), uuid::Uuid::new_v4())),
+            func,
+            param,
+            priority,
+        );
+        let task_id = task.id();
+        self.submit_raw_task(task);
+        Ok(task_id)
     }
 
     /// Submit new task to this pool.
@@ -258,40 +271,39 @@ impl<'p> CoroutinePool<'p> {
         self.blocker.notify();
     }
 
-    /// Attempt to obtain task results with the given `task_name`.
-    pub fn try_take_task_result(&self, task_name: &str) -> Option<Result<Option<usize>, &'p str>> {
-        self.results.remove(task_name).map(|(_, r)| r)
+    /// Attempt to obtain task results with the given `task_id`.
+    pub fn try_take_task_result(&self, task_id: u64) -> Option<Result<Option<usize>, &'p str>> {
+        self.results.remove(&task_id).map(|(_, r)| r)
     }
 
     /// clean the task result data.
-    pub fn clean_task_result(&self, task_name: &str) {
-        if self.try_take_task_result(task_name).is_some() {
+    pub fn clean_task_result(&self, task_id: u64) {
+        if self.try_take_task_result(task_id).is_some() {
             return;
         }
-        _ = self.no_waits.insert(Box::leak(Box::from(task_name)));
-        _ = CANCEL_TASKS.remove(task_name);
+        _ = self.no_waits.insert(task_id);
+        _ = CANCEL_TASKS.remove(&task_id);
     }
 
-    /// Use the given `task_name` to obtain task results, and if no results are found,
+    /// Use the given `task_id` to obtain task results, and if no results are found,
     /// block the current thread for `wait_time`.
     ///
     /// # Errors
     /// if timeout
     pub fn wait_task_result(
         &self,
-        task_name: &str,
+        task_id: u64,
         wait_time: Duration,
     ) -> std::io::Result<Result<Option<usize>, &str>> {
-        let key = Box::leak(Box::from(task_name));
-        if let Some(r) = self.try_take_task_result(key) {
-            self.notify(key);
+        if let Some(r) = self.try_take_task_result(task_id) {
+            self.notify(task_id);
             return Ok(r);
         }
         if SchedulableCoroutine::current().is_some() {
             let timeout_time = get_timeout_time(wait_time);
             loop {
                 _ = self.try_run();
-                if let Some(r) = self.try_take_task_result(key) {
+                if let Some(r) = self.try_take_task_result(task_id) {
                     return Ok(r);
                 }
                 if timeout_time.saturating_sub(now()) == 0 {
@@ -299,11 +311,11 @@ impl<'p> CoroutinePool<'p> {
                 }
             }
         }
-        let arc = if let Some(arc) = self.waits.get(key) {
+        let arc = if let Some(arc) = self.waits.get(&task_id) {
             arc.clone()
         } else {
             let arc = Arc::new((Mutex::new(true), Condvar::new()));
-            assert!(self.waits.insert(key, arc.clone()).is_none());
+            assert!(self.waits.insert(task_id, arc.clone()).is_none());
             arc
         };
         let (lock, cvar) = &*arc;
@@ -315,8 +327,8 @@ impl<'p> CoroutinePool<'p> {
             )
             .map_err(|e| Error::other(format!("{e}")))?,
         );
-        if let Some(r) = self.try_take_task_result(key) {
-            self.notify(key);
+        if let Some(r) = self.try_take_task_result(task_id) {
+            self.notify(task_id);
             return Ok(r);
         }
         Err(Error::new(ErrorKind::TimedOut, "wait timeout"))
@@ -402,32 +414,31 @@ impl<'p> CoroutinePool<'p> {
 
     fn try_run(&self) -> Option<()> {
         self.task_queue.pop().map(|task| {
-            let tname = task.get_name().to_string().leak();
-            if CANCEL_TASKS.contains(tname) {
-                _ = CANCEL_TASKS.remove(tname);
-                warn!("Cancel task:{} successfully !", tname);
+            let task_id = task.id();
+            if CANCEL_TASKS.contains(&task_id) {
+                _ = CANCEL_TASKS.remove(&task_id);
+                warn!("Cancel task:{} successfully !", task_id);
                 return;
             }
             if let Some(co) = SchedulableCoroutine::current() {
-                _ = RUNNING_TASKS.insert(tname, co.name());
+                _ = RUNNING_TASKS.insert(task_id, co.id);
             }
-            let (task_name, result) = task.run();
-            _ = RUNNING_TASKS.remove(tname);
-            let n = task_name.clone().leak();
-            if self.no_waits.contains(n) {
-                _ = self.no_waits.remove(n);
+            let (_, result) = task.run();
+            _ = RUNNING_TASKS.remove(&task_id);
+            if self.no_waits.contains(&task_id) {
+                _ = self.no_waits.remove(&task_id);
                 return;
             }
             assert!(
-                self.results.insert(task_name.clone(), result).is_none(),
+                self.results.insert(task_id, result).is_none(),
                 "The previous result was not retrieved in a timely manner"
             );
-            self.notify(&task_name);
+            self.notify(task_id);
         })
     }
 
-    fn notify(&self, task_name: &str) {
-        if let Some((_, arc)) = self.waits.remove(task_name) {
+    fn notify(&self, task_id: u64) {
+        if let Some((_, arc)) = self.waits.remove(&task_id) {
             let (lock, cvar) = &*arc;
             let mut pending = lock.lock().expect("notify task failed");
             *pending = false;
@@ -436,9 +447,9 @@ impl<'p> CoroutinePool<'p> {
     }
 
     /// Try to cancel a task.
-    pub fn try_cancel_task(task_name: &str) {
+    pub fn try_cancel_task(task_id: u64) {
         // 检查正在运行的任务是否是要取消的任务
-        if let Some(info) = RUNNING_TASKS.get(task_name) {
+        if let Some(info) = RUNNING_TASKS.get(&task_id) {
             let co_name = *info;
             // todo windows support
             #[allow(unused_variables)]
@@ -450,12 +461,12 @@ impl<'p> CoroutinePool<'p> {
                 {
                     warn!(
                         "Attempt to cancel task:{} running on coroutine:{} by thread:{}, cancelling...",
-                        task_name, co_name, pthread
+                        task_id, co_name, pthread
                     );
                 } else {
                     error!(
                         "Attempt to cancel task:{} running on coroutine:{} by thread:{} failed !",
-                        task_name, co_name, pthread
+                        task_id, co_name, pthread
                     );
                 }
             } else {
@@ -463,13 +474,13 @@ impl<'p> CoroutinePool<'p> {
                 Scheduler::try_cancel_coroutine(co_name);
                 warn!(
                     "Attempt to cancel task:{} running on coroutine:{}, cancelling...",
-                    task_name, co_name
+                    task_id, co_name
                 );
             }
         } else {
             // 添加到待取消队列
-            _ = CANCEL_TASKS.insert(Box::leak(Box::from(task_name)));
-            warn!("Attempt to cancel task:{}, cancelling...", task_name);
+            _ = CANCEL_TASKS.insert(task_id);
+            warn!("Attempt to cancel task:{}, cancelling...", task_id);
         }
     }
 

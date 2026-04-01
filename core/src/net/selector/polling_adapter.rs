@@ -7,23 +7,36 @@ use std::time::Duration;
 
 pub(crate) type Events = Vec<Event>;
 
+#[allow(clippy::cast_possible_truncation)]
 impl super::Interest for Event {
-    fn read(token: usize) -> Self {
-        Event::readable(token)
+    fn read(token: u64) -> Self {
+        Event::readable(
+            ((token >> 32) as u32 ^ token as u32)
+                .try_into()
+                .expect("token overflow"),
+        )
     }
 
-    fn write(token: usize) -> Self {
-        Event::writable(token)
+    fn write(token: u64) -> Self {
+        Event::writable(
+            ((token >> 32) as u32 ^ token as u32)
+                .try_into()
+                .expect("token overflow"),
+        )
     }
 
-    fn read_and_write(token: usize) -> Self {
-        Event::all(token)
+    fn read_and_write(token: u64) -> Self {
+        Event::all(
+            ((token >> 32) as u32 ^ token as u32)
+                .try_into()
+                .expect("token overflow"),
+        )
     }
 }
 
 impl super::Event for Event {
-    fn get_token(&self) -> usize {
-        self.key
+    fn get_token(&self) -> u64 {
+        self.key as u64
     }
 
     fn readable(&self) -> bool {
@@ -89,7 +102,7 @@ impl super::Selector<Event, Event, Events> for Poller {
         self.wait(events, timeout).map(|_| ())
     }
 
-    fn do_register(&self, fd: c_int, _: usize, interests: Event) -> std::io::Result<()> {
+    fn do_register(&self, fd: c_int, _: u64, interests: Event) -> std::io::Result<()> {
         cfg_if::cfg_if! {
             if #[cfg(windows)] {
                 let source = std::os::windows::io::RawSocket::from(u32::try_from(fd).expect("overflow"));
@@ -108,7 +121,7 @@ impl super::Selector<Event, Event, Events> for Poller {
         )
     }
 
-    fn do_reregister(&self, fd: c_int, _: usize, interests: Event) -> std::io::Result<()> {
+    fn do_reregister(&self, fd: c_int, _: u64, interests: Event) -> std::io::Result<()> {
         cfg_if::cfg_if! {
             if #[cfg(windows)] {
                 let source = std::os::windows::io::RawSocket::from(u32::try_from(fd).expect("overflow"));
@@ -127,7 +140,7 @@ impl super::Selector<Event, Event, Events> for Poller {
         )
     }
 
-    fn do_deregister(&self, fd: c_int, _: usize) -> std::io::Result<()> {
+    fn do_deregister(&self, fd: c_int, _: u64) -> std::io::Result<()> {
         cfg_if::cfg_if! {
             if #[cfg(windows)] {
                 let source = std::os::windows::io::RawSocket::from(u32::try_from(fd).expect("overflow"));

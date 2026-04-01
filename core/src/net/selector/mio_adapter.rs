@@ -9,22 +9,22 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 impl super::Interest for Interest {
-    fn read(_: usize) -> Self {
+    fn read(_: u64) -> Self {
         Interest::READABLE
     }
 
-    fn write(_: usize) -> Self {
+    fn write(_: u64) -> Self {
         Interest::WRITABLE
     }
 
-    fn read_and_write(_: usize) -> Self {
+    fn read_and_write(_: u64) -> Self {
         Interest::READABLE.add(Interest::WRITABLE)
     }
 }
 
 impl super::Event for Event {
-    fn get_token(&self) -> usize {
-        self.token().0
+    fn get_token(&self) -> u64 {
+        self.token().0 as u64
     }
 
     fn readable(&self) -> bool {
@@ -87,17 +87,33 @@ impl super::Selector<Interest, Event, Events> for Poller {
         inner.poll(events, timeout)
     }
 
-    fn do_register(&self, fd: c_int, token: usize, interests: Interest) -> std::io::Result<()> {
-        self.registry()
-            .register(&mut SourceFd(&fd), Token(token), interests)
+    #[allow(clippy::cast_possible_truncation)]
+    fn do_register(&self, fd: c_int, token: u64, interests: Interest) -> std::io::Result<()> {
+        self.registry().register(
+            &mut SourceFd(&fd),
+            Token(
+                ((token >> 32) as u32 ^ token as u32)
+                    .try_into()
+                    .expect("token overflow"),
+            ),
+            interests,
+        )
     }
 
-    fn do_reregister(&self, fd: c_int, token: usize, interests: Interest) -> std::io::Result<()> {
-        self.registry()
-            .reregister(&mut SourceFd(&fd), Token(token), interests)
+    #[allow(clippy::cast_possible_truncation)]
+    fn do_reregister(&self, fd: c_int, token: u64, interests: Interest) -> std::io::Result<()> {
+        self.registry().reregister(
+            &mut SourceFd(&fd),
+            Token(
+                ((token >> 32) as u32 ^ token as u32)
+                    .try_into()
+                    .expect("token overflow"),
+            ),
+            interests,
+        )
     }
 
-    fn do_deregister(&self, fd: c_int, _: usize) -> std::io::Result<()> {
+    fn do_deregister(&self, fd: c_int, _: u64) -> std::io::Result<()> {
         self.registry().deregister(&mut SourceFd(&fd))
     }
 }

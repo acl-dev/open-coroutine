@@ -31,12 +31,12 @@ struct AcceptCount {
 }
 
 impl AcceptCount {
-    fn new(fd: RawFd, token: usize, count: usize) -> AcceptCount {
+    fn new(fd: RawFd, token: u64, count: usize) -> AcceptCount {
         AcceptCount {
             entry: opcode::Accept::new(types::Fd(fd), ptr::null_mut(), ptr::null_mut())
                 .flags(libc::SOCK_CLOEXEC)
                 .build()
-                .user_data(token as _),
+                .user_data(token),
             count,
         }
     }
@@ -72,7 +72,11 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
 
     let (submitter, mut sq, mut cq) = ring.split();
 
-    let mut accept = AcceptCount::new(listener.as_raw_fd(), token_alloc.insert(Token::Accept), 1);
+    let mut accept = AcceptCount::new(
+        listener.as_raw_fd(),
+        token_alloc.insert(Token::Accept) as _,
+        1,
+    );
 
     accept.push_to(&mut sq);
 
@@ -107,18 +111,18 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
 
         for cqe in &mut cq {
             let ret = cqe.result();
-            let token_index = cqe.user_data() as usize;
+            let token_index = cqe.user_data();
 
             if ret < 0 {
                 eprintln!(
                     "token {:?} error: {:?}",
-                    token_alloc.get(token_index),
+                    token_alloc.get(token_index as _),
                     io::Error::from_raw_os_error(-ret)
                 );
                 continue;
             }
 
-            let token = &mut token_alloc[token_index];
+            let token = &mut token_alloc[token_index as _];
             match token.clone() {
                 Token::Accept => {
                     println!("accept");
@@ -140,7 +144,7 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
 
                     let read_e = opcode::Recv::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as _)
                         .build()
-                        .user_data(token_index as _);
+                        .user_data(token_index);
 
                     unsafe {
                         if sq.push(&read_e).is_err() {
@@ -151,7 +155,7 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
                 Token::Read { fd, buf_index } => {
                     if ret == 0 {
                         bufpool.push(buf_index);
-                        _ = token_alloc.remove(token_index);
+                        _ = token_alloc.remove(token_index as _);
                         println!("shutdown connection");
                         unsafe { _ = libc::close(fd) };
 
@@ -170,7 +174,7 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
 
                         let write_e = opcode::Send::new(types::Fd(fd), buf.as_ptr(), len as _)
                             .build()
-                            .user_data(token_index as _);
+                            .user_data(token_index);
 
                         unsafe {
                             if sq.push(&write_e).is_err() {
@@ -204,7 +208,7 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
 
                         opcode::Recv::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as _)
                             .build()
-                            .user_data(token_index as _)
+                            .user_data(token_index)
                     } else {
                         let offset = offset + write_len;
                         let len = len - offset;
@@ -220,7 +224,7 @@ fn crate_server(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()
 
                         opcode::Write::new(types::Fd(fd), buf.as_ptr(), len as _)
                             .build()
-                            .user_data(token_index as _)
+                            .user_data(token_index)
                     };
 
                     unsafe {
@@ -289,7 +293,7 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
     server_started.store(true, Ordering::Release);
 
     operator.accept4(
-        token_alloc.insert(Token::Accept),
+        token_alloc.insert(Token::Accept) as _,
         listener.as_raw_fd(),
         ptr::null_mut(),
         ptr::null_mut(),
@@ -301,18 +305,18 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
 
         for cqe in &mut cq {
             let ret = cqe.result();
-            let token_index = cqe.user_data() as usize;
+            let token_index = cqe.user_data();
 
             if ret < 0 {
                 eprintln!(
                     "token {:?} error: {:?}",
-                    token_alloc.get(token_index),
+                    token_alloc.get(token_index as _),
                     io::Error::from_raw_os_error(-ret)
                 );
                 continue;
             }
 
-            let token = &mut token_alloc[token_index];
+            let token = &mut token_alloc[token_index as _];
             match token.clone() {
                 Token::Accept => {
                     println!("accept");
@@ -335,7 +339,7 @@ fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<(
                 Token::Read { fd, buf_index } => {
                     if ret == 0 {
                         bufpool.push(buf_index);
-                        _ = token_alloc.remove(token_index);
+                        _ = token_alloc.remove(token_index as _);
                         println!("shutdown connection");
                         unsafe { _ = libc::close(fd) };
 

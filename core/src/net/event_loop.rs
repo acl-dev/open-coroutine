@@ -7,7 +7,8 @@ use crate::{error, impl_current_for, impl_display_by_debug, info};
 use dashmap::DashSet;
 use once_cell::sync::Lazy;
 use rand::RngExt;
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::c_int;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
@@ -20,7 +21,7 @@ cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
         use dashmap::DashMap;
         use libc::{epoll_event, iovec, mode_t, msghdr, off_t, size_t, sockaddr, socklen_t};
-        use std::ffi::{c_longlong, c_uint};
+        use std::ffi::{c_char, c_longlong, c_uint, c_void};
     }
 }
 
@@ -52,7 +53,7 @@ pub(crate) struct EventLoop<'e> {
         all(target_os = "linux", feature = "io_uring"),
         all(windows, feature = "iocp")
     ))]
-    syscall_wait_table: DashMap<usize, Arc<(Mutex<Option<c_longlong>>, Condvar)>>,
+    syscall_wait_table: DashMap<u64, Arc<(Mutex<Option<c_longlong>>, Condvar)>>,
     selector: Poller,
     pool: CoroutinePool<'e>,
     phantom_data: PhantomData<&'e EventLoop<'e>>,
@@ -104,7 +105,7 @@ impl Default for EventLoop<'_> {
     }
 }
 
-static COROUTINE_TOKENS: Lazy<DashSet<usize>> = Lazy::new(DashSet::new);
+static COROUTINE_TOKENS: Lazy<DashSet<u64>> = Lazy::new(DashSet::new);
 
 impl<'e> EventLoop<'e> {
     pub(super) fn new(
@@ -137,21 +138,19 @@ impl<'e> EventLoop<'e> {
     }
 
     /// Try to cancel a task from `CoroutinePool`.
-    pub(super) fn try_cancel_task(name: &str) {
-        CoroutinePool::try_cancel_task(name);
+    pub(super) fn try_cancel_task(task_id: u64) {
+        CoroutinePool::try_cancel_task(task_id);
     }
 
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
-    fn token(syscall: SyscallName) -> usize {
+    fn token(syscall: SyscallName) -> u64 {
+        // Coroutine path: consistent hash of (coroutine_name).
         if let Some(co) = SchedulableCoroutine::current() {
-            let boxed: &'static mut CString = Box::leak(Box::from(
-                CString::new(co.name()).expect("build name failed!"),
-            ));
-            let cstr: &'static CStr = boxed.as_c_str();
-            let token = cstr.as_ptr().cast::<c_void>() as usize;
-            assert!(COROUTINE_TOKENS.insert(token));
-            return token;
+            let co_id = co.id();
+            _ = COROUTINE_TOKENS.insert(co_id);
+            return co_id;
         }
+        // Thread path: consistent hash of (thread_id, syscall_name).
         unsafe {
             cfg_if::cfg_if! {
                 if #[cfg(windows)] {
@@ -160,8 +159,10 @@ impl<'e> EventLoop<'e> {
                     let thread_id = libc::pthread_self();
                 }
             }
-            let syscall_mask = <SyscallName as Into<&str>>::into(syscall).as_ptr() as usize;
-            let token = thread_id as usize ^ syscall_mask;
+            let mut hasher = DefaultHasher::new();
+            (thread_id as usize).hash(&mut hasher);
+            std::mem::discriminant(&syscall).hash(&mut hasher);
+            let token = hasher.finish();
             if SyscallName::nio() != syscall {
                 eprintln!("generate token:{token} for {syscall}");
             }
@@ -303,7 +304,7 @@ impl<'e> EventLoop<'e> {
             // have already consumed all pending SQEs, making `_count == 0` even
             // when completed CQEs are sitting in the completion queue.
             for cqe in &mut cq {
-                let token = usize::try_from(cqe.user_data()).expect("token overflow");
+                let token = cqe.user_data();
                 if crate::common::constants::IO_URING_TIMEOUT_USERDATA == token {
                     continue;
                 }
@@ -346,13 +347,11 @@ impl<'e> EventLoop<'e> {
         Ok(left_time)
     }
 
-    unsafe fn resume(&self, token: usize) {
+    unsafe fn resume(&self, token: u64) {
         if COROUTINE_TOKENS.remove(&token).is_none() {
             return;
         }
-        if let Ok(co_name) = CStr::from_ptr((token as *const c_void).cast::<c_char>()).to_str() {
-            self.try_resume(co_name);
-        }
+        self.try_resume(token);
     }
 
     pub(super) fn start(self) -> std::io::Result<Arc<Self>>

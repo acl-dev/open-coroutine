@@ -9,19 +9,19 @@ use std::time::Duration;
 /// Interest abstraction.
 pub(crate) trait Interest: Copy {
     /// create a readable interest.
-    fn read(token: usize) -> Self;
+    fn read(token: u64) -> Self;
 
     /// create a writable interest.
-    fn write(token: usize) -> Self;
+    fn write(token: u64) -> Self;
 
     /// create an interest both readable and writable.
-    fn read_and_write(token: usize) -> Self;
+    fn read_and_write(token: u64) -> Self;
 }
 
 /// Event abstraction.
 pub(crate) trait Event {
     /// get the token.
-    fn get_token(&self) -> usize;
+    fn get_token(&self) -> u64;
 
     /// readable or not.
     fn readable(&self) -> bool;
@@ -30,15 +30,15 @@ pub(crate) trait Event {
     fn writable(&self) -> bool;
 }
 
-static TOKEN_FD: Lazy<DashMap<usize, c_int>> = Lazy::new(DashMap::new);
+static TOKEN_FD: Lazy<DashMap<u64, c_int>> = Lazy::new(DashMap::new);
 
 static READABLE_RECORDS: Lazy<DashSet<c_int>> = Lazy::new(DashSet::new);
 
-static READABLE_TOKEN_RECORDS: Lazy<DashMap<c_int, usize>> = Lazy::new(DashMap::new);
+static READABLE_TOKEN_RECORDS: Lazy<DashMap<c_int, u64>> = Lazy::new(DashMap::new);
 
 static WRITABLE_RECORDS: Lazy<DashSet<c_int>> = Lazy::new(DashSet::new);
 
-static WRITABLE_TOKEN_RECORDS: Lazy<DashMap<c_int, usize>> = Lazy::new(DashMap::new);
+static WRITABLE_TOKEN_RECORDS: Lazy<DashMap<c_int, u64>> = Lazy::new(DashMap::new);
 
 /// Events abstraction.
 pub(crate) trait EventIterator<E: Event> {
@@ -78,7 +78,7 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
 
     /// # Errors
     /// if add failed.
-    fn add_read_event(&self, fd: c_int, token: usize) -> std::io::Result<()> {
+    fn add_read_event(&self, fd: c_int, token: u64) -> std::io::Result<()> {
         if READABLE_RECORDS.contains(&fd) {
             return Ok(());
         }
@@ -86,7 +86,7 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             //同时对读写事件感兴趣
             let interests = I::read_and_write(token);
             self.reregister(fd, token, interests)
-                .or(self.register(fd, token, interests))
+                .or_else(|_| self.register(fd, token, interests))
         } else {
             self.register(fd, token, I::read(token))
         }?;
@@ -97,7 +97,7 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
 
     /// # Errors
     /// if add failed.
-    fn add_write_event(&self, fd: c_int, token: usize) -> std::io::Result<()> {
+    fn add_write_event(&self, fd: c_int, token: u64) -> std::io::Result<()> {
         if WRITABLE_RECORDS.contains(&fd) {
             return Ok(());
         }
@@ -105,7 +105,7 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
             //同时对读写事件感兴趣
             let interests = I::read_and_write(token);
             self.reregister(fd, token, interests)
-                .or(self.register(fd, token, interests))
+                .or_else(|_| self.register(fd, token, interests))
         } else {
             self.register(fd, token, I::write(token))
         }?;
@@ -176,21 +176,21 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
     }
 
     /// For inner use.
-    fn register(&self, fd: c_int, token: usize, interests: I) -> std::io::Result<()> {
+    fn register(&self, fd: c_int, token: u64, interests: I) -> std::io::Result<()> {
         self.do_register(fd, token, interests).map(|()| {
             _ = TOKEN_FD.insert(token, fd);
         })
     }
 
     /// For inner use.
-    fn reregister(&self, fd: c_int, token: usize, interests: I) -> std::io::Result<()> {
+    fn reregister(&self, fd: c_int, token: u64, interests: I) -> std::io::Result<()> {
         self.do_reregister(fd, token, interests).map(|()| {
             _ = TOKEN_FD.insert(token, fd);
         })
     }
 
     /// For inner use.
-    fn deregister(&self, fd: c_int, token: usize) -> std::io::Result<()> {
+    fn deregister(&self, fd: c_int, token: u64) -> std::io::Result<()> {
         self.do_deregister(fd, token).map(|()| {
             _ = TOKEN_FD.remove(&token);
         })
@@ -206,13 +206,13 @@ pub(crate) trait Selector<I: Interest, E: Event, S: EventIterator<E>> {
     fn do_select(&self, events: &mut S, timeout: Option<Duration>) -> std::io::Result<()>;
 
     /// For inner impls.
-    fn do_register(&self, fd: c_int, token: usize, interests: I) -> std::io::Result<()>;
+    fn do_register(&self, fd: c_int, token: u64, interests: I) -> std::io::Result<()>;
 
     /// For inner impls.
-    fn do_reregister(&self, fd: c_int, token: usize, interests: I) -> std::io::Result<()>;
+    fn do_reregister(&self, fd: c_int, token: u64, interests: I) -> std::io::Result<()>;
 
     /// For inner impls.
-    fn do_deregister(&self, fd: c_int, token: usize) -> std::io::Result<()>;
+    fn do_deregister(&self, fd: c_int, token: u64) -> std::io::Result<()>;
 }
 
 #[cfg(unix)]
