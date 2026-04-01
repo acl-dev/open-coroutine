@@ -149,18 +149,18 @@ impl<'e> EventLoop<'e> {
     #[allow(trivial_numeric_casts, clippy::cast_possible_truncation)]
     fn token(syscall: SyscallName) -> usize {
         if let Some(co) = SchedulableCoroutine::current() {
-            let name = co.name().to_string();
+            let name = co.name();
             // Return cached token for this coroutine so every NIO retry uses
             // the same value — keeping TOKEN_FD in sync with epoll.
-            let token = if let Some(cached) = COROUTINE_TOKEN_CACHE.get(&name) {
+            let token = if let Some(cached) = COROUTINE_TOKEN_CACHE.get(name) {
                 *cached.value()
             } else {
                 let boxed: &'static mut CString = Box::leak(Box::from(
-                    CString::new(name.clone()).expect("build name failed!"),
+                    CString::new(name).expect("build name failed!"),
                 ));
                 let cstr: &'static CStr = boxed.as_c_str();
                 let t = cstr.as_ptr().cast::<c_void>() as usize;
-                _ = COROUTINE_TOKEN_CACHE.insert(name, t);
+                _ = COROUTINE_TOKEN_CACHE.insert(name.to_string(), t);
                 t
             };
             // May already be present after a timeout-based resume (no resume()
@@ -179,7 +179,7 @@ impl<'e> EventLoop<'e> {
             }
             let mut hasher = DefaultHasher::new();
             (thread_id as usize).hash(&mut hasher);
-            format!("{syscall}").hash(&mut hasher);
+            std::mem::discriminant(&syscall).hash(&mut hasher);
             let token = hasher.finish() as usize;
             if SyscallName::nio() != syscall {
                 eprintln!("generate token:{token} for {syscall}");
