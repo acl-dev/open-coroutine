@@ -24,9 +24,11 @@ cfg_if::cfg_if! {
         };
         use windows_sys::Win32::System::Threading::{
             GetCurrentProcess, GetCurrentThread,
-            SuspendThread, ResumeThread, GetThreadContext, SetThreadContext,
+            SuspendThread, ResumeThread,
         };
-        use windows_sys::Win32::System::Diagnostics::Debug::CONTEXT;
+        use windows_sys::Win32::System::Diagnostics::Debug::{
+            CONTEXT, GetThreadContext, SetThreadContext,
+        };
     }
 }
 
@@ -490,7 +492,7 @@ impl Monitor {
                 };
             } else if #[cfg(windows)] {
                 let node = unsafe {
-                    let mut real_handle: HANDLE = 0;
+                    let mut real_handle: HANDLE = std::ptr::null_mut();
                     let result = DuplicateHandle(
                         GetCurrentProcess(),
                         GetCurrentThread(),
