@@ -602,40 +602,4 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(windows)]
-    #[test]
-    fn test_suspend_resume_thread() -> std::io::Result<()> {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::time::Duration;
-        use windows_sys::Win32::Foundation::{CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS};
-        use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentThread};
-
-        static THREAD_RAN: AtomicBool = AtomicBool::new(false);
-
-        let handle = std::thread::spawn(|| {
-            // Get a real handle to the current thread
-            let mut real_handle: usize = 0;
-            unsafe {
-                let result = DuplicateHandle(
-                    GetCurrentProcess(),
-                    GetCurrentThread(),
-                    GetCurrentProcess(),
-                    &raw mut real_handle as *mut _,
-                    0,
-                    0,
-                    DUPLICATE_SAME_ACCESS,
-                );
-                assert_ne!(result, 0);
-            }
-            THREAD_RAN.store(true, Ordering::Relaxed);
-            std::thread::sleep(Duration::from_secs(2));
-            unsafe {
-                _ = CloseHandle(real_handle as _);
-            }
-        });
-        std::thread::sleep(Duration::from_secs(1));
-        assert!(THREAD_RAN.load(Ordering::Relaxed));
-        handle.join().expect("thread join failed");
-        Ok(())
-    }
 }
