@@ -1,10 +1,9 @@
 use crate::net::operator::Operator;
 use slab::Slab;
 use std::io::{BufRead, BufReader, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::windows::io::AsRawSocket;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use windows_sys::Win32::Networking::WinSock::{closesocket, recv, send, SOCKET};
 
@@ -23,12 +22,17 @@ enum Token {
     },
 }
 
-fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
+fn crate_client(server_started: Arc<(Mutex<Option<SocketAddr>>, Condvar)>) {
     //等服务端起来
-    while !server_started.load(Ordering::Acquire) {}
-    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
+    let socket = {
+        let (lock, cvar) = &*server_started;
+        let guard = cvar
+            .wait_while(lock.lock().unwrap(), |addr| addr.is_none())
+            .unwrap();
+        guard.unwrap()
+    };
     let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(3))
-        .unwrap_or_else(|_| panic!("connect to 127.0.0.1:{port} failed !"));
+        .unwrap_or_else(|_| panic!("connect to {} failed !", socket));
     let mut data: [u8; 512] = [b'1'; 512];
     data[511] = b'\n';
     let mut buffer: Vec<u8> = Vec::with_capacity(512);
@@ -54,16 +58,22 @@ fn crate_client(port: u16, server_started: Arc<AtomicBool>) {
     println!("client closed");
 }
 
-fn crate_server2(port: u16, server_started: Arc<AtomicBool>) -> anyhow::Result<()> {
+fn crate_server2(server_started: Arc<(Mutex<Option<SocketAddr>>, Condvar)>) -> anyhow::Result<()> {
     let operator = Operator::new(0)?;
-    let listener = TcpListener::bind(("127.0.0.1", port))?;
+    let listener = TcpListener::bind("127.0.0.1:0")?;
 
     let mut bufpool = Vec::with_capacity(64);
     let mut buf_alloc = Slab::with_capacity(64);
     let mut token_alloc = Slab::with_capacity(64);
 
-    println!("listen {}", listener.local_addr()?);
-    server_started.store(true, Ordering::Release);
+    let local_addr = listener.local_addr()?;
+    println!("listen {}", local_addr);
+    {
+        let (lock, cvar) = &*server_started;
+        let mut addr = lock.lock().unwrap();
+        *addr = Some(local_addr);
+        cvar.notify_one();
+    }
 
     operator.accept(
         token_alloc.insert(Token::Accept) as _,
@@ -184,11 +194,10 @@ fn framework() -> anyhow::Result<()> {
             time::format_description::well_known::Rfc2822,
         ))
         .try_init();
-    let port = 7061;
-    let server_started = Arc::new(AtomicBool::new(false));
+    let server_started = Arc::new((Mutex::new(None), Condvar::new()));
     let clone = server_started.clone();
-    let handle = std::thread::spawn(move || crate_server2(port, clone));
-    std::thread::spawn(move || crate_client(port, server_started))
+    let handle = std::thread::spawn(move || crate_server2(clone));
+    std::thread::spawn(move || crate_client(server_started))
         .join()
         .expect("client has error");
     handle.join().expect("server has error")
