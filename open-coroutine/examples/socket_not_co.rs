@@ -1,21 +1,21 @@
 use std::io::{Error, IoSlice, IoSliceMut, Read, Write};
-use std::net::{Shutdown, TcpListener, ToSocketAddrs};
+use std::net::{Shutdown, SocketAddr, TcpListener};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-fn start_server<A: ToSocketAddrs>(
-    addr: A,
+fn start_server(
     server_finished: Arc<(Mutex<bool>, Condvar)>,
-    server_started: Arc<(Mutex<bool>, Condvar)>,
+    server_started: Arc<(Mutex<Option<SocketAddr>>, Condvar)>,
 ) {
-    let listener = TcpListener::bind(addr).expect("start server failed");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("start server failed");
+    let local_addr = listener.local_addr().expect("get local addr failed");
     // Signal that server is ready to accept connections
     {
         let (lock, cvar) = &*server_started;
-        let mut started = lock.lock().unwrap();
-        *started = true;
+        let mut addr = lock.lock().unwrap();
+        *addr = Some(local_addr);
         cvar.notify_one();
     }
     for stream in listener.incoming() {
@@ -82,14 +82,15 @@ fn start_server<A: ToSocketAddrs>(
     }
 }
 
-fn start_client<A: ToSocketAddrs>(addr: A, server_started: Arc<(Mutex<bool>, Condvar)>) {
-    // Wait for server to be ready
-    {
+fn start_client(server_started: Arc<(Mutex<Option<SocketAddr>>, Condvar)>) {
+    // Wait for server to be ready and get the actual address
+    let addr = {
         let (lock, cvar) = &*server_started;
-        let _guard = cvar
-            .wait_while(lock.lock().unwrap(), |started| !*started)
+        let guard = cvar
+            .wait_while(lock.lock().unwrap(), |addr| addr.is_none())
             .unwrap();
-    }
+        guard.unwrap()
+    };
     let mut stream =
         open_coroutine::connect_timeout(addr, Duration::from_secs(1)).expect("connect failed");
     let mut buffer1 = [0; 256];
@@ -163,18 +164,17 @@ fn start_client<A: ToSocketAddrs>(addr: A, server_started: Arc<(Mutex<bool>, Con
 
 #[open_coroutine::main(event_loop_size = 1, max_size = 1)]
 pub fn main() -> std::io::Result<()> {
-    let addr = "127.0.0.1:8888";
     let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
     let server_finished = Arc::clone(&server_finished_pair);
-    let server_started_pair = Arc::new((Mutex::new(false), Condvar::new()));
+    let server_started_pair = Arc::new((Mutex::new(None), Condvar::new()));
     let server_started = Arc::clone(&server_started_pair);
     _ = std::thread::Builder::new()
         .name("crate_server".to_string())
-        .spawn(move || start_server(addr, server_finished_pair, server_started_pair))
+        .spawn(move || start_server(server_finished_pair, server_started_pair))
         .expect("failed to spawn thread");
     _ = std::thread::Builder::new()
         .name("crate_client".to_string())
-        .spawn(move || start_client(addr, server_started))
+        .spawn(move || start_client(server_started))
         .expect("failed to spawn thread");
 
     let (lock, cvar) = &*server_finished;
