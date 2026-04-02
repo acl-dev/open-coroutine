@@ -391,7 +391,7 @@ impl<'e> EventLoop<'e> {
                     );
                     Self::init_current(consumer);
                     while PoolState::Running == consumer.state()
-                        || !consumer.is_empty()
+                        || !consumer.is_local_empty()
                         || consumer.get_running_size() > 0
                     {
                         _ = consumer.wait_event(Some(SLICE));
@@ -444,7 +444,7 @@ impl<'e> EventLoop<'e> {
                 return Err(Error::new(ErrorKind::TimedOut, "stop timeout !"));
             }
             self.wait_event(Some(Duration::from_nanos(left_time).min(SLICE)))?;
-            if self.is_empty() && self.get_running_size() == 0 {
+            if self.is_local_empty() && self.get_running_size() == 0 {
                 assert_eq!(PoolState::Stopping, self.stopped()?);
                 return Ok(());
             }

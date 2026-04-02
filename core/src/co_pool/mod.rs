@@ -191,6 +191,11 @@ impl<'p> CoroutinePool<'p> {
         self.task_queue.is_empty()
     }
 
+    /// Returns `true` if the local task queue is empty.
+    pub fn is_local_empty(&self) -> bool {
+        self.task_queue.is_local_empty()
+    }
+
     /// Returns the number of tasks owned by this pool.
     pub fn size(&self) -> usize {
         self.task_queue.len()
