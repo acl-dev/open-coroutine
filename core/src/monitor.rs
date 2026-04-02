@@ -243,20 +243,26 @@ impl Monitor {
 
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "x86_64")] {
-                    // Push original instruction pointer onto the thread's stack
-                    // so preempt_asm can RET to it after preemption.
+                    // Push the do_preempt function pointer and original instruction
+                    // pointer onto the thread's stack. preempt_asm will load the
+                    // function pointer from the stack and call it indirectly, then
+                    // RET to the original RIP.
                     // Safety: the target thread runs on a coroutine stack allocated
                     // by corosensei, which has ample space below the current RSP.
-                    context.Rsp -= 8;
-                    *(context.Rsp as *mut u64) = context.Rip;
+                    context.Rsp -= 16;
+                    *((context.Rsp as usize + 8) as *mut u64) = context.Rip;
+                    *(context.Rsp as usize as *mut u64) = do_preempt as usize as u64;
                     context.Rip = preempt_asm as *const () as u64;
                 } else if #[cfg(target_arch = "x86")] {
-                    // Push original instruction pointer onto the thread's stack
-                    // so preempt_asm can RET to it after preemption.
+                    // Push the do_preempt function pointer and original instruction
+                    // pointer onto the thread's stack. preempt_asm will load the
+                    // function pointer from the stack and call it indirectly, then
+                    // RET to the original EIP.
                     // Safety: the target thread runs on a coroutine stack allocated
                     // by corosensei, which has ample space below the current ESP.
-                    context.Esp -= 4;
-                    *(context.Esp as usize as *mut u32) = context.Eip;
+                    context.Esp -= 8;
+                    *((context.Esp as usize + 4) as *mut u32) = context.Eip;
+                    *(context.Esp as usize as *mut u32) = do_preempt as usize as u32;
                     context.Eip = preempt_asm as *const () as u32;
                 }
             }
@@ -311,8 +317,17 @@ impl Monitor {
 
 impl_current_for!(MONITOR, Monitor);
 
-// Windows preemption: assembly stub that saves all registers, calls do_preempt,
+// Windows preemption: assembly stub that saves all registers, calls the
+// preemption function pointer (passed on the stack by preempt_thread),
 // restores registers, and returns to the original instruction pointer.
+//
+// Stack layout on entry:
+//   [RSP]   = do_preempt function pointer
+//   [RSP+8] = original RIP (return address)
+//
+// After all register saves, fn_ptr is at [saved_rsp + 384]:
+//   256 (XMM0-XMM15) + 120 (15 GPRs: RAX,RCX,RDX,RBX,RBP,RSI,RDI,R8-R15)
+//   + 8 (RFLAGS) = 384
 #[cfg(all(windows, target_arch = "x86_64"))]
 std::arch::global_asm!(
     ".globl preempt_asm",
@@ -359,7 +374,9 @@ std::arch::global_asm!(
     "and rsp, -16",
     // Allocate 32-byte shadow space for Windows x64 calling convention
     "sub rsp, 32",
-    "call do_preempt",
+    // Load fn_ptr from saved stack and call indirectly
+    "mov rax, [r12 + 384]",
+    "call rax",
     "mov rsp, r12",
     "movups xmm0, [rsp]",
     "movups xmm1, [rsp+16]",
@@ -394,9 +411,18 @@ std::arch::global_asm!(
     "pop rcx",
     "pop rax",
     "popfq",
+    // Skip the fn_ptr slot, then RET pops original RIP
+    "add rsp, 8",
     "ret",
 );
 
+// Stack layout on entry (i686):
+//   [ESP]   = do_preempt function pointer
+//   [ESP+4] = original EIP (return address)
+//
+// After all register saves, fn_ptr is at [saved_esp + 160]:
+//   128 (XMM0-XMM7) + 28 (7 GPRs: EAX,ECX,EDX,EBX,EBP,ESI,EDI)
+//   + 4 (EFLAGS) = 160
 #[cfg(all(windows, target_arch = "x86"))]
 std::arch::global_asm!(
     ".globl _preempt_asm",
@@ -425,7 +451,9 @@ std::arch::global_asm!(
     "mov ebx, esp",
     // Align ESP to 16-byte boundary for calling convention compliance
     "and esp, -16",
-    "call _do_preempt",
+    // Load fn_ptr from saved stack and call indirectly
+    "mov eax, [ebx + 160]",
+    "call eax",
     "mov esp, ebx",
     "movups xmm0, [esp]",
     "movups xmm1, [esp+16]",
@@ -444,11 +472,12 @@ std::arch::global_asm!(
     "pop ecx",
     "pop eax",
     "popfd",
+    // Skip the fn_ptr slot, then RET pops original EIP
+    "add esp, 4",
     "ret",
 );
 
 #[cfg(windows)]
-#[no_mangle]
 extern "C" fn do_preempt() {
     if let Some(suspender) = SchedulableSuspender::current() {
         suspender.suspend();
