@@ -63,6 +63,12 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 ).is_err() {
                     break;
                 }
+                unsafe {
+                    let mut address = std::mem::zeroed();
+                    let mut address_len = c_int::try_from(size_of_val(&address)).expect("overflow");
+                    r = getpeername(fd, &raw mut address, &raw mut address_len);
+                }
+                let connected = r == 0;
                 let mut err = 0;
                 unsafe {
                     let mut len = c_int::try_from(size_of_val(&err)).expect("overflow");
@@ -83,33 +89,9 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                     r = -1;
                     break;
                 }
-                unsafe {
-                    let mut address = std::mem::zeroed();
-                    let mut address_len = c_int::try_from(size_of_val(&address)).expect("overflow");
-                    r = getpeername(fd, &raw mut address, &raw mut address_len);
-                }
-                // Verify the connection is truly established by rechecking
-                // SO_ERROR. On Windows, getpeername() can transiently succeed
-                // when wait_write_event() returns due to an unrelated selector
-                // event while the connect is still pending.
-                if r == 0 {
-                    let mut verify_err: u32 = 0;
-                    unsafe {
-                        let mut verify_len = c_int::try_from(size_of_val(&verify_err))
-                            .expect("overflow");
-                        let _ = getsockopt(
-                            fd,
-                            SOL_SOCKET,
-                            SO_ERROR,
-                            std::ptr::addr_of_mut!(verify_err).cast::<u8>(),
-                            &raw mut verify_len,
-                        );
-                    }
-                    if verify_err != 0 {
-                        // Connection failed after getpeername appeared to succeed
-                        set_errno(verify_err);
-                        r = -1;
-                    }
+                if !connected {
+                    set_errno(WSAEINPROGRESS.try_into().expect("overflow"));
+                    r = -1;
                 }
             } else if errno != Some(WSAEINTR) {
                 break;
