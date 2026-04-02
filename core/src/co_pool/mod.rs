@@ -79,7 +79,7 @@ impl Drop for CoroutinePool<'_> {
             self.get_running_size(),
             "There are still tasks in progress !"
         );
-        if !self.task_queue.is_local_empty() {
+        if !self.task_queue.is_empty() {
             error!("Forget some tasks when closing the pool");
         }
     }
@@ -188,7 +188,7 @@ impl<'p> CoroutinePool<'p> {
 
     /// Returns `true` if the task queue is empty.
     pub fn is_empty(&self) -> bool {
-        self.task_queue.is_local_empty()
+        self.task_queue.is_empty()
     }
 
     /// Returns the number of tasks owned by this pool.
@@ -346,7 +346,7 @@ impl<'p> CoroutinePool<'p> {
     /// # Errors
     /// if create failed.
     fn try_grow(&self) -> std::io::Result<()> {
-        if self.task_queue.is_local_empty() {
+        if self.task_queue.is_empty() {
             // No task to run
             trace!("The coroutine pool:{} has no task !", self.name());
             return Ok(());
