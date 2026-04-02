@@ -417,27 +417,25 @@ impl Monitor {
             let mut context: CONTEXT = std::mem::zeroed();
             context.ContextFlags = CONTEXT_FULL_AMD64;
             if GetThreadContext(thread_handle, &raw mut context) == 0 {
-                ResumeThread(thread_handle);
+                let _ = ResumeThread(thread_handle);
                 return false;
             }
             // Validate that the stack pointer is reasonable before modifying it.
             // The stack must have at least 8 bytes of space below the current RSP.
             if context.Rsp < 8 {
-                ResumeThread(thread_handle);
+                let _ = ResumeThread(thread_handle);
                 return false;
             }
             // Simulate a CALL instruction: push return address (original RIP) onto stack,
             // then set RIP to the preempt assembly function
             context.Rsp -= 8;
             std::ptr::write(context.Rsp as *mut u64, context.Rip);
-            context.Rip = preempt_asm as u64;
+            context.Rip = preempt_asm as usize as u64;
             if SetThreadContext(thread_handle, &raw const context) == 0 {
-                // Restore original RSP if SetThreadContext fails
-                context.Rsp += 8;
-                ResumeThread(thread_handle);
+                let _ = ResumeThread(thread_handle);
                 return false;
             }
-            ResumeThread(thread_handle);
+            let _ = ResumeThread(thread_handle);
             true
         }
     }
@@ -452,25 +450,24 @@ impl Monitor {
             let mut context: CONTEXT = std::mem::zeroed();
             context.ContextFlags = CONTEXT_FULL_I386;
             if GetThreadContext(thread_handle, &raw mut context) == 0 {
-                ResumeThread(thread_handle);
+                let _ = ResumeThread(thread_handle);
                 return false;
             }
             // Validate that the stack pointer is reasonable before modifying it.
             if context.Esp < 4 {
-                ResumeThread(thread_handle);
+                let _ = ResumeThread(thread_handle);
                 return false;
             }
             // Simulate a CALL instruction: push return address (original EIP) onto stack,
             // then set EIP to the preempt assembly function
             context.Esp -= 4;
             std::ptr::write(context.Esp as *mut u32, context.Eip);
-            context.Eip = preempt_asm as u32;
+            context.Eip = preempt_asm as usize as u32;
             if SetThreadContext(thread_handle, &raw const context) == 0 {
-                context.Esp += 4;
-                ResumeThread(thread_handle);
+                let _ = ResumeThread(thread_handle);
                 return false;
             }
-            ResumeThread(thread_handle);
+            let _ = ResumeThread(thread_handle);
             true
         }
     }
@@ -524,7 +521,7 @@ impl Monitor {
         #[cfg(windows)]
         if removed && node.thread_handle != 0 {
             unsafe {
-                CloseHandle(node.thread_handle as HANDLE);
+                let _ = CloseHandle(node.thread_handle as HANDLE);
             }
         }
         removed
