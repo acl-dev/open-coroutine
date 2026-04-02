@@ -202,7 +202,7 @@ fn coroutine_invalid_memory_reference() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "preemptive")]
+#[cfg(all(unix, feature = "preemptive"))]
 #[test]
 fn coroutine_preemptive() -> std::io::Result<()> {
     let pair = std::sync::Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
