@@ -529,7 +529,7 @@ impl Monitor {
         let queue = unsafe { &mut *instance.notify_queue.get() };
         let removed = queue.remove(node);
         #[cfg(windows)]
-        if removed && node.thread_handle != 0 {
+        if node.thread_handle != 0 {
             unsafe {
                 let _ = CloseHandle(node.thread_handle as HANDLE);
             }
