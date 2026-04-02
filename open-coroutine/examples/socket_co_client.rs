@@ -6,8 +6,19 @@ use std::os::fd::AsRawFd;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-pub fn start_server<A: ToSocketAddrs>(addr: A, server_finished: Arc<(Mutex<bool>, Condvar)>) {
+pub fn start_server<A: ToSocketAddrs>(
+    addr: A,
+    server_finished: Arc<(Mutex<bool>, Condvar)>,
+    server_started: Arc<(Mutex<bool>, Condvar)>,
+) {
     let listener = TcpListener::bind(addr).expect("start server failed");
+    // Signal that server is ready to accept connections
+    {
+        let (lock, cvar) = &*server_started;
+        let mut started = lock.lock().unwrap();
+        *started = true;
+        cvar.notify_one();
+    }
     for stream in listener.incoming() {
         let mut socket = stream.expect("accept new connection failed");
         let mut buffer1 = [0; 256];
@@ -72,7 +83,14 @@ pub fn start_server<A: ToSocketAddrs>(addr: A, server_finished: Arc<(Mutex<bool>
     }
 }
 
-pub fn start_co_client<A: ToSocketAddrs>(addr: A) {
+pub fn start_co_client<A: ToSocketAddrs>(addr: A, server_started: Arc<(Mutex<bool>, Condvar)>) {
+    // Wait for server to be ready
+    {
+        let (lock, cvar) = &*server_started;
+        let _guard = cvar
+            .wait_while(lock.lock().unwrap(), |started| !*started)
+            .unwrap();
+    }
     _ = task!(
         |mut stream| {
             let mut buffer1 = [0; 256];
@@ -152,13 +170,15 @@ pub fn main() -> std::io::Result<()> {
     let addr = "127.0.0.1:8899";
     let server_finished_pair = Arc::new((Mutex::new(true), Condvar::new()));
     let server_finished = Arc::clone(&server_finished_pair);
+    let server_started_pair = Arc::new((Mutex::new(false), Condvar::new()));
+    let server_started = Arc::clone(&server_started_pair);
     _ = std::thread::Builder::new()
         .name("crate_server".to_string())
-        .spawn(move || start_server(addr, server_finished_pair))
+        .spawn(move || start_server(addr, server_finished_pair, server_started_pair))
         .expect("failed to spawn thread");
     _ = std::thread::Builder::new()
         .name("crate_co_client".to_string())
-        .spawn(move || start_co_client(addr))
+        .spawn(move || start_co_client(addr, server_started))
         .expect("failed to spawn thread");
 
     let (lock, cvar) = &*server_finished;
