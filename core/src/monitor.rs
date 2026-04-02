@@ -199,10 +199,15 @@ impl Monitor {
     fn preempt_thread(thread_id: u32) -> bool {
         use windows_sys::Win32::Foundation::CloseHandle;
         use windows_sys::Win32::System::Diagnostics::Debug::CONTEXT;
+        use windows_sys::Win32::System::Diagnostics::Debug::{GetThreadContext, SetThreadContext};
         use windows_sys::Win32::System::Threading::{
-            GetThreadContext, OpenThread, ResumeThread, SetThreadContext, SuspendThread,
-            THREAD_GET_CONTEXT, THREAD_SET_CONTEXT, THREAD_SUSPEND_RESUME,
+            OpenThread, ResumeThread, SuspendThread, THREAD_GET_CONTEXT, THREAD_SET_CONTEXT,
+            THREAD_SUSPEND_RESUME,
         };
+
+        extern "C" {
+            fn preempt_asm();
+        }
 
         unsafe {
             let handle = OpenThread(
@@ -210,12 +215,12 @@ impl Monitor {
                 0,
                 thread_id,
             );
-            if handle == 0 {
+            if handle.is_null() {
                 return false;
             }
 
             if SuspendThread(handle) == u32::MAX {
-                CloseHandle(handle);
+                _ = CloseHandle(handle);
                 return false;
             }
 
@@ -230,14 +235,10 @@ impl Monitor {
                 }
             }
 
-            if GetThreadContext(handle, &mut context) == 0 {
-                ResumeThread(handle);
-                CloseHandle(handle);
+            if GetThreadContext(handle, &raw mut context) == 0 {
+                _ = ResumeThread(handle);
+                _ = CloseHandle(handle);
                 return false;
-            }
-
-            extern "C" {
-                fn preempt_asm();
             }
 
             cfg_if::cfg_if! {
@@ -247,8 +248,8 @@ impl Monitor {
                     // Safety: the target thread runs on a coroutine stack allocated
                     // by corosensei, which has ample space below the current RSP.
                     context.Rsp -= 8;
-                    *(context.Rsp as usize as *mut u64) = context.Rip;
-                    context.Rip = preempt_asm as usize as u64;
+                    *(context.Rsp as *mut u64) = context.Rip;
+                    context.Rip = preempt_asm as *const () as u64;
                 } else if #[cfg(target_arch = "x86")] {
                     // Push original instruction pointer onto the thread's stack
                     // so preempt_asm can RET to it after preemption.
@@ -256,18 +257,18 @@ impl Monitor {
                     // by corosensei, which has ample space below the current ESP.
                     context.Esp -= 4;
                     *(context.Esp as usize as *mut u32) = context.Eip;
-                    context.Eip = preempt_asm as usize as u32;
+                    context.Eip = preempt_asm as *const () as u32;
                 }
             }
 
-            if SetThreadContext(handle, &context) == 0 {
-                ResumeThread(handle);
-                CloseHandle(handle);
+            if SetThreadContext(handle, &raw const context) == 0 {
+                _ = ResumeThread(handle);
+                _ = CloseHandle(handle);
                 return false;
             }
 
-            ResumeThread(handle);
-            CloseHandle(handle);
+            _ = ResumeThread(handle);
+            _ = CloseHandle(handle);
             true
         }
     }
