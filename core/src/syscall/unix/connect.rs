@@ -90,6 +90,29 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                     let mut address_len = socklen_t::try_from(size_of_val(&address)).expect("overflow");
                     r = libc::getpeername(fd, &raw mut address, &raw mut address_len);
                 }
+                // Verify the connection is truly established by rechecking
+                // SO_ERROR. getpeername() can transiently succeed when
+                // wait_write_event() returns due to an unrelated selector
+                // event while the connect is still pending.
+                if r == 0 {
+                    let mut verify_err: c_int = 0;
+                    unsafe {
+                        let mut verify_len = socklen_t::try_from(size_of_val(&verify_err))
+                            .expect("overflow");
+                        let _ = libc::getsockopt(
+                            fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_ERROR,
+                            std::ptr::addr_of_mut!(verify_err).cast::<c_void>(),
+                            &raw mut verify_len,
+                        );
+                    }
+                    if verify_err != 0 {
+                        // Connection failed after getpeername appeared to succeed
+                        set_errno(verify_err);
+                        r = -1;
+                    }
+                }
             } else if errno != Some(libc::EINTR) {
                 break;
             }
