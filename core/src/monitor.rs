@@ -608,9 +608,7 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::time::Duration;
         use windows_sys::Win32::Foundation::{CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS};
-        use windows_sys::Win32::System::Threading::{
-            GetCurrentProcess, GetCurrentThread, ResumeThread, SuspendThread,
-        };
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentThread};
 
         static THREAD_RAN: AtomicBool = AtomicBool::new(false);
 
@@ -632,7 +630,7 @@ mod tests {
             THREAD_RAN.store(true, Ordering::Relaxed);
             std::thread::sleep(Duration::from_secs(2));
             unsafe {
-                CloseHandle(real_handle as _);
+                _ = CloseHandle(real_handle as _);
             }
         });
         std::thread::sleep(Duration::from_secs(1));
