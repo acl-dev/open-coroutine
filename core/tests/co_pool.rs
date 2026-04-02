@@ -1,4 +1,4 @@
-#[cfg(not(all(unix, feature = "preemptive")))]
+#[cfg(not(feature = "preemptive"))]
 #[test]
 fn co_pool_basic() -> std::io::Result<()> {
     let mut pool = open_coroutine_core::co_pool::CoroutinePool::default();
@@ -23,7 +23,7 @@ fn co_pool_basic() -> std::io::Result<()> {
     pool.try_schedule_task()
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
+#[cfg(not(feature = "preemptive"))]
 #[test]
 fn co_pool_suspend() -> std::io::Result<()> {
     let mut pool = open_coroutine_core::co_pool::CoroutinePool::default();
@@ -56,7 +56,7 @@ fn co_pool_suspend() -> std::io::Result<()> {
     pool.try_schedule_task()
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
+#[cfg(not(feature = "preemptive"))]
 #[test]
 fn co_pool_stop() -> std::io::Result<()> {
     let pool = open_coroutine_core::co_pool::CoroutinePool::default();
@@ -74,7 +74,7 @@ fn co_pool_stop() -> std::io::Result<()> {
     .map(|_| ())
 }
 
-#[cfg(not(all(unix, feature = "preemptive")))]
+#[cfg(not(feature = "preemptive"))]
 #[test]
 fn co_pool_cancel() -> std::io::Result<()> {
     let mut pool = open_coroutine_core::co_pool::CoroutinePool::default();

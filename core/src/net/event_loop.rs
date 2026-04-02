@@ -565,7 +565,7 @@ impl_iocp!(WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumb
 impl_iocp!(send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
 impl_iocp!(WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags : c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
 
-#[cfg(all(test, not(all(unix, feature = "preemptive"))))]
+#[cfg(all(test, not(feature = "preemptive")))]
 mod tests {
     use crate::net::event_loop::EventLoop;
     use std::time::Duration;

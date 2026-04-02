@@ -444,7 +444,7 @@ where
             priority,
         };
         cfg_if::cfg_if! {
-            if #[cfg(all(unix, feature = "preemptive"))] {
+            if #[cfg(feature = "preemptive")] {
                 let type_id = std::any::TypeId::of::<()>();
                 if std::any::TypeId::of::<Param>() == type_id && std::any::TypeId::of::<Yield>() == type_id {
                     co.add_listener(crate::monitor::MonitorListener);

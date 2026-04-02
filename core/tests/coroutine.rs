@@ -202,7 +202,7 @@ fn coroutine_invalid_memory_reference() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(all(unix, feature = "preemptive"))]
+#[cfg(feature = "preemptive")]
 #[test]
 fn coroutine_preemptive() -> std::io::Result<()> {
     let pair = std::sync::Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
@@ -251,7 +251,7 @@ fn coroutine_preemptive() -> std::io::Result<()> {
     }
 }
 
-#[cfg(all(unix, feature = "preemptive"))]
+#[cfg(feature = "preemptive")]
 #[test]
 fn coroutine_syscall_not_preemptive() -> std::io::Result<()> {
     use open_coroutine_core::common::constants::{SyscallName, SyscallState};
