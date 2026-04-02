@@ -243,11 +243,17 @@ impl Monitor {
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "x86_64")] {
                     // Push original instruction pointer onto the thread's stack
-                    // so preempt_asm can RET to it after preemption
+                    // so preempt_asm can RET to it after preemption.
+                    // Safety: the target thread runs on a coroutine stack allocated
+                    // by corosensei, which has ample space below the current RSP.
                     context.Rsp -= 8;
                     *(context.Rsp as usize as *mut u64) = context.Rip;
                     context.Rip = preempt_asm as usize as u64;
                 } else if #[cfg(target_arch = "x86")] {
+                    // Push original instruction pointer onto the thread's stack
+                    // so preempt_asm can RET to it after preemption.
+                    // Safety: the target thread runs on a coroutine stack allocated
+                    // by corosensei, which has ample space below the current ESP.
                     context.Esp -= 4;
                     *(context.Esp as usize as *mut u32) = context.Eip;
                     context.Eip = preempt_asm as usize as u32;
@@ -348,7 +354,9 @@ std::arch::global_asm!(
     "movups [rsp+224], xmm14",
     "movups [rsp+240], xmm15",
     "mov r12, rsp",
+    // Align RSP to 16-byte boundary as required by Windows x64 ABI
     "and rsp, -16",
+    // Allocate 32-byte shadow space for Windows x64 calling convention
     "sub rsp, 32",
     "call do_preempt",
     "mov rsp, r12",
@@ -414,6 +422,7 @@ std::arch::global_asm!(
     "movups [esp+96], xmm6",
     "movups [esp+112], xmm7",
     "mov ebx, esp",
+    // Align ESP to 16-byte boundary for calling convention compliance
     "and esp, -16",
     "call _do_preempt",
     "mov esp, ebx",
