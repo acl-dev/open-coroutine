@@ -65,6 +65,12 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                 {
                     break;
                 }
+                unsafe {
+                    let mut address = std::mem::zeroed();
+                    let mut address_len = socklen_t::try_from(size_of_val(&address)).expect("overflow");
+                    r = libc::getpeername(fd, &raw mut address, &raw mut address_len);
+                }
+                let connected = r == 0;
                 let mut err = 0;
                 unsafe {
                     let mut len = socklen_t::try_from(size_of_val(&err)).expect("overflow");
@@ -85,10 +91,9 @@ impl<I: ConnectSyscall> ConnectSyscall for NioConnectSyscall<I> {
                     r = -1;
                     break;
                 }
-                unsafe {
-                    let mut address = std::mem::zeroed();
-                    let mut address_len = socklen_t::try_from(size_of_val(&address)).expect("overflow");
-                    r = libc::getpeername(fd, &raw mut address, &raw mut address_len);
+                if !connected {
+                    set_errno(libc::EINPROGRESS);
+                    r = -1;
                 }
             } else if errno != Some(libc::EINTR) {
                 break;
