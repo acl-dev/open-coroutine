@@ -185,6 +185,11 @@ impl<'l, T: Debug> OrderedLocalQueue<'l, T> {
         self.local_len() == 0
     }
 
+    /// Returns `true` if the global queue is empty.
+    pub fn is_global_empty(&self) -> bool {
+        self.shared.is_empty()
+    }
+
     /// Returns `true` if all the queues are empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0

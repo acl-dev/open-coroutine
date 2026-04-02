@@ -191,9 +191,11 @@ impl<'p> CoroutinePool<'p> {
         self.task_queue.is_empty()
     }
 
-    /// Returns `true` if the local task queue is empty.
+    /// Returns `true` if the local&global task queue is empty.
+    ///
+    /// Don't care about other local queue, but do care about global queue.
     pub fn is_local_empty(&self) -> bool {
-        self.task_queue.is_local_empty()
+        self.task_queue.is_local_empty() && self.task_queue.is_global_empty()
     }
 
     /// Returns the number of tasks owned by this pool.
