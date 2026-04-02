@@ -108,12 +108,13 @@ impl Default for Monitor {
     }
 }
 
-// CONTEXT_FULL constants for Windows thread context manipulation.
-// These include CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT.
+// CONTEXT_CONTROL constants for Windows thread context manipulation.
+// Only control registers (RIP/EIP, RSP/ESP, RBP/EBP, EFLAGS) are needed,
+// following Go's approach in runtime/os_windows.go preemptM().
 #[cfg(all(windows, target_arch = "x86_64"))]
-const CONTEXT_FULL_AMD64: u32 = 0x10_000B;
+const CONTEXT_CONTROL_AMD64: u32 = 0x10_0001;
 #[cfg(all(windows, target_arch = "x86"))]
-const CONTEXT_FULL_I386: u32 = 0x1_000B;
+const CONTEXT_CONTROL_I386: u32 = 0x1_0001;
 
 // On Windows, we use SuspendThread/GetThreadContext/SetThreadContext/ResumeThread
 // to preempt coroutines, similar to how Go implements goroutine preemption on Windows.
@@ -128,9 +129,14 @@ extern "C" fn do_preempt() {
 }
 
 // Assembly preempt stubs for Windows - saves/restores all registers around do_preempt()
+// Following corosensei's pattern for COFF symbol definitions on Windows.
 #[cfg(all(windows, target_arch = "x86_64"))]
 std::arch::global_asm!(
     ".globl preempt_asm",
+    ".def preempt_asm",
+    ".scl 2",
+    ".type 32",
+    ".endef",
     "preempt_asm:",
     // Save flags
     "pushfq",
@@ -218,6 +224,10 @@ std::arch::global_asm!(
 #[cfg(all(windows, target_arch = "x86"))]
 std::arch::global_asm!(
     ".globl _preempt_asm",
+    ".def _preempt_asm",
+    ".scl 2",
+    ".type 32",
+    ".endef",
     "_preempt_asm:",
     // Save flags
     "pushfd",
@@ -276,7 +286,6 @@ extern "C" {
 
 #[cfg(all(windows, target_arch = "x86"))]
 extern "C" {
-    #[link_name = "_preempt_asm"]
     fn preempt_asm();
 }
 
@@ -415,7 +424,7 @@ impl Monitor {
                 return false;
             }
             let mut context: CONTEXT = std::mem::zeroed();
-            context.ContextFlags = CONTEXT_FULL_AMD64;
+            context.ContextFlags = CONTEXT_CONTROL_AMD64;
             if GetThreadContext(thread_handle, &raw mut context) == 0 {
                 let _ = ResumeThread(thread_handle);
                 return false;
@@ -448,7 +457,7 @@ impl Monitor {
                 return false;
             }
             let mut context: CONTEXT = std::mem::zeroed();
-            context.ContextFlags = CONTEXT_FULL_I386;
+            context.ContextFlags = CONTEXT_CONTROL_I386;
             if GetThreadContext(thread_handle, &raw mut context) == 0 {
                 let _ = ResumeThread(thread_handle);
                 return false;
