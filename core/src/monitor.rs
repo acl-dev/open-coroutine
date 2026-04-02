@@ -430,7 +430,7 @@ impl Monitor {
             // then set RIP to the preempt assembly function
             context.Rsp -= 8;
             std::ptr::write(context.Rsp as *mut u64, context.Rip);
-            context.Rip = preempt_asm as usize as u64;
+            context.Rip = preempt_asm as *const () as usize as u64;
             if SetThreadContext(thread_handle, &raw const context) == 0 {
                 let _ = ResumeThread(thread_handle);
                 return false;
@@ -462,7 +462,10 @@ impl Monitor {
             // then set EIP to the preempt assembly function
             context.Esp -= 4;
             std::ptr::write(context.Esp as *mut u32, context.Eip);
-            context.Eip = preempt_asm as usize as u32;
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                context.Eip = preempt_asm as *const () as usize as u32;
+            }
             if SetThreadContext(thread_handle, &raw const context) == 0 {
                 let _ = ResumeThread(thread_handle);
                 return false;
