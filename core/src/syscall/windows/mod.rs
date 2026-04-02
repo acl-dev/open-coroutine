@@ -86,12 +86,21 @@ macro_rules! impl_facade {
                     }
                 }
                 let r = self.inner.$syscall(fn_ptr, $($arg, )*);
+                // Save errno immediately—logging and coroutine bookkeeping
+                // call Win32 APIs (e.g. CreateFileW) that clobber GetLastError().
+                let saved_errno = std::io::Error::last_os_error();
                 if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
                     if co.running().is_err() {
                         $crate::error!("{} change to running state failed !", co.name());
                     }
                 }
-                $crate::info!("exit syscall {} {:?} {}", syscall, r, std::io::Error::last_os_error());
+                $crate::info!("exit syscall {} {:?} {}", syscall, r, saved_errno);
+                // Restore errno so callers see the correct error.
+                if let Some(e) = saved_errno.raw_os_error() {
+                    $crate::syscall::set_errno(
+                        u32::try_from(e).unwrap_or_default()
+                    );
+                }
                 r
             }
         }
