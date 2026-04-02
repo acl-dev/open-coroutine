@@ -95,9 +95,6 @@ macro_rules! impl_facade {
                     }
                 }
                 $crate::info!("exit syscall {} {:?} {}", syscall, r, saved_errno);
-                // Check if the monitor has requested preemption
-                #[cfg(feature = "preemptive")]
-                $crate::monitor::Monitor::check_preempt();
                 // Restore errno so callers see the correct error.
                 if let Some(e) = saved_errno.raw_os_error() {
                     $crate::syscall::set_errno(
