@@ -560,32 +560,72 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn test_preempt_thread() -> std::io::Result<()> {
-        use std::sync::atomic::{AtomicBool, Ordering};
+        use crate::co;
+        use crate::common::constants::CoroutineState;
+        use crate::coroutine::Coroutine;
+        use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
         use std::sync::Arc;
         use std::time::Duration;
 
-        let preempted = Arc::new(AtomicBool::new(false));
-        let preempted2 = preempted.clone();
-        let thread_id = Arc::new(std::sync::Mutex::new(0u32));
-        let thread_id2 = thread_id.clone();
+        let pair = Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
+        let pair2 = pair.clone();
+        let tid = Arc::new(AtomicU32::new(0));
+        let tid2 = tid.clone();
+        let co_running = Arc::new(AtomicBool::new(false));
+        let co_running2 = co_running.clone();
 
-        let handle = std::thread::spawn(move || {
-            *thread_id2.lock().unwrap() =
-                unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
-            // Busy loop that can be preempted
-            while !preempted2.load(Ordering::Relaxed) {
-                std::hint::spin_loop();
-            }
-        });
+        _ = std::thread::Builder::new()
+            .name("test_preempt".to_string())
+            .spawn(move || {
+                tid2.store(
+                    unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() },
+                    Ordering::Release,
+                );
+                let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| {
+                    co_running2.store(true, Ordering::Release);
+                    loop {}
+                })?;
+                match coroutine.resume()? {
+                    CoroutineState::Suspend((), 0) => {
+                        assert_eq!(CoroutineState::Suspend((), 0), coroutine.state());
+                    }
+                    other => panic!("unexpected coroutine state: {other:?}"),
+                }
+                let (lock, cvar) = &*pair2;
+                let mut pending = lock.lock().unwrap();
+                *pending = false;
+                cvar.notify_one();
+                Ok::<(), std::io::Error>(())
+            });
 
-        // Wait for the thread to start and report its ID
-        std::thread::sleep(Duration::from_millis(100));
-        let tid = *thread_id.lock().unwrap();
-        assert_ne!(tid, 0, "Thread should have reported its ID");
+        // Wait for the coroutine to enter its loop
+        while !co_running.load(Ordering::Acquire) {
+            std::thread::yield_now();
+        }
+        let thread_id = tid.load(Ordering::Acquire);
+        assert_ne!(thread_id, 0, "Thread should have reported its ID");
 
-        // Signal the thread to stop (since we can't truly preempt without a coroutine)
-        preempted.store(true, Ordering::Relaxed);
-        handle.join().expect("Thread should join successfully");
-        Ok(())
+        // Directly call preempt_thread to preempt the running coroutine
+        assert!(
+            super::Monitor::preempt_thread(thread_id),
+            "preempt_thread should succeed"
+        );
+
+        // Wait for thread to complete
+        let (lock, cvar) = &*pair;
+        let result = cvar
+            .wait_timeout_while(
+                lock.lock().unwrap(),
+                Duration::from_millis(3000),
+                |&mut pending| pending,
+            )
+            .unwrap();
+        if result.1.timed_out() {
+            Err(std::io::Error::other(
+                "preempt_thread did not preempt the coroutine",
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
