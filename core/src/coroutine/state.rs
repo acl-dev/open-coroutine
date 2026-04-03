@@ -18,12 +18,15 @@ where
         new_state: CoroutineState<Yield, Return>,
     ) -> CoroutineState<Yield, Return> {
         let old_state = self.state.replace(new_state);
-        self.on_state_changed(self, old_state, new_state);
+        //先打印日志再通知监听器，确保MonitorListener提交的NOTIFY_NODE时间戳
+        //在日志输出之后，避免在QEMU等慢速平台上因日志输出耗时超过抢占间隔
+        //导致协程被反复抢占无法推进的活锁问题
         if let CoroutineState::Error(_) = new_state {
             error!("{} {:?}->{:?}", self.name(), old_state, new_state);
         } else {
             info!("{} {:?}->{:?}", self.name(), old_state, new_state);
         }
+        self.on_state_changed(self, old_state, new_state);
         old_state
     }
 
