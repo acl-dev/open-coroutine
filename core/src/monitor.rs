@@ -577,7 +577,6 @@ impl<Yield, Return> Listener<Yield, Return> for MonitorListener {
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
-    #[cfg(not(target_arch = "riscv64"))]
     #[test]
     fn test() -> std::io::Result<()> {
         use nix::sys::pthread::pthread_kill;
