@@ -604,7 +604,7 @@ mod tests {
                     unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() },
                     Ordering::Release,
                 );
-                let mut coroutine: Coroutine<(), (), ()> = co!(|_, ()| {
+                let mut coroutine: Coroutine<(), (), ()> = co!(move |_, ()| {
                     co_running2.store(true, Ordering::Release);
                     loop {}
                 })?;
