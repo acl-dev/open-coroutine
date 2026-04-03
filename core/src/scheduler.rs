@@ -228,7 +228,7 @@ impl<'s> Scheduler<'s> {
                         .expect("change syscall state failed");
                 }
                 //协程在系统调用执行期间被信号抢占，直接放回就绪队列
-                CoroutineState::Syscall(_, _, SyscallState::Executing) => {}
+                CoroutineState::Syscall((), _, SyscallState::Executing) => {}
                 _ => unreachable!("try_resume unexpect CoroutineState"),
             }
             self.ready.push(co);
@@ -313,12 +313,17 @@ impl<'s> Scheduler<'s> {
                     _ = RUNNING_COROUTINES.remove(&co_id);
                 })? {
                     CoroutineState::Syscall((), _, state) => {
-                        //挂起协程到系统调用表
-                        //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
-                        _ = self.syscall.insert(co_id, coroutine);
-                        if let SyscallState::Suspend(timestamp) = state {
-                            self.syscall_suspend
-                                .push(SyscallSuspendItem { timestamp, co_id });
+                        if let SyscallState::Executing = state {
+                            //协程在系统调用执行期间被信号抢占，放回就绪队列以恢复执行
+                            self.ready.push(coroutine);
+                        } else {
+                            //挂起协程到系统调用表
+                            //如果已包含，说明当前系统调用还有上层父系统调用，因此直接忽略插入结果
+                            _ = self.syscall.insert(co_id, coroutine);
+                            if let SyscallState::Suspend(timestamp) = state {
+                                self.syscall_suspend
+                                    .push(SyscallSuspendItem { timestamp, co_id });
+                            }
                         }
                     }
                     CoroutineState::Suspend((), timestamp) => {
@@ -395,7 +400,7 @@ impl<'s> Scheduler<'s> {
             .filter(|entry| {
                 matches!(
                     entry.value().state(),
-                    CoroutineState::Syscall(_, _, SyscallState::Executing)
+                    CoroutineState::Syscall((), _, SyscallState::Executing)
                 )
             })
             .map(|entry| *entry.key())
