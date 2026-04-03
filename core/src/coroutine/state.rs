@@ -18,16 +18,25 @@ where
         new_state: CoroutineState<Yield, Return>,
     ) -> CoroutineState<Yield, Return> {
         let old_state = self.state.replace(new_state);
-        //先打印日志再通知监听器，避免在QEMU等慢速平台上的活锁问题
-        // Log before notifying listeners so that MonitorListener submits
-        // the NOTIFY_NODE after the (potentially slow) log I/O completes,
-        // preventing a preemption live-lock on slow platforms like QEMU.
-        if let CoroutineState::Error(_) = new_state {
-            error!("{} {:?}->{:?}", self.name(), old_state, new_state);
-        } else {
+        if matches!(new_state, CoroutineState::Running) {
+            //先打印日志再通知监听器，避免在QEMU等慢速平台上的活锁问题
+            // Log before notifying: MonitorListener starts the 10ms preemption
+            // timer on Running state. On QEMU, info!() takes >10ms, so logging
+            // first ensures the timer starts after the slow I/O completes.
             info!("{} {:?}->{:?}", self.name(), old_state, new_state);
+            self.on_state_changed(self, old_state, new_state);
+        } else {
+            //先通知监听器再打印日志，确保抢占定时器在日志I/O之前被移除
+            // Notify before logging: MonitorListener removes the NOTIFY_NODE for
+            // non-Running states. Removing it first prevents SIGURG from arriving
+            // during the potentially slow log I/O.
+            self.on_state_changed(self, old_state, new_state);
+            if let CoroutineState::Error(_) = new_state {
+                error!("{} {:?}->{:?}", self.name(), old_state, new_state);
+            } else {
+                info!("{} {:?}->{:?}", self.name(), old_state, new_state);
+            }
         }
-        self.on_state_changed(self, old_state, new_state);
         old_state
     }
 
