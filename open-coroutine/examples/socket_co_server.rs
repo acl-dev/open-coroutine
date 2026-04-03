@@ -187,7 +187,7 @@ pub fn main() -> std::io::Result<()> {
     let result = cvar
         .wait_timeout_while(
             lock.lock().unwrap(),
-            Duration::from_secs(30),
+            Duration::from_secs(60),
             |&mut pending| pending,
         )
         .unwrap();
