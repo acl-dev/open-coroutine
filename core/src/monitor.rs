@@ -251,9 +251,9 @@ impl Monitor {
                     // by corosensei, which has ample space below the current RSP.
                     context.Rsp -= 16;
                     // [RSP+8] = return address (original RIP)
-                    *((context.Rsp as usize + 8) as *mut u64) = context.Rip;
+                    *((context.Rsp + 8) as *mut u64) = context.Rip;
                     // [RSP] = function pointer for preempt_asm to call
-                    *(context.Rsp as usize as *mut u64) = do_preempt as usize as u64;
+                    *(context.Rsp as *mut u64) = do_preempt as *const () as u64;
                     context.Rip = preempt_asm as *const () as u64;
                 } else if #[cfg(target_arch = "x86")] {
                     // Push the do_preempt function pointer and original instruction
@@ -264,9 +264,9 @@ impl Monitor {
                     // by corosensei, which has ample space below the current ESP.
                     context.Esp -= 8;
                     // [ESP+4] = return address (original EIP)
-                    *((context.Esp as usize + 4) as *mut u32) = context.Eip;
+                    *((context.Esp + 4) as *mut u32) = context.Eip;
                     // [ESP] = function pointer for preempt_asm to call
-                    *(context.Esp as usize as *mut u32) = do_preempt as usize as u32;
+                    *(context.Esp as *mut u32) = do_preempt as *const () as u32;
                     context.Eip = preempt_asm as *const () as u32;
                 }
             }
