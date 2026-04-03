@@ -66,7 +66,7 @@ pub mod config;
 #[doc = include_str!("../docs/en/coroutine.md")]
 pub mod coroutine;
 
-#[cfg(all(unix, feature = "preemptive"))]
+#[cfg(feature = "preemptive")]
 #[doc = include_str!("../docs/en/monitor.md")]
 mod monitor;
 
