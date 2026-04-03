@@ -14,8 +14,8 @@ The `preemptive` feature currently supports the following targets:
 
 |               | ELF (Linux, BSD, bare metal, etc) | Darwin (macOS, iOS, etc) | Windows |
 |---------------|-----------------------------------|--------------------------|---------|
-| `x86_64`      | ✅                                | ✅                       | ❌     |
-| `x86`         | ✅                                | ❌                       | ❌     |
+| `x86_64`      | ✅                                | ✅                       | ✅     |
+| `x86`         | ✅                                | ❌                       | ✅     |
 | `AArch64`     | ✅                                | ✅                       | ❌     |
 | `ARM`         | ✅                                | ❌                       | ❌     |
 | `RISC-V`      | ✅                                | ❌                       | ❌     |

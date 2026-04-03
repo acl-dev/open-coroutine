@@ -15,7 +15,7 @@ English | [中文](README_ZH.md)
 
 ## 🚀 Features
 
-- [x] Preemptive(`not supported in windows`): even if the coroutine enters a dead loop, it can still be seized,
+- [x] Preemptive: even if the coroutine enters a dead loop, it can still be seized,
   see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
 - [x] Hook: you are free to use most of the slow syscall in coroutine, see supported syscall
   on [unix](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/unix.rs)/[windows](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/windows.rs);
