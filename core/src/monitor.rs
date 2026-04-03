@@ -159,17 +159,8 @@ impl Monitor {
         let monitor = Self::get_instance();
         Self::init_current(monitor);
         let notify_queue = unsafe { &*monitor.notify_queue.get() };
-        // On Windows, SuspendThread/SetThreadContext is NOT idempotent (unlike
-        // Unix SIGURG). Calling preempt_thread a second time while the first
-        // preemption is still pending corrupts the thread's stack layout.
-        // Therefore, on Windows we collect successfully-preempted nodes and
-        // remove them from the queue after the iteration.
-        #[cfg(windows)]
-        let mut preempted = Vec::new();
         while MonitorState::Running == monitor.state.get() || !notify_queue.is_empty() {
             //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-            #[cfg(windows)]
-            preempted.clear();
             for node in notify_queue {
                 if now() < node.timestamp {
                     continue;
@@ -185,22 +176,18 @@ impl Monitor {
                             );
                         }
                     } else if #[cfg(windows)] {
-                        if Self::preempt_thread(node.thread_id) {
-                            preempted.push(*node);
-                        } else {
+                        // Two-level preemption: the first preempt_thread call
+                        // sets a cooperative flag; the second call (next iteration,
+                        // ~1ms later) forces immediate suspension. We do NOT remove
+                        // the node here — MonitorListener::on_state_changed removes
+                        // it when the coroutine actually transitions to Suspend.
+                        if !Self::preempt_thread(node.thread_id) {
                             error!(
                                 "Attempt to preempt scheduling for thread:{} failed !",
                                 node.thread_id
                             );
                         }
                     }
-                }
-            }
-            #[cfg(windows)]
-            if !preempted.is_empty() {
-                let queue = unsafe { &mut *monitor.notify_queue.get() };
-                for node in &preempted {
-                    _ = queue.remove(node);
                 }
             }
             //monitor线程不执行协程计算任务，每次循环至少wait 1ms
@@ -514,11 +501,53 @@ std::arch::global_asm!(
     "ret",
 );
 
+// Thread-local flag for two-level preemption on Windows.
+// Level 1: SuspendThread fires, do_preempt sets this flag and returns
+//          without switching coroutines. The hooked syscall (Sleep, etc.)
+//          calls check_preempt() which yields cooperatively at a safe point.
+// Level 2: If the flag is still set on the next SuspendThread (1ms later),
+//          the coroutine is truly CPU-bound with no syscalls — do_preempt
+//          forces an immediate context switch.
+#[cfg(windows)]
+std::thread_local! {
+    static PREEMPT_PENDING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Check if a preemption request is pending and yield cooperatively.
+/// Called from the Windows syscall hooks (impl_facade!) after each
+/// hooked syscall returns, providing a safe yield point where no
+/// thread-local borrows (e.g. test harness stdout capture) are held.
+#[cfg(windows)]
+pub(crate) fn check_preempt() {
+    PREEMPT_PENDING.with(|flag| {
+        if flag.get() {
+            flag.set(false);
+            if let Some(suspender) = SchedulableSuspender::current() {
+                suspender.suspend();
+            }
+        }
+    });
+}
+
 #[cfg(windows)]
 extern "C" fn do_preempt() {
-    if let Some(suspender) = SchedulableSuspender::current() {
-        suspender.suspend();
-    }
+    PREEMPT_PENDING.with(|flag| {
+        if flag.get() {
+            // Flag was already set from a previous SuspendThread attempt but the
+            // coroutine never made a hooked syscall — it is truly CPU-bound.
+            // Force immediate suspension.
+            flag.set(false);
+            if let Some(suspender) = SchedulableSuspender::current() {
+                suspender.suspend();
+            }
+        } else {
+            // First attempt: set the flag and return without suspending.
+            // preempt_asm will restore all registers and return to the original
+            // code. If the coroutine reaches a hooked syscall, check_preempt()
+            // will yield cooperatively at a safe point.
+            flag.set(true);
+        }
+    });
 }
 
 #[repr(C)]
@@ -638,10 +667,18 @@ mod tests {
         let thread_id = tid.load(Ordering::Acquire);
         assert_ne!(thread_id, 0, "Thread should have reported its ID");
 
-        // Directly call preempt_thread to preempt the running coroutine
+        // Directly call preempt_thread to preempt the running coroutine.
+        // Two-level preemption: the first call sets a cooperative flag (the
+        // coroutine continues running), the second call forces suspension.
         assert!(
             super::Monitor::preempt_thread(thread_id),
-            "preempt_thread should succeed"
+            "preempt_thread should succeed (set cooperative flag)"
+        );
+        // Allow the first preempt_asm to complete before the second call
+        std::thread::sleep(Duration::from_millis(1));
+        assert!(
+            super::Monitor::preempt_thread(thread_id),
+            "preempt_thread should succeed (force suspend)"
         );
 
         // Wait for thread to complete
