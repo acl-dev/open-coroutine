@@ -245,16 +245,17 @@ impl Monitor {
             let mut context: CONTEXT = std::mem::zeroed();
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "x86_64")] {
-                    // CONTEXT_FULL for AMD64: saves control + integer + floating-point
-                    // registers. Using CONTEXT_FULL (not just CONTEXT_CONTROL) ensures
-                    // all register state is properly round-tripped through
-                    // GetThreadContext/SetThreadContext, avoiding subtle issues in
-                    // release builds where CONTEXT_CONTROL alone may not capture
-                    // enough state for correct preemption.
-                    context.ContextFlags = 0x0010_000B;
+                    // CONTEXT_CONTROL for AMD64: only captures/restores control
+                    // registers (RIP, RSP, RBP, RFLAGS, segment registers).
+                    // We only need to modify RIP and RSP to redirect the thread
+                    // to preempt_asm. The assembly itself saves and restores all
+                    // other registers (GPRs, XMMs, RFLAGS). Using CONTEXT_FULL
+                    // here would clobber registers that are in-use by the target
+                    // thread, causing SetThreadContext to corrupt thread state.
+                    context.ContextFlags = 0x0010_0001;
                 } else if #[cfg(target_arch = "x86")] {
-                    // CONTEXT_FULL for i386
-                    context.ContextFlags = 0x0001_000B;
+                    // CONTEXT_CONTROL for i386
+                    context.ContextFlags = 0x0001_0001;
                 }
             }
 
