@@ -1,3 +1,8 @@
+### 0.8.x
+
+- [x] windows now support preemptive scheduling
+- [x] improve stability
+
 ### 0.7.x
 
 - [x] support cancel coroutine/task
