@@ -2,6 +2,25 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::ffi::c_int;
 
+//防止重入：info!()/error!()内部会调用write()，如果write被hook了，
+//会导致无限递归或嵌套状态转换。当检测到重入时，直接调用内部系统调用跳过facade逻辑。
+// Re-entrancy guard: info!()/error!() internally call write(). If write is hooked,
+// this causes infinite recursion or nested state transitions that corrupt coroutine state.
+// When re-entrancy is detected, bypass the facade and call the inner syscall directly.
+thread_local! {
+    static IN_FACADE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[inline]
+pub fn in_facade() -> bool {
+    IN_FACADE.get()
+}
+
+#[inline]
+pub fn set_in_facade(val: bool) {
+    IN_FACADE.set(val);
+}
+
 macro_rules! impl_syscall {
     (
         $facade_struct_name:ident, $iocp_struct_name: ident, $nio_struct_name: ident, $raw_struct_name: ident,
@@ -97,7 +116,18 @@ macro_rules! impl_facade {
                 fn_ptr: Option<&extern "C" fn($($arg_type),*) -> $result>,
                 $($arg: $arg_type),*
             ) -> $result {
+                if $crate::syscall::in_facade() {
+                    return self.inner.$syscall(fn_ptr, $($arg, )*);
+                }
                 let syscall = $crate::common::constants::SyscallName::$syscall;
+                //在日志和状态变更期间设置防重入标志，因为info!()/error!()内部会
+                //调用write()，co.syscall()/co.running()内部会调用change_state()
+                //再调用info!()，这些都可能触发hooked write导致无限递归
+                // Set re-entrancy guard during logging and state changes because:
+                // - info!()/error!() internally call write()
+                // - co.syscall()/co.running() call change_state() which calls info!()
+                // Both can trigger hooked write causing infinite recursion.
+                $crate::syscall::set_in_facade(true);
                 $crate::info!("enter syscall {}", syscall);
                 if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
                     let new_state = $crate::common::constants::SyscallState::Executing;
@@ -107,13 +137,16 @@ macro_rules! impl_facade {
                         );
                     }
                 }
+                $crate::syscall::set_in_facade(false);
                 let r = self.inner.$syscall(fn_ptr, $($arg, )*);
+                $crate::syscall::set_in_facade(true);
                 if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
                     if co.running().is_err() {
                         $crate::error!("{} change to running state failed !", co.name());
                     }
                 }
                 $crate::info!("exit syscall {} {:?} {}", syscall, r, std::io::Error::last_os_error());
+                $crate::syscall::set_in_facade(false);
                 r
             }
         }
