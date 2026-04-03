@@ -108,7 +108,7 @@ pub fn init(config: Config) {
 
 /// Shutdown the open-coroutine.
 pub fn shutdown() {
-    unsafe { _ = open_coroutine_stop(30) };
+    unsafe { _ = open_coroutine_stop(60) };
 }
 
 /// Create a task.
