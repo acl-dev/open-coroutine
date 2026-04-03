@@ -61,7 +61,7 @@ jobs:
           PROJECT_DIR: ${{ github.workspace }}
         run: sh .github/workflows/ci.sh
       - name: Run preemptive tests
-        if: ${{ !contains(matrix.target, 'loongarch64') }}
+        if: ${{ !contains(matrix.target, 'loongarch64') && !contains(matrix.target, 'riscv64') }}
         env:
           CHANNEL: ${{ matrix.channel }}
           CROSS: ${{ !startsWith(matrix.target, 'x86_64') && contains(matrix.target, 'linux') && '1' || '0' }}

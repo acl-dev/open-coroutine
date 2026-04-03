@@ -5,7 +5,6 @@
 /// coroutine2 launched
 /// loop2
 /// coroutine3 launched
-/// loop1
 /// loop2 end
 /// loop1 end
 /// ```
@@ -49,8 +48,8 @@ pub fn main() -> std::io::Result<()> {
                     );
                     _ = task!(
                         |_| {
-                            println!("coroutine3 launched");
                             unsafe { TEST_FLAG2 = false };
+                            println!("coroutine3 launched");
                         },
                         (),
                     );
