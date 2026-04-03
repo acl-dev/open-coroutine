@@ -14,7 +14,7 @@
 
 ## 🚀 当前特性
 
-- [x] 抢占调度(`不支持windows`):
+- [x] 抢占调度:
   即使协程进入死循环，它仍能被抢占，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/preemptive.rs);
 - [x] Hook:
   您可以在协程中自由使用大多数慢系统调用，查看支持的系统调用[unix](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/unix.rs)/[windows](https://github.com/acl-dev/open-coroutine/blob/master/hook/src/syscall/windows.rs);

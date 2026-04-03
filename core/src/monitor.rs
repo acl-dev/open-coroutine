@@ -511,7 +511,7 @@ std::arch::global_asm!(
 //          the coroutine is truly CPU-bound with no syscalls — do_preempt
 //          forces an immediate context switch.
 #[cfg(windows)]
-std::thread_local! {
+thread_local! {
     static PREEMPT_PENDING: Cell<bool> = const { Cell::new(false) };
 }
 
