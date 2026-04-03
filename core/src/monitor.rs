@@ -161,6 +161,14 @@ impl Monitor {
         let notify_queue = unsafe { &*monitor.notify_queue.get() };
         while MonitorState::Running == monitor.state.get() || !notify_queue.is_empty() {
             //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
+            //
+            // On Windows, SuspendThread/SetThreadContext is NOT idempotent (unlike
+            // Unix SIGURG). Calling preempt_thread a second time while the first
+            // preemption is still pending corrupts the thread's stack layout.
+            // Therefore, on Windows we collect successfully-preempted nodes and
+            // remove them from the queue after the iteration.
+            #[cfg(windows)]
+            let mut preempted = Vec::new();
             for node in notify_queue {
                 if now() < node.timestamp {
                     continue;
@@ -176,13 +184,22 @@ impl Monitor {
                             );
                         }
                     } else if #[cfg(windows)] {
-                        if !Self::preempt_thread(node.thread_id) {
+                        if Self::preempt_thread(node.thread_id) {
+                            preempted.push(*node);
+                        } else {
                             error!(
                                 "Attempt to preempt scheduling for thread:{} failed !",
                                 node.thread_id
                             );
                         }
                     }
+                }
+            }
+            #[cfg(windows)]
+            if !preempted.is_empty() {
+                let queue = unsafe { &mut *monitor.notify_queue.get() };
+                for node in &preempted {
+                    queue.remove(node);
                 }
             }
             //monitor线程不执行协程计算任务，每次循环至少wait 1ms
@@ -227,11 +244,16 @@ impl Monitor {
             let mut context: CONTEXT = std::mem::zeroed();
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "x86_64")] {
-                    // CONTEXT_CONTROL for AMD64
-                    context.ContextFlags = 0x0010_0001;
+                    // CONTEXT_FULL for AMD64: saves control + integer + floating-point
+                    // registers. Using CONTEXT_FULL (not just CONTEXT_CONTROL) ensures
+                    // all register state is properly round-tripped through
+                    // GetThreadContext/SetThreadContext, avoiding subtle issues in
+                    // release builds where CONTEXT_CONTROL alone may not capture
+                    // enough state for correct preemption.
+                    context.ContextFlags = 0x0010_000B;
                 } else if #[cfg(target_arch = "x86")] {
-                    // CONTEXT_CONTROL for i386
-                    context.ContextFlags = 0x0001_0001;
+                    // CONTEXT_FULL for i386
+                    context.ContextFlags = 0x0001_000B;
                 }
             }
 
