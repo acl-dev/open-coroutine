@@ -223,6 +223,14 @@ impl Monitor {
             THREAD_SUSPEND_RESUME,
         };
 
+        // Windows API requires CONTEXT to be 16-byte aligned for
+        // GetThreadContext/SetThreadContext on x86_64. The windows-sys crate
+        // defines CONTEXT with #[repr(C)] (natural alignment 8), which is
+        // insufficient. This wrapper ensures proper alignment.
+        #[cfg(target_arch = "x86_64")]
+        #[repr(C, align(16))]
+        struct AlignedContext(CONTEXT);
+
         extern "C" {
             fn preempt_asm();
         }
@@ -242,24 +250,25 @@ impl Monitor {
                 return false;
             }
 
-            let mut context: CONTEXT = std::mem::zeroed();
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "x86_64")] {
-                    // CONTEXT_CONTROL for AMD64: only captures/restores control
+                    let mut aligned = AlignedContext(std::mem::zeroed());
+                    let context = &mut aligned.0;
+                    // CONTEXT_CONTROL for AMD64: captures/restores control
                     // registers (RIP, RSP, RBP, RFLAGS, segment registers).
                     // We only need to modify RIP and RSP to redirect the thread
-                    // to preempt_asm. The assembly itself saves and restores all
-                    // other registers (GPRs, XMMs, RFLAGS). Using CONTEXT_FULL
-                    // here would clobber registers that are in-use by the target
-                    // thread, causing SetThreadContext to corrupt thread state.
+                    // to preempt_asm. The assembly saves and restores all other
+                    // registers (GPRs, XMMs, RFLAGS).
                     context.ContextFlags = 0x0010_0001;
                 } else if #[cfg(target_arch = "x86")] {
+                    let mut context: CONTEXT = std::mem::zeroed();
+                    let context = &mut context;
                     // CONTEXT_CONTROL for i386
                     context.ContextFlags = 0x0001_0001;
                 }
             }
 
-            if GetThreadContext(handle, &raw mut context) == 0 {
+            if GetThreadContext(handle, &raw mut *context) == 0 {
                 _ = ResumeThread(handle);
                 _ = CloseHandle(handle);
                 return false;
@@ -295,7 +304,7 @@ impl Monitor {
                 }
             }
 
-            if SetThreadContext(handle, &raw const context) == 0 {
+            if SetThreadContext(handle, &raw const *context) == 0 {
                 _ = ResumeThread(handle);
                 _ = CloseHandle(handle);
                 return false;
