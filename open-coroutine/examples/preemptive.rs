@@ -54,7 +54,7 @@ pub fn main() -> std::io::Result<()> {
                         },
                         (),
                     );
-                    join.timeout_join(Duration::from_millis(30_000)).expect("join failed");
+                    join.timeout_join(Duration::from_millis(3000)).expect("join failed");
 
                     let (lock, cvar) = &*pair2;
                     let mut pending = lock.lock().unwrap();
@@ -69,7 +69,7 @@ pub fn main() -> std::io::Result<()> {
             let result = cvar
                 .wait_timeout_while(
                     lock.lock().unwrap(),
-                    Duration::from_millis(30_000),
+                    Duration::from_millis(3000),
                     |&mut pending| pending,
                 )
                 .unwrap();
