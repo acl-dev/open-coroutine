@@ -159,16 +159,17 @@ impl Monitor {
         let monitor = Self::get_instance();
         Self::init_current(monitor);
         let notify_queue = unsafe { &*monitor.notify_queue.get() };
+        // On Windows, SuspendThread/SetThreadContext is NOT idempotent (unlike
+        // Unix SIGURG). Calling preempt_thread a second time while the first
+        // preemption is still pending corrupts the thread's stack layout.
+        // Therefore, on Windows we collect successfully-preempted nodes and
+        // remove them from the queue after the iteration.
+        #[cfg(windows)]
+        let mut preempted = Vec::new();
         while MonitorState::Running == monitor.state.get() || !notify_queue.is_empty() {
             //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-            //
-            // On Windows, SuspendThread/SetThreadContext is NOT idempotent (unlike
-            // Unix SIGURG). Calling preempt_thread a second time while the first
-            // preemption is still pending corrupts the thread's stack layout.
-            // Therefore, on Windows we collect successfully-preempted nodes and
-            // remove them from the queue after the iteration.
             #[cfg(windows)]
-            let mut preempted = Vec::new();
+            preempted.clear();
             for node in notify_queue {
                 if now() < node.timestamp {
                     continue;
