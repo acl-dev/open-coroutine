@@ -95,11 +95,6 @@ macro_rules! impl_facade {
                     }
                 }
                 $crate::info!("exit syscall {} {:?} {}", syscall, r, saved_errno);
-                // Cooperative preemption: if the monitor thread requested
-                // preemption via SuspendThread, yield here at a safe point
-                // where no thread-local borrows are held.
-                #[cfg(feature = "preemptive")]
-                $crate::monitor::check_preempt();
                 // Restore errno so callers see the correct error.
                 if let Some(e) = saved_errno.raw_os_error() {
                     $crate::syscall::set_errno(

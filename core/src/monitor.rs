@@ -177,10 +177,10 @@ impl Monitor {
                         }
                     } else if #[cfg(windows)] {
                         // Two-level preemption: the first preempt_thread call
-                        // sets a cooperative flag; the second call (next iteration,
-                        // ~1ms later) forces immediate suspension. We do NOT remove
-                        // the node here — MonitorListener::on_state_changed removes
-                        // it when the coroutine actually transitions to Suspend.
+                        // sets a flag via do_preempt; the second call (~1ms
+                        // later) forces suspension for CPU-bound coroutines.
+                        // MonitorListener::on_state_changed removes the node
+                        // when the coroutine transitions to Suspend.
                         if !Self::preempt_thread(node.thread_id) {
                             error!(
                                 "Attempt to preempt scheduling for thread:{} failed !",
@@ -503,9 +503,11 @@ std::arch::global_asm!(
 
 // Thread-local flag for two-level preemption on Windows.
 // Level 1: SuspendThread fires, do_preempt sets this flag and returns
-//          without switching coroutines. The hooked syscall (Sleep, etc.)
-//          calls check_preempt() which yields cooperatively at a safe point.
-// Level 2: If the flag is still set on the next SuspendThread (1ms later),
+//          without switching coroutines — the thread continues executing
+//          and exits any critical section (heap allocation, IO, etc.).
+//          If it reaches a hooked syscall, the Nio/Iocp layer will call
+//          Suspender::suspend_with cooperatively.
+// Level 2: If the flag is still set on the next SuspendThread (~1ms later),
 //          the coroutine is truly CPU-bound with no syscalls — do_preempt
 //          forces an immediate context switch.
 #[cfg(windows)]
@@ -513,28 +515,12 @@ std::thread_local! {
     static PREEMPT_PENDING: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Check if a preemption request is pending and yield cooperatively.
-/// Called from the Windows syscall hooks (impl_facade!) after each
-/// hooked syscall returns, providing a safe yield point where no
-/// thread-local borrows (e.g. test harness stdout capture) are held.
-#[cfg(windows)]
-pub(crate) fn check_preempt() {
-    PREEMPT_PENDING.with(|flag| {
-        if flag.get() {
-            flag.set(false);
-            if let Some(suspender) = SchedulableSuspender::current() {
-                suspender.suspend();
-            }
-        }
-    });
-}
-
 #[cfg(windows)]
 extern "C" fn do_preempt() {
     PREEMPT_PENDING.with(|flag| {
         if flag.get() {
             // Flag was already set from a previous SuspendThread attempt but the
-            // coroutine never made a hooked syscall — it is truly CPU-bound.
+            // coroutine never yielded (no hooked syscalls) — it is truly CPU-bound.
             // Force immediate suspension.
             flag.set(false);
             if let Some(suspender) = SchedulableSuspender::current() {
@@ -543,8 +529,9 @@ extern "C" fn do_preempt() {
         } else {
             // First attempt: set the flag and return without suspending.
             // preempt_asm will restore all registers and return to the original
-            // code. If the coroutine reaches a hooked syscall, check_preempt()
-            // will yield cooperatively at a safe point.
+            // code. This gives the thread time to exit any critical section.
+            // If the coroutine reaches a hooked syscall, the Nio/Iocp layer
+            // will yield cooperatively via Suspender::suspend_with.
             flag.set(true);
         }
     });
