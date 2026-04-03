@@ -200,7 +200,7 @@ impl Monitor {
             if !preempted.is_empty() {
                 let queue = unsafe { &mut *monitor.notify_queue.get() };
                 for node in &preempted {
-                    queue.remove(node);
+                    _ = queue.remove(node);
                 }
             }
             //monitor线程不执行协程计算任务，每次循环至少wait 1ms
