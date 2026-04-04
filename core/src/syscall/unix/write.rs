@@ -28,9 +28,6 @@ pub extern "C" fn write(
     buf: *const c_void,
     len: size_t,
 ) -> ssize_t {
-    if fd == libc::STDOUT_FILENO || fd == libc::STDERR_FILENO {
-        return RawWriteSyscall::default().write(fn_ptr, fd, buf, len);
-    }
     cfg_if::cfg_if! {
         if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
             static CHAIN: once_cell::sync::Lazy<
@@ -40,6 +37,9 @@ pub extern "C" fn write(
             static CHAIN: once_cell::sync::Lazy<WriteSyscallFacade<NioWriteSyscall<RawWriteSyscall>>> =
                 once_cell::sync::Lazy::new(Default::default);
         }
+    }
+    if fd == libc::STDOUT_FILENO || fd == libc::STDERR_FILENO {
+        return RawWriteSyscall::default().write(fn_ptr, fd, buf, len);
     }
     CHAIN.write(fn_ptr, fd, buf, len)
 }
