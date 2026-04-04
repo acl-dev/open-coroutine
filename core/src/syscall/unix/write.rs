@@ -1,6 +1,20 @@
 use libc::{size_t, ssize_t};
 use std::ffi::{c_int, c_void};
 
+trait WriteSyscall {
+    extern "C" fn write(
+        &self,
+        fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t) -> ssize_t>,
+        fd: c_int,
+        buf: *const c_void,
+        len: size_t,
+    ) -> ssize_t;
+}
+
+impl_syscall!(WriteSyscallFacade, IoUringWriteSyscall, NioWriteSyscall, RawWriteSyscall,
+    write(fd: c_int, buf: *const c_void, len: size_t) -> ssize_t
+);
+
 //防止重入：info!()/error!()内部会调用write()，如果write被hook了，
 //会导致无限递归或嵌套状态转换。当检测到重入时，直接调用原始系统调用跳过
 //所有中间层(io_uring/NIO)，避免io_uring提交导致condvar死锁。
@@ -21,20 +35,6 @@ fn in_facade() -> bool {
 fn set_in_facade(val: bool) {
     IN_FACADE.set(val);
 }
-
-trait WriteSyscall {
-    extern "C" fn write(
-        &self,
-        fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t) -> ssize_t>,
-        fd: c_int,
-        buf: *const c_void,
-        len: size_t,
-    ) -> ssize_t;
-}
-
-impl_syscall!(WriteSyscallFacade, IoUringWriteSyscall, NioWriteSyscall, RawWriteSyscall,
-    write(fd: c_int, buf: *const c_void, len: size_t) -> ssize_t
-);
 
 //write的facade需要特殊处理：stdout/stderr的write由日志框架(tracing)触发，
 //必须跳过所有中间层(facade/io_uring/NIO)直接调用原始系统调用，否则：
@@ -68,11 +68,7 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
             || fd == libc::STDERR_FILENO
             || in_facade()
         {
-            return if let Some(f) = fn_ptr {
-                (f)(fd, buf, len)
-            } else {
-                unsafe { libc::write(fd, buf, len) }
-            };
+            return RawWriteSyscall::default().write(fn_ptr, fd, buf, len);
         }
         let syscall = crate::common::constants::SyscallName::write;
         set_in_facade(true);
