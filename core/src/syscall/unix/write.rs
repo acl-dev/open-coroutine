@@ -38,7 +38,11 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
         buf: *const c_void,
         len: size_t,
     ) -> ssize_t {
+        if fd == libc::STDOUT_FILENO || fd == libc::STDERR_FILENO {
+            return RawWriteSyscall::default().write(fn_ptr, fd, buf, len);
+        }
         let syscall = crate::common::constants::SyscallName::write;
+        crate::info!("enter syscall {}", syscall);
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
             let new_state = crate::common::constants::SyscallState::Executing;
             if co.syscall((), syscall, new_state).is_err() {
@@ -47,10 +51,6 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
                 );
             }
         }
-        if fd == libc::STDOUT_FILENO || fd == libc::STDERR_FILENO {
-            return RawWriteSyscall::default().write(fn_ptr, fd, buf, len);
-        }
-        crate::info!("enter syscall {}", syscall);
         let r = self.inner.write(fn_ptr, fd, buf, len);
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
             if co.running().is_err() {
