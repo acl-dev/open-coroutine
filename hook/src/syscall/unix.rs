@@ -82,41 +82,8 @@ impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirf
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
 
-// NOTE: unhook write/pthread_mutex_lock/pthread_mutex_unlock due to stack overflow or bug
+// NOTE: unhook pthread_mutex_lock/pthread_mutex_unlock due to bug
 // impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
 // impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
 
-//write需要特殊的hook实现：stdout/stderr的write由日志框架触发，
-//必须绕过facade直接调用原始write，否则facade内部的info!()会再次
-//触发write导致stdout RefCell重复借用。其他fd正常走facade。
-// write needs a custom hook: writes to stdout/stderr are triggered by
-// the logging framework. They must bypass the facade and call raw write
-// directly; otherwise the facade's info!() would re-trigger write,
-// causing stdout's RefCell to be double-borrowed. Other fds go through
-// the facade normally.
-#[no_mangle]
-pub extern "C" fn write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t {
-    static WRITE: once_cell::sync::Lazy<extern "C" fn(c_int, *const c_void, size_t) -> ssize_t> =
-        once_cell::sync::Lazy::new(|| unsafe {
-            let symbol = std::ffi::CString::new("write")
-                .unwrap_or_else(|_| panic!("can not transfer \"write\" to CString"));
-            let ptr = libc::dlsym(libc::RTLD_NEXT, symbol.as_ptr());
-            assert!(!ptr.is_null(), "syscall \"write\" not found !");
-            std::mem::transmute(ptr)
-        });
-    let fn_ptr = once_cell::sync::Lazy::force(&WRITE);
-    // stdout(1)/stderr(2)的write由日志框架触发，必须绕过facade
-    // Bypass facade for stdout/stderr — these are logging fds
-    if fd == libc::STDOUT_FILENO || fd == libc::STDERR_FILENO
-        || open_coroutine_core::syscall::in_facade()
-    {
-        return (fn_ptr)(fd, buf, count);
-    }
-    if crate::hook()
-        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
-        || cfg!(feature = "ci")
-    {
-        return open_coroutine_core::syscall::write(Some(fn_ptr), fd, buf, count);
-    }
-    (fn_ptr)(fd, buf, count)
-}
+impl_hook!(WRITE, write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t);
