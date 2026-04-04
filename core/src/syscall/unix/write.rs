@@ -1,6 +1,25 @@
 use libc::{size_t, ssize_t};
 use std::ffi::{c_int, c_void};
 
+//防止重入：info!()/error!()内部会调用write()，如果write被hook了，
+//会导致无限递归或嵌套状态转换。当检测到重入时，直接调用内部系统调用跳过facade逻辑。
+// Re-entrancy guard: info!()/error!() internally call write(). If write is hooked,
+// this causes infinite recursion or nested state transitions that corrupt coroutine state.
+// When re-entrancy is detected, bypass the facade and call the inner syscall directly.
+thread_local! {
+    static IN_FACADE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[inline]
+fn in_facade() -> bool {
+    IN_FACADE.get()
+}
+
+#[inline]
+fn set_in_facade(val: bool) {
+    IN_FACADE.set(val);
+}
+
 trait WriteSyscall {
     extern "C" fn write(
         &self,
@@ -43,12 +62,12 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
         // when already inside a facade (re-entrancy guard)
         if fd == libc::STDOUT_FILENO
             || fd == libc::STDERR_FILENO
-            || crate::syscall::in_facade()
+            || in_facade()
         {
             return self.inner.write(fn_ptr, fd, buf, len);
         }
         let syscall = crate::common::constants::SyscallName::write;
-        crate::syscall::set_in_facade(true);
+        set_in_facade(true);
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
             let new_state = crate::common::constants::SyscallState::Executing;
             if co.syscall((), syscall, new_state).is_err() {
@@ -58,16 +77,16 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
             }
         }
         crate::info!("enter syscall {}", syscall);
-        crate::syscall::set_in_facade(false);
+        set_in_facade(false);
         let r = self.inner.write(fn_ptr, fd, buf, len);
-        crate::syscall::set_in_facade(true);
+        set_in_facade(true);
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
             if co.running().is_err() {
                 crate::error!("{} change to running state failed !", co.name());
             }
         }
         crate::info!("exit syscall {} {:?} {}", syscall, r, std::io::Error::last_os_error());
-        crate::syscall::set_in_facade(false);
+        set_in_facade(false);
         r
     }
 }
