@@ -62,6 +62,7 @@ impl_hook!(PREADV, preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: o
 impl_hook!(RECVMSG, recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t);
 impl_hook!(SEND, send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t);
 impl_hook!(SENDTO, sendto(fd: c_int, buf: *const c_void, len: size_t, flags: c_int, addr: *const sockaddr, addrlen: socklen_t) -> ssize_t);
+impl_hook!(WRITE, write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t);
 impl_hook!(PWRITE, pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_t) -> ssize_t);
 impl_hook!(WRITEV, writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_hook!(PWRITEV, pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
@@ -82,7 +83,6 @@ impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirf
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
 
-// NOTE: unhook write/pthread_mutex_lock/pthread_mutex_unlock due to stack overflow or bug
-// impl_hook!(WRITE, write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t);
+// NOTE: unhook pthread_mutex_lock/pthread_mutex_unlock due to stack overflow or bug
 // impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
 // impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
