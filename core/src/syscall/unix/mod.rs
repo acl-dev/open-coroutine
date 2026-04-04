@@ -120,15 +120,16 @@ macro_rules! impl_facade {
                     return self.inner.$syscall(fn_ptr, $($arg, )*);
                 }
                 let syscall = $crate::common::constants::SyscallName::$syscall;
-                //在日志和状态变更期间设置防重入标志，因为info!()/error!()内部会
-                //调用write()，co.syscall()/co.running()内部会调用change_state()
-                //再调用info!()，这些都可能触发hooked write导致无限递归
-                // Set re-entrancy guard during logging and state changes because:
-                // - info!()/error!() internally call write()
-                // - co.syscall()/co.running() call change_state() which calls info!()
-                // Both can trigger hooked write causing infinite recursion.
+                //先转换状态再记录日志：co.syscall(Executing)会通过on_state_changed
+                //移除MonitorListener的NOTIFY_NODE，使monitor不再发送SIGURG。
+                //如果先调用info!()再转换状态，在QEMU等慢平台上info!()可能耗时>10ms，
+                //导致SIGURG在协程还处于Running状态时被发送，造成抢占活锁。
+                // Transition state BEFORE logging: co.syscall(Executing) triggers
+                // on_state_changed which removes MonitorListener's NOTIFY_NODE,
+                // preventing the monitor from sending SIGURG. If info!() is called
+                // first while still in Running state, it can take >10ms on slow
+                // platforms (QEMU), causing SIGURG to fire and preemption live-lock.
                 $crate::syscall::set_in_facade(true);
-                $crate::info!("enter syscall {}", syscall);
                 if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
                     let new_state = $crate::common::constants::SyscallState::Executing;
                     if co.syscall((), syscall, new_state).is_err() {
@@ -137,6 +138,7 @@ macro_rules! impl_facade {
                         );
                     }
                 }
+                $crate::info!("enter syscall {}", syscall);
                 $crate::syscall::set_in_facade(false);
                 let r = self.inner.$syscall(fn_ptr, $($arg, )*);
                 $crate::syscall::set_in_facade(true);

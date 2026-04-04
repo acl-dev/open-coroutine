@@ -49,7 +49,6 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
         }
         let syscall = crate::common::constants::SyscallName::write;
         crate::syscall::set_in_facade(true);
-        crate::info!("enter syscall {}", syscall);
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
             let new_state = crate::common::constants::SyscallState::Executing;
             if co.syscall((), syscall, new_state).is_err() {
@@ -58,6 +57,7 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
                 );
             }
         }
+        crate::info!("enter syscall {}", syscall);
         crate::syscall::set_in_facade(false);
         let r = self.inner.write(fn_ptr, fd, buf, len);
         crate::syscall::set_in_facade(true);
