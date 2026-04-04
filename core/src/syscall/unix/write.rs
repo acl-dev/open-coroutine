@@ -11,9 +11,41 @@ trait WriteSyscall {
     ) -> ssize_t;
 }
 
-impl_syscall!(WriteSyscallFacade, IoUringWriteSyscall, NioWriteSyscall, RawWriteSyscall,
-    write(fd: c_int, buf: *const c_void, len: size_t) -> ssize_t
-);
+//在最顶层对stdout/stderr/重入写入做早期旁路：直接调用原始系统调用，
+//跳过整个facade链(WriteSyscallFacade/IoUring/NIO)，最小化每次info!()
+//调用write()时的函数调用开销。在QEMU等慢速平台上，每个额外的函数调用
+//可能耗时0.5-1ms，累积的开销会导致协程在10ms抢占窗口内无法完成工作。
+// Early bypass at the top-level dispatcher for stdout/stderr/re-entrant writes:
+// call the raw syscall directly, skipping the entire facade chain
+// (WriteSyscallFacade/IoUring/NIO). This minimizes function call overhead
+// per info!() → write() invocation. On slow platforms (QEMU), each extra
+// function call can cost 0.5-1ms, and cumulative overhead prevents coroutines
+// from completing work within the 10ms preemption window.
+#[must_use]
+pub extern "C" fn write(
+    fn_ptr: Option<&extern "C" fn(c_int, *const c_void, size_t) -> ssize_t>,
+    fd: c_int,
+    buf: *const c_void,
+    len: size_t,
+) -> ssize_t {
+    if fd == libc::STDOUT_FILENO || fd == libc::STDERR_FILENO || in_facade() {
+        if let Some(f) = fn_ptr {
+            return (f)(fd, buf, len);
+        }
+        return unsafe { libc::write(fd, buf, len) };
+    }
+    cfg_if::cfg_if! {
+        if #[cfg(all(target_os = "linux", feature = "io_uring"))] {
+            static CHAIN: once_cell::sync::Lazy<
+                WriteSyscallFacade<IoUringWriteSyscall<NioWriteSyscall<RawWriteSyscall>>>
+            > = once_cell::sync::Lazy::new(Default::default);
+        } else {
+            static CHAIN: once_cell::sync::Lazy<WriteSyscallFacade<NioWriteSyscall<RawWriteSyscall>>> =
+                once_cell::sync::Lazy::new(Default::default);
+        }
+    }
+    CHAIN.write(fn_ptr, fd, buf, len)
+}
 
 //防止重入：info!()/error!()内部会调用write()，如果write被hook了，
 //会导致无限递归或嵌套状态转换。当检测到重入时，直接调用原始系统调用跳过
@@ -59,17 +91,6 @@ impl<I: WriteSyscall> WriteSyscall for WriteSyscallFacade<I> {
         buf: *const c_void,
         len: size_t,
     ) -> ssize_t {
-        // stdout(1)/stderr(2)由日志框架触发，或已在facade内部（防重入），
-        // 直接调用原始系统调用，跳过所有中间层(io_uring/NIO)避免死锁
-        // Bypass ALL layers for stdout/stderr (logging fds) and when already
-        // inside a facade (re-entrancy guard). Call raw syscall directly to
-        // avoid io_uring submission deadlocks and NIO event loop interactions.
-        if fd == libc::STDOUT_FILENO
-            || fd == libc::STDERR_FILENO
-            || in_facade()
-        {
-            return RawWriteSyscall::default().write(fn_ptr, fd, buf, len);
-        }
         let syscall = crate::common::constants::SyscallName::write;
         set_in_facade(true);
         if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
