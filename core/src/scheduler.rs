@@ -227,6 +227,8 @@ impl<'s> Scheduler<'s> {
                     co.syscall(val, syscall, SyscallState::Callback)
                         .expect("change syscall state failed");
                 }
+                //协程在系统调用执行期间被信号抢占，直接放回就绪队列
+                CoroutineState::Syscall(_, _, SyscallState::Executing) => {}
                 _ => unreachable!("try_resume unexpect CoroutineState"),
             }
             self.ready.push(co);
@@ -383,6 +385,23 @@ impl<'s> Scheduler<'s> {
                     }
                 }
             }
+        }
+        // Check for coroutines preempted during syscall execution (SIGURG race).
+        // These have SyscallState::Executing and no syscall_suspend entry,
+        // so they would be stuck in the syscall map forever without this.
+        let executing: Vec<u64> = self
+            .syscall
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.value().state(),
+                    CoroutineState::Syscall(_, _, SyscallState::Executing)
+                )
+            })
+            .map(|entry| *entry.key())
+            .collect();
+        for co_id in executing {
+            self.try_resume(co_id);
         }
         Ok(())
     }
