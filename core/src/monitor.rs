@@ -159,16 +159,14 @@ impl Monitor {
         let monitor = Self::get_instance();
         Self::init_current(monitor);
         let notify_queue = unsafe { &*monitor.notify_queue.get() };
+        //先收集超时节点快照，再逐个检查是否仍在队列中
+        //（在收集和检查之间，on_state_changed可能已将节点移除——协程进入了Syscall状态）
+        let mut expired = Vec::new();
         while MonitorState::Running == monitor.state.get() || !notify_queue.is_empty() {
             //只遍历，不删除，如果抢占调度失败，会在1ms后不断重试，相当于主动检测
-            //先收集超时节点快照，再逐个检查是否仍在队列中
-            //（在收集和检查之间，on_state_changed可能已将节点移除——协程进入了Syscall状态）
+            expired.clear();
             let current = now();
-            let expired: Vec<NotifyNode> = notify_queue
-                .iter()
-                .filter(|n| current >= n.timestamp)
-                .copied()
-                .collect();
+            expired.extend(notify_queue.iter().filter(|n| current >= n.timestamp).copied());
             for node in &expired {
                 //实际上只对陷入重度计算的协程发送信号抢占
                 //对于陷入执行系统调用的协程不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
