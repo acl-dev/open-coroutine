@@ -78,24 +78,6 @@ impl Monitor {
                 set.remove(Signal::SIGURG);
                 set.thread_set_mask()
                     .expect("Failed to remove SIGURG signal mask!");
-                //不抢占处于Syscall状态的协程。
-                //MonitorListener的设计理念是不对Syscall状态的协程发送信号。
-                //但由于NOTIFY_NODE移除和monitor线程遍历之间存在竞态条件，
-                //SIGURG可能在协程刚进入Syscall状态时到达。
-                //如果此时抢占，协程会被放入syscall_map但无人唤醒（因为没有io_uring/epoll注册），
-                //导致死锁。
-                // Skip preemption for coroutines in Syscall state.
-                // MonitorListener's design is to NOT send signals to Syscall-state
-                // coroutines. However, a race between NOTIFY_NODE removal and the
-                // monitor's queue iteration can cause SIGURG to arrive just after
-                // the coroutine entered Syscall state. If preempted here, the
-                // coroutine lands in the syscall map with no io_uring/epoll/timer
-                // registration to wake it, causing a deadlock.
-                if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
-                    if matches!(co.state(), CoroutineState::Syscall(_, _, _)) {
-                        return;
-                    }
-                }
                 if let Some(suspender) = SchedulableSuspender::current() {
                     suspender.suspend();
                 }
@@ -185,6 +167,15 @@ impl Monitor {
                 }
                 //实际上只对陷入重度计算的协程发送信号抢占
                 //对于陷入执行系统调用的协程不发送信号(如果发送信号，会打断系统调用，进而降低总体性能)
+                //当协程进入Syscall状态时，on_state_changed会从notify_queue中移除节点。
+                //此处检查节点是否仍在队列中，避免对已进入Syscall状态的协程发送信号。
+                // When a coroutine enters Syscall state, on_state_changed removes
+                // its node from the notify_queue. Check that the node is still
+                // present before sending the signal, to avoid preempting a
+                // coroutine that has already entered Syscall state.
+                if !notify_queue.contains(node) {
+                    continue;
+                }
                 cfg_if::cfg_if! {
                     if #[cfg(unix)] {
                         if pthread_kill(node.pthread, Signal::SIGURG).is_err() {
