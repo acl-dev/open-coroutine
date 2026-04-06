@@ -83,6 +83,6 @@ impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirf
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
 
-// NOTE: unhook pthread_mutex_lock/pthread_mutex_unlock due to bug
+// NOTE: unhook pthread_mutex_lock/pthread_mutex_unlock due to stack overflow or bug
 // impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
 // impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
