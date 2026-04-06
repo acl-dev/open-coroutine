@@ -78,6 +78,24 @@ impl Monitor {
                 set.remove(Signal::SIGURG);
                 set.thread_set_mask()
                     .expect("Failed to remove SIGURG signal mask!");
+                //不抢占处于Syscall状态的协程。
+                //MonitorListener的设计理念是不对Syscall状态的协程发送信号。
+                //但由于NOTIFY_NODE移除和monitor线程遍历之间存在竞态条件，
+                //SIGURG可能在协程刚进入Syscall状态时到达。
+                //如果此时抢占，协程会被放入syscall_map但无人唤醒（因为没有io_uring/epoll注册），
+                //导致死锁。
+                // Skip preemption for coroutines in Syscall state.
+                // MonitorListener's design is to NOT send signals to Syscall-state
+                // coroutines. However, a race between NOTIFY_NODE removal and the
+                // monitor's queue iteration can cause SIGURG to arrive just after
+                // the coroutine entered Syscall state. If preempted here, the
+                // coroutine lands in the syscall map with no io_uring/epoll/timer
+                // registration to wake it, causing a deadlock.
+                if let Some(co) = SchedulableCoroutine::current() {
+                    if matches!(co.state(), CoroutineState::Syscall((), _, _)) {
+                        return;
+                    }
+                }
                 if let Some(suspender) = SchedulableSuspender::current() {
                     suspender.suspend();
                 }
