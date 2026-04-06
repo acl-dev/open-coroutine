@@ -3,7 +3,7 @@ use crate::common::constants::{CoroutineState, MONITOR_BEAN};
 use crate::common::{get_timeout_time, now, CondvarBlocker};
 use crate::coroutine::listener::Listener;
 use crate::coroutine::local::CoroutineLocal;
-use crate::scheduler::SchedulableSuspender;
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use crate::{catch, error, impl_current_for, impl_display_by_debug, info};
 #[cfg(unix)]
 use nix::sys::pthread::{pthread_kill, pthread_self, Pthread};
@@ -78,6 +78,24 @@ impl Monitor {
                 set.remove(Signal::SIGURG);
                 set.thread_set_mask()
                     .expect("Failed to remove SIGURG signal mask!");
+                //不抢占处于Syscall状态的协程。
+                //MonitorListener的设计理念是不对Syscall状态的协程发送信号。
+                //但由于NOTIFY_NODE移除和monitor线程遍历之间存在竞态条件，
+                //SIGURG可能在协程刚进入Syscall状态时到达。
+                //如果此时抢占，协程会被放入syscall_map但无人唤醒（因为没有io_uring/epoll注册），
+                //导致死锁。
+                // Skip preemption for coroutines in Syscall state.
+                // MonitorListener's design is to NOT send signals to Syscall-state
+                // coroutines. However, a race between NOTIFY_NODE removal and the
+                // monitor's queue iteration can cause SIGURG to arrive just after
+                // the coroutine entered Syscall state. If preempted here, the
+                // coroutine lands in the syscall map with no io_uring/epoll/timer
+                // registration to wake it, causing a deadlock.
+                if let Some(co) = SchedulableCoroutine::current() {
+                    if matches!(co.state(), CoroutineState::Syscall((), _, _)) {
+                        return;
+                    }
+                }
                 if let Some(suspender) = SchedulableSuspender::current() {
                     suspender.suspend();
                 }
@@ -89,7 +107,7 @@ impl Monitor {
                 // install panic hook
                 std::panic::set_hook(Box::new(|panic_hook_info| {
                     let syscall = crate::common::constants::SyscallName::panicking;
-                    if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
+                    if let Some(co) = SchedulableCoroutine::current() {
                         let new_state = crate::common::constants::SyscallState::Executing;
                         if co.syscall((), syscall, new_state).is_err() {
                             error!(
@@ -109,7 +127,7 @@ impl Monitor {
                         "stack backtrace:\n{}",
                         std::backtrace::Backtrace::force_capture()
                     );
-                    if let Some(co) = crate::scheduler::SchedulableCoroutine::current() {
+                    if let Some(co) = SchedulableCoroutine::current() {
                         if co.running().is_err() {
                             error!("{} change to running state failed !", co.name());
                         }
@@ -523,6 +541,24 @@ extern "C" fn do_preempt() {
             // coroutine never yielded (no hooked syscalls) — it is truly CPU-bound.
             // Force immediate suspension.
             flag.set(false);
+            //不抢占处于Syscall状态的协程。
+            //MonitorListener的设计理念是不对Syscall状态的协程发送信号。
+            //但由于NOTIFY_NODE移除和monitor线程遍历之间存在竞态条件，
+            //SIGURG可能在协程刚进入Syscall状态时到达。
+            //如果此时抢占，协程会被放入syscall_map但无人唤醒（因为没有io_uring/epoll注册），
+            //导致死锁。
+            // Skip preemption for coroutines in Syscall state.
+            // MonitorListener's design is to NOT send signals to Syscall-state
+            // coroutines. However, a race between NOTIFY_NODE removal and the
+            // monitor's queue iteration can cause SIGURG to arrive just after
+            // the coroutine entered Syscall state. If preempted here, the
+            // coroutine lands in the syscall map with no io_uring/epoll/timer
+            // registration to wake it, causing a deadlock.
+            if let Some(co) = SchedulableCoroutine::current() {
+                if matches!(co.state(), CoroutineState::Syscall((), _, _)) {
+                    return;
+                }
+            }
             if let Some(suspender) = SchedulableSuspender::current() {
                 suspender.suspend();
             }
