@@ -18,26 +18,11 @@ where
         new_state: CoroutineState<Yield, Return>,
     ) -> CoroutineState<Yield, Return> {
         let old_state = self.state.replace(new_state);
-        //对→Running的转换：先记录日志再通知MonitorListener。
-        //on_state_changed(Running)会通过MonitorListener设置10ms的NOTIFY_NODE定时器，
-        //如果先通知再记录日志，在QEMU等慢平台上info!()可能耗时>10ms，
-        //导致定时器在日志记录期间过期→SIGURG→抢占活锁。
-        //先记录日志确保NOTIFY_NODE定时器在日志I/O完成后才启动。
-        // For →Running transitions: log BEFORE notifying MonitorListener.
-        // on_state_changed(Running) sets a 10ms NOTIFY_NODE timer via MonitorListener.
-        // If notified first, info!() can take >10ms on slow platforms (QEMU),
-        // causing the timer to expire during logging → SIGURG → preemption live-lock.
-        // Logging first ensures the NOTIFY_NODE timer starts after slow I/O completes.
-        if matches!(new_state, CoroutineState::Running) {
-            info!("{} {:?}->{:?}", self.name(), old_state, new_state);
-            self.on_state_changed(self, old_state, new_state);
+        self.on_state_changed(self, old_state, new_state);
+        if let CoroutineState::Error(_) = new_state {
+            error!("{} {:?}->{:?}", self.name(), old_state, new_state);
         } else {
-            self.on_state_changed(self, old_state, new_state);
-            if let CoroutineState::Error(_) = new_state {
-                error!("{} {:?}->{:?}", self.name(), old_state, new_state);
-            } else {
-                info!("{} {:?}->{:?}", self.name(), old_state, new_state);
-            }
+            info!("{} {:?}->{:?}", self.name(), old_state, new_state);
         }
         old_state
     }
