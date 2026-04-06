@@ -76,15 +76,7 @@ macro_rules! impl_facade {
                 $($arg: $arg_type),*
             ) -> $result {
                 let syscall = $crate::common::constants::SyscallName::$syscall;
-                //先转换状态再记录日志：co.syscall(Executing)会通过on_state_changed
-                //移除MonitorListener的NOTIFY_NODE，使monitor不再发送SIGURG。
-                //如果先调用info!()再转换状态，在QEMU等慢平台上info!()可能耗时>10ms，
-                //导致SIGURG在协程还处于Running状态时被发送，造成抢占活锁。
-                // Transition state BEFORE logging: co.syscall(Executing) triggers
-                // on_state_changed which removes MonitorListener's NOTIFY_NODE,
-                // preventing the monitor from sending SIGURG. If info!() is called
-                // first while still in Running state, it can take >10ms on slow
-                // platforms (QEMU), causing SIGURG to fire and preemption live-lock.
+                $crate::info!("enter syscall {}", syscall);
                 if let Some(co) = $crate::scheduler::SchedulableCoroutine::current() {
                     let new_state = $crate::common::constants::SyscallState::Executing;
                     if co.syscall((), syscall, new_state).is_err() {
@@ -93,7 +85,6 @@ macro_rules! impl_facade {
                         );
                     }
                 }
-                $crate::info!("enter syscall {}", syscall);
                 let r = self.inner.$syscall(fn_ptr, $($arg, )*);
                 // Save errno immediately—logging and coroutine bookkeeping
                 // call Win32 APIs (e.g. CreateFileW) that clobber GetLastError().
