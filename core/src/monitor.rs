@@ -74,11 +74,7 @@ impl Monitor {
         #[cfg(unix)]
         extern "C" fn sigurg_handler(_: libc::c_int) {
             if let Ok(mut set) = SigSet::thread_get_mask() {
-                //删除对SIGURG信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
-                set.remove(Signal::SIGURG);
-                set.thread_set_mask()
-                    .expect("Failed to remove SIGURG signal mask!");
-                //不抢占处于Syscall状态的协程。
+                //只抢占处于Running状态的协程。
                 //MonitorListener的设计理念是不对Syscall状态的协程发送信号。
                 //但由于NOTIFY_NODE移除和monitor线程遍历之间存在竞态条件，
                 //SIGURG可能在协程刚进入Syscall状态时到达。
@@ -92,10 +88,14 @@ impl Monitor {
                 // coroutine lands in the syscall map with no io_uring/epoll/timer
                 // registration to wake it, causing a deadlock.
                 if let Some(co) = SchedulableCoroutine::current() {
-                    if matches!(co.state(), CoroutineState::Syscall((), _, _)) {
+                    if !matches!(co.state(), CoroutineState::Running) {
                         return;
                     }
                 }
+                //删除对SIGURG信号的屏蔽，使信号处理函数即使在处理中，也可以再次进入信号处理函数
+                set.remove(Signal::SIGURG);
+                set.thread_set_mask()
+                    .expect("Failed to remove SIGURG signal mask!");
                 if let Some(suspender) = SchedulableSuspender::current() {
                     suspender.suspend();
                 }
@@ -541,7 +541,7 @@ extern "C" fn do_preempt() {
             // coroutine never yielded (no hooked syscalls) — it is truly CPU-bound.
             // Force immediate suspension.
             flag.set(false);
-            //不抢占处于Syscall状态的协程。
+            //只抢占处于Running状态的协程。
             //MonitorListener的设计理念是不对Syscall状态的协程发送信号。
             //但由于NOTIFY_NODE移除和monitor线程遍历之间存在竞态条件，
             //SIGURG可能在协程刚进入Syscall状态时到达。
@@ -555,7 +555,7 @@ extern "C" fn do_preempt() {
             // coroutine lands in the syscall map with no io_uring/epoll/timer
             // registration to wake it, causing a deadlock.
             if let Some(co) = SchedulableCoroutine::current() {
-                if matches!(co.state(), CoroutineState::Syscall((), _, _)) {
+                if !matches!(co.state(), CoroutineState::Running) {
                     return;
                 }
             }
