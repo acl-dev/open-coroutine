@@ -566,8 +566,8 @@ macro_rules! impl_nio_read_iovec {
                 let mut received = 0usize;
                 let mut r = -1;
                 let mut index = 0;
-                for iovec in &vec {
-                    let mut offset = received.saturating_sub(length);
+                'outer: for iovec in &vec {
+                    let offset = received.saturating_sub(length);
                     length += iovec.iov_len;
                     if received > length {
                         index += 1;
@@ -603,11 +603,9 @@ macro_rules! impl_nio_read_iovec {
                         } else if r != -1 {
                             $crate::syscall::reset_errno();
                             received += libc::size_t::try_from(r).expect("r overflow");
-                            if received >= length {
-                                r = received.try_into().expect("received overflow");
-                                break;
-                            }
-                            offset = received.saturating_sub(length);
+                            r = received.try_into().expect("received overflow");
+                            // readv returns as soon as any data is received
+                            break 'outer;
                         }
                         let error_kind = std::io::Error::last_os_error().kind();
                         if error_kind == std::io::ErrorKind::WouldBlock {
