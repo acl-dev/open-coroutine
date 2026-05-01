@@ -567,7 +567,6 @@ macro_rules! impl_nio_read_iovec {
                 let mut r = -1;
                 let mut index = 0;
                 'outer: for iovec in &vec {
-                    let offset = received.saturating_sub(length);
                     length += iovec.iov_len;
                     if received > length {
                         index += 1;
@@ -578,12 +577,6 @@ macro_rules! impl_nio_read_iovec {
                         arg.push(*i);
                     }
                     while received < length && left_time > 0 {
-                        if 0 != offset {
-                            arg[0] = libc::iovec {
-                                iov_base: (arg[0].iov_base as usize + offset) as *mut std::ffi::c_void,
-                                iov_len: arg[0].iov_len - offset,
-                            };
-                        }
                         r = self.inner.$syscall(
                             fn_ptr,
                             $fd,
