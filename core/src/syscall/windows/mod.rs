@@ -534,7 +534,8 @@ macro_rules! impl_nio_read_iovec {
                 let mut r = windows_sys::Win32::Networking::WinSock::SOCKET_ERROR;
                 let mut index = 0;
                 for iovec in &vec {
-                    let mut offset = received.saturating_sub(length);
+                    let stage = length;
+                    let mut offset = received.saturating_sub(stage);
                     length += iovec.len as usize;
                     if received > length {
                         index += 1;
@@ -545,6 +546,7 @@ macro_rules! impl_nio_read_iovec {
                         arg.push(*i);
                     }
                     while received < length && left_time > 0 {
+                        // Assuming len is 4, but only 1 is read, at this point we should continue trying to fill the current WSABUF
                         if 0 != offset {
                             arg[0] = windows_sys::Win32::Networking::WinSock::WSABUF {
                                 buf: (arg[0].buf as usize + offset) as windows_sys::core::PSTR,
@@ -563,13 +565,13 @@ macro_rules! impl_nio_read_iovec {
                         );
                         if r != windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
                             $crate::syscall::reset_errno();
-                            received += usize::try_from(r).expect("overflow");
+                            received += unsafe{ usize::try_from(*$recvd).expect("overflow") };
                             if received >= length {
                                 r = 0;
                                 unsafe{ $recvd.write(received.try_into().expect("overflow")) };
                                 break;
                             }
-                            offset = received.saturating_sub(length);
+                            offset = received.saturating_sub(stage);
                         }
                         let error_kind = std::io::Error::last_os_error().kind();
                         if error_kind == std::io::ErrorKind::WouldBlock {
@@ -774,7 +776,8 @@ macro_rules! impl_nio_write_iovec {
                 let mut r = windows_sys::Win32::Networking::WinSock::SOCKET_ERROR;
                 let mut index = 0;
                 for iovec in &vec {
-                    let mut offset = sent.saturating_sub(length);
+                    let stage = length;
+                    let mut offset = sent.saturating_sub(stage);
                     length += iovec.len as usize;
                     if sent > length {
                         index += 1;
@@ -803,13 +806,13 @@ macro_rules! impl_nio_write_iovec {
                         );
                         if r != windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
                             $crate::syscall::reset_errno();
-                            sent += usize::try_from(r).expect("overflow");
+                            sent += unsafe{ usize::try_from(*$sent).expect("overflow")};
                             if sent >= length {
                                 r = 0;
                                 unsafe{ $sent.write(sent.try_into().expect("overflow")) };
                                 break;
                             }
-                            offset = sent.saturating_sub(length);
+                            offset = sent.saturating_sub(stage);
                         }
                         let error_kind = std::io::Error::last_os_error().kind();
                         if error_kind == std::io::ErrorKind::WouldBlock {

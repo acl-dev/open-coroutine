@@ -567,7 +567,8 @@ macro_rules! impl_nio_read_iovec {
                 let mut r = -1;
                 let mut index = 0;
                 for iovec in &vec {
-                    let mut offset = received.saturating_sub(length);
+                    let stage = length;
+                    let mut offset = received.saturating_sub(stage);
                     length += iovec.iov_len;
                     if received > length {
                         index += 1;
@@ -578,6 +579,7 @@ macro_rules! impl_nio_read_iovec {
                         arg.push(*i);
                     }
                     while received < length && left_time > 0 {
+                        // Assuming iov_len is 4, but only 1 is read, at this point we should continue trying to fill the current iovec
                         if 0 != offset {
                             arg[0] = libc::iovec {
                                 iov_base: (arg[0].iov_base as usize + offset) as *mut std::ffi::c_void,
@@ -607,7 +609,7 @@ macro_rules! impl_nio_read_iovec {
                                 r = received.try_into().expect("received overflow");
                                 break;
                             }
-                            offset = received.saturating_sub(length);
+                            offset = received.saturating_sub(stage);
                         }
                         let error_kind = std::io::Error::last_os_error().kind();
                         if error_kind == std::io::ErrorKind::WouldBlock {
@@ -790,7 +792,8 @@ macro_rules! impl_nio_write_iovec {
                 let mut r = -1;
                 let mut index = 0;
                 for iovec in &vec {
-                    let mut offset = sent.saturating_sub(length);
+                    let stage = length;
+                    let mut offset = sent.saturating_sub(stage);
                     length += iovec.iov_len;
                     if sent > length {
                         index += 1;
@@ -823,7 +826,7 @@ macro_rules! impl_nio_write_iovec {
                                 r = sent.try_into().expect("sent overflow");
                                 break;
                             }
-                            offset = sent.saturating_sub(length);
+                            offset = sent.saturating_sub(stage);
                         }
                         let error_kind = std::io::Error::last_os_error().kind();
                         if error_kind == std::io::ErrorKind::WouldBlock {
