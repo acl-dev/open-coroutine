@@ -130,6 +130,40 @@ fn scheduler_listener() -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn scheduler_pthread_mutex_lock() -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    let mut scheduler = Scheduler::default();
+    for _ in 0..3 {
+        _ = scheduler.submit_co(
+            |_, _| {
+                let mut mutex = libc::PTHREAD_MUTEX_INITIALIZER;
+                let r = open_coroutine_core::syscall::pthread_mutex_lock(
+                    None,
+                    std::ptr::addr_of_mut!(mutex),
+                );
+                assert_eq!(0, r, "pthread_mutex_lock failed with {r}");
+                COUNTER.fetch_add(1, Ordering::SeqCst);
+                let r = open_coroutine_core::syscall::pthread_mutex_unlock(
+                    None,
+                    std::ptr::addr_of_mut!(mutex),
+                );
+                assert_eq!(0, r, "pthread_mutex_unlock failed with {r}");
+                None
+            },
+            None,
+            None,
+        )?;
+    }
+    scheduler.try_schedule()?;
+    assert_eq!(3, COUNTER.load(Ordering::SeqCst));
+    Ok(())
+}
+
 #[test]
 fn scheduler_try_cancel_coroutine() -> std::io::Result<()> {
     let mut scheduler = Scheduler::default();
