@@ -130,7 +130,7 @@ fn scheduler_listener() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "syscall"))]
 #[test]
 fn scheduler_pthread_mutex_lock() -> std::io::Result<()> {
     use std::sync::atomic::{AtomicUsize, Ordering};

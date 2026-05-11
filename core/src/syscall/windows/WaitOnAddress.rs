@@ -4,6 +4,7 @@ use windows_sys::core::BOOL;
 use windows_sys::Win32::Foundation::{ERROR_TIMEOUT, FALSE, TRUE};
 use crate::common::{get_timeout_time, now};
 use crate::net::EventLoops;
+use crate::scheduler::SchedulableCoroutine;
 use crate::syscall::reset_errno;
 use crate::syscall::set_errno;
 
@@ -51,6 +52,15 @@ impl<I: WaitOnAddressSyscall> WaitOnAddressSyscall for NioWaitOnAddressSyscall<I
         addresssize: usize,
         dwmilliseconds: c_uint
     ) -> BOOL {
+        // Not inside a coroutine: call the real function directly.  This avoids turning
+        // every internal runtime WaitOnAddress (parking_lot, once_cell, std::sync::Once)
+        // into a slow 1 ms polling loop and prevents recursive EventLoops::wait_event
+        // calls from corrupting coroutine scheduling state.
+        if SchedulableCoroutine::current().is_none() {
+            return self.inner.WaitOnAddress(
+                fn_ptr, address, compareaddress, addresssize, dwmilliseconds,
+            );
+        }
         let timeout = get_timeout_time(Duration::from_millis(dwmilliseconds.into()));
         loop {
             let mut left_time = timeout.saturating_sub(now());

@@ -2,7 +2,9 @@ use libc::{
     fd_set, iovec, mode_t, msghdr, off_t, pthread_cond_t, pthread_mutex_t, size_t, sockaddr,
     socklen_t, ssize_t, timespec, timeval,
 };
+use std::cell::Cell;
 use std::ffi::{c_char, c_int, c_uint, c_void};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 // check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[allow(unused_macros)]
@@ -80,8 +82,98 @@ impl_hook!(RENAMEAT, renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd:
 #[cfg(target_os = "linux")]
 impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
-impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
-impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
+// Thread-local re-entrancy flag shared between pthread_mutex_lock and pthread_mutex_unlock.
+// On macOS, std::sync::Mutex is backed by pthread_mutex_t, so once_cell::sync::Lazy (which
+// uses std::sync::Mutex internally) would recursively invoke these hooks during the
+// first-time initialisation of any Lazy<CHAIN> static.  The flag detects that situation
+// and falls through to the real system function, breaking the cycle.
+thread_local! {
+    static PTHREAD_MUTEX_HOOK_DEPTH: Cell<bool> = const { Cell::new(false) };
+}
+
+// Store function pointers as plain atomics so that loading them never requires a mutex.
+// Using once_cell::sync::Lazy here would trigger the exact recursion described above.
+static PTHREAD_MUTEX_LOCK_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+static PTHREAD_MUTEX_UNLOCK_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+
+#[no_mangle]
+pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
+    let mut raw = PTHREAD_MUTEX_LOCK_PTR.load(Ordering::Acquire);
+    if raw.is_null() {
+        // dlsym uses its own internal locking (not pthread_mutex_lock), so this is safe
+        // even when called re-entrantly.
+        let ptr = unsafe {
+            libc::dlsym(
+                libc::RTLD_NEXT,
+                c"pthread_mutex_lock".as_ptr(),
+            )
+        };
+        assert!(!ptr.is_null(), "pthread_mutex_lock not found!");
+        let ptr = ptr.cast::<()>();
+        PTHREAD_MUTEX_LOCK_PTR.store(ptr, Ordering::Release);
+        raw = ptr;
+    }
+    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int =
+        unsafe { std::mem::transmute(raw) };
+
+    // If already executing inside this hook (e.g., once_cell or std::sync internals call
+    // pthread_mutex_lock while the hook chain is being initialised), use the real function
+    // directly to avoid infinite recursion.
+    if PTHREAD_MUTEX_HOOK_DEPTH.with(Cell::get) {
+        return fn_ptr(lock);
+    }
+    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(true));
+
+    let result = if crate::hook()
+        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
+        || cfg!(feature = "ci")
+    {
+        open_coroutine_core::syscall::pthread_mutex_lock(Some(&fn_ptr), lock)
+    } else {
+        fn_ptr(lock)
+    };
+
+    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(false));
+    result
+}
+
+#[no_mangle]
+pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
+    let mut raw = PTHREAD_MUTEX_UNLOCK_PTR.load(Ordering::Acquire);
+    if raw.is_null() {
+        let ptr = unsafe {
+            libc::dlsym(
+                libc::RTLD_NEXT,
+                c"pthread_mutex_unlock".as_ptr(),
+            )
+        };
+        assert!(!ptr.is_null(), "pthread_mutex_unlock not found!");
+        let ptr = ptr.cast::<()>();
+        PTHREAD_MUTEX_UNLOCK_PTR.store(ptr, Ordering::Release);
+        raw = ptr;
+    }
+    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int =
+        unsafe { std::mem::transmute(raw) };
+
+    // Same guard as pthread_mutex_lock – once_cell may call pthread_mutex_unlock while
+    // unlocking its internal mutex during hook-chain initialisation.
+    if PTHREAD_MUTEX_HOOK_DEPTH.with(Cell::get) {
+        return fn_ptr(lock);
+    }
+    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(true));
+
+    let result = if crate::hook()
+        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
+        || cfg!(feature = "ci")
+    {
+        open_coroutine_core::syscall::pthread_mutex_unlock(Some(&fn_ptr), lock)
+    } else {
+        fn_ptr(lock)
+    };
+
+    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(false));
+    result
+}
 
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);

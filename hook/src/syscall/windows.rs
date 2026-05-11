@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::ffi::{c_int, c_longlong, c_uint, c_void};
 use std::io::Error;
 use windows_sys::core::{BOOL, PCSTR, PCWSTR, PSTR};
@@ -47,6 +48,63 @@ macro_rules! impl_hook {
     }
 }
 
+// Thread-local re-entrancy guard for the WaitOnAddress hook.
+// On Windows, once_cell::sync::Lazy (and std::sync::Once, parking_lot mutexes, etc.)
+// all use WaitOnAddress internally.  Without this guard the NIO implementation would
+// immediately recurse: hook → NioWaitOnAddressSyscall → EventLoops::wait_event →
+// parking_lot → WaitOnAddress → hook → … causing a stack overflow.
+thread_local! {
+    static WAITONADDRESS_IN_HOOK: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Stores the original `WaitOnAddress` function pointer retrieved by minhook.
+static WAITONADDRESS: once_cell::sync::OnceCell<
+    extern "system" fn(*const c_void, *const c_void, usize, c_uint) -> BOOL,
+> = once_cell::sync::OnceCell::new();
+
+#[allow(non_snake_case)]
+extern "system" fn WaitOnAddress(
+    address: *const c_void,
+    compareaddress: *const c_void,
+    addresssize: usize,
+    dwmilliseconds: c_uint,
+) -> BOOL {
+    let fn_ptr = WAITONADDRESS.get().unwrap_or_else(|| {
+        panic!(
+            "hook {} failed !",
+            open_coroutine_core::common::constants::SyscallName::WaitOnAddress
+        )
+    });
+
+    // If already executing inside this hook on the current thread, call the real function
+    // directly.  This covers two cases:
+    //  1. Lazy/Once initialisation of any CHAIN static calls WaitOnAddress.
+    //  2. EventLoops::wait_event (called from NioWaitOnAddressSyscall) uses parking_lot
+    //     internally, which calls WaitOnAddress when a shard lock is contended.
+    if WAITONADDRESS_IN_HOOK.with(Cell::get) {
+        return (*fn_ptr)(address, compareaddress, addresssize, dwmilliseconds);
+    }
+    WAITONADDRESS_IN_HOOK.with(|b| b.set(true));
+
+    let result = if crate::hook()
+        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
+        || cfg!(feature = "ci")
+    {
+        open_coroutine_core::syscall::WaitOnAddress(
+            Some(fn_ptr),
+            address,
+            compareaddress,
+            addresssize,
+            dwmilliseconds,
+        )
+    } else {
+        (*fn_ptr)(address, compareaddress, addresssize, dwmilliseconds)
+    };
+
+    WAITONADDRESS_IN_HOOK.with(|b| b.set(false));
+    result
+}
+
 #[no_mangle]
 #[allow(non_snake_case, clippy::missing_safety_doc)]
 pub unsafe extern "system" fn DllMain(
@@ -88,7 +146,21 @@ unsafe fn attach() -> std::io::Result<()> {
     impl_hook!("ws2_32.dll", WSASOCKETW, WSASocketW(domain: c_int, ty: WINSOCK_SOCKET_TYPE, protocol: IPPROTO, lpprotocolinfo: *const WSAPROTOCOL_INFOW, g: c_uint, dw_flags: c_uint) -> SOCKET);
     impl_hook!("ws2_32.dll", SELECT, select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, errorfds: *mut FD_SET, timeout: *mut TIMEVAL) -> c_int);
     impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int);
-    impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(address: *const c_void, compareaddress: *const c_void, addresssize: usize, dwmilliseconds: c_uint) -> BOOL);
+
+    // WaitOnAddress is hooked manually (see below) to add a per-thread re-entrancy guard
+    // that prevents NIO internals from recursing back through the hook.
+    _ = WAITONADDRESS.get_or_init(|| unsafe {
+        let syscall: &str =
+            open_coroutine_core::common::constants::SyscallName::WaitOnAddress.into();
+        let ptr = minhook::MinHook::create_hook_api(
+            "api-ms-win-core-synch-l1-2-0.dll",
+            syscall,
+            WaitOnAddress as _,
+        )
+        .unwrap_or_else(|_| panic!("hook {syscall} failed !"));
+        assert!(!ptr.is_null(), "syscall \"{syscall}\" not found !");
+        std::mem::transmute(ptr)
+    });
 
     // Enable the hook
     minhook::MinHook::enable_all_hooks().map_err(|_| Error::other("init all hooks failed !"))
