@@ -88,7 +88,7 @@ impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirf
 // first-time initialisation of any Lazy<CHAIN> static.  The flag detects that situation
 // and falls through to the real system function, breaking the cycle.
 thread_local! {
-    static PTHREAD_MUTEX_HOOK_DEPTH: Cell<bool> = const { Cell::new(false) };
+    static PTHREAD_MUTEX_IN_HOOK: Cell<bool> = const { Cell::new(false) };
 }
 
 // Store function pointers as plain atomics so that loading them never requires a mutex.
@@ -119,10 +119,10 @@ pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
     // If already executing inside this hook (e.g., once_cell or std::sync internals call
     // pthread_mutex_lock while the hook chain is being initialised), use the real function
     // directly to avoid infinite recursion.
-    if PTHREAD_MUTEX_HOOK_DEPTH.with(Cell::get) {
+    if PTHREAD_MUTEX_IN_HOOK.with(Cell::get) {
         return fn_ptr(lock);
     }
-    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(true));
+    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(true));
 
     let result = if crate::hook()
         || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
@@ -133,7 +133,7 @@ pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
         fn_ptr(lock)
     };
 
-    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(false));
+    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(false));
     result
 }
 
@@ -157,10 +157,10 @@ pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
 
     // Same guard as pthread_mutex_lock – once_cell may call pthread_mutex_unlock while
     // unlocking its internal mutex during hook-chain initialisation.
-    if PTHREAD_MUTEX_HOOK_DEPTH.with(Cell::get) {
+    if PTHREAD_MUTEX_IN_HOOK.with(Cell::get) {
         return fn_ptr(lock);
     }
-    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(true));
+    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(true));
 
     let result = if crate::hook()
         || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
@@ -171,7 +171,7 @@ pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
         fn_ptr(lock)
     };
 
-    PTHREAD_MUTEX_HOOK_DEPTH.with(|b| b.set(false));
+    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(false));
     result
 }
 
