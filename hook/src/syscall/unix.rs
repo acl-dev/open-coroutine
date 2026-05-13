@@ -102,19 +102,13 @@ pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
     if raw.is_null() {
         // dlsym uses its own internal locking (not pthread_mutex_lock), so this is safe
         // even when called re-entrantly.
-        let ptr = unsafe {
-            libc::dlsym(
-                libc::RTLD_NEXT,
-                c"pthread_mutex_lock".as_ptr(),
-            )
-        };
+        let ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_mutex_lock".as_ptr()) };
         assert!(!ptr.is_null(), "pthread_mutex_lock not found!");
         let ptr = ptr.cast::<()>();
         PTHREAD_MUTEX_LOCK_PTR.store(ptr, Ordering::Release);
         raw = ptr;
     }
-    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int =
-        unsafe { std::mem::transmute(raw) };
+    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int = unsafe { std::mem::transmute(raw) };
 
     // If already executing inside this hook (e.g., once_cell or std::sync internals call
     // pthread_mutex_lock while the hook chain is being initialised), use the real function
@@ -141,19 +135,13 @@ pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
 pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
     let mut raw = PTHREAD_MUTEX_UNLOCK_PTR.load(Ordering::Acquire);
     if raw.is_null() {
-        let ptr = unsafe {
-            libc::dlsym(
-                libc::RTLD_NEXT,
-                c"pthread_mutex_unlock".as_ptr(),
-            )
-        };
+        let ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_mutex_unlock".as_ptr()) };
         assert!(!ptr.is_null(), "pthread_mutex_unlock not found!");
         let ptr = ptr.cast::<()>();
         PTHREAD_MUTEX_UNLOCK_PTR.store(ptr, Ordering::Release);
         raw = ptr;
     }
-    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int =
-        unsafe { std::mem::transmute(raw) };
+    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int = unsafe { std::mem::transmute(raw) };
 
     // Same guard as pthread_mutex_lock – once_cell may call pthread_mutex_unlock while
     // unlocking its internal mutex during hook-chain initialisation.
