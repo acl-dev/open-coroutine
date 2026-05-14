@@ -2,8 +2,10 @@ use libc::{
     fd_set, iovec, mode_t, msghdr, off_t, pthread_cond_t, pthread_mutex_t, size_t, sockaddr,
     socklen_t, ssize_t, timespec, timeval,
 };
-use std::cell::Cell;
 use std::ffi::{c_char, c_int, c_uint, c_void};
+#[cfg(target_os = "macos")]
+use std::cell::Cell;
+#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 // check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
@@ -82,20 +84,28 @@ impl_hook!(RENAMEAT, renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd:
 #[cfg(target_os = "linux")]
 impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
-// Thread-local re-entrancy flag shared between pthread_mutex_lock and pthread_mutex_unlock.
-// On macOS, std::sync::Mutex is backed by pthread_mutex_t, so once_cell::sync::Lazy (which
-// uses std::sync::Mutex internally) would recursively invoke these hooks during the
-// first-time initialisation of any Lazy<CHAIN> static.  The flag detects that situation
-// and falls through to the real system function, breaking the cycle.
+// On macOS, once_cell::sync::Lazy initialisation calls pthread_mutex_lock internally
+// (std::sync::Mutex is backed by pthread_mutex_t on macOS), which would recurse back
+// into this hook.  To break that cycle we store the real function pointer in an AtomicPtr
+// (never needs a mutex) and use a per-thread re-entrancy flag.
+//
+// On Linux and other non-macOS platforms the Lazy init uses futex, so the plain
+// impl_hook! macro is safe.  Using impl_hook! on those platforms also avoids the
+// cross-coroutine deadlock that the flag introduces: if one coroutine sets the flag and
+// then yields (waiting for a mutex), the next coroutine to call pthread_mutex_lock would
+// see the flag and call the real blocking function, potentially deadlocking the event
+// loop thread.
+#[cfg(target_os = "macos")]
 thread_local! {
-    static PTHREAD_MUTEX_IN_HOOK: Cell<bool> = const { Cell::new(false) };
+    static PTHREAD_MUTEX_IN_HOOK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-// Store function pointers as plain atomics so that loading them never requires a mutex.
-// Using once_cell::sync::Lazy here would trigger the exact recursion described above.
+#[cfg(target_os = "macos")]
 static PTHREAD_MUTEX_LOCK_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+#[cfg(target_os = "macos")]
 static PTHREAD_MUTEX_UNLOCK_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
+#[cfg(target_os = "macos")]
 #[no_mangle]
 pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
     let mut raw = PTHREAD_MUTEX_LOCK_PTR.load(Ordering::Acquire);
@@ -110,10 +120,7 @@ pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
     }
     let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int = unsafe { std::mem::transmute(raw) };
 
-    // If already executing inside this hook (e.g., once_cell or std::sync internals call
-    // pthread_mutex_lock while the hook chain is being initialised), use the real function
-    // directly to avoid infinite recursion.
-    if PTHREAD_MUTEX_IN_HOOK.with(Cell::get) {
+    if PTHREAD_MUTEX_IN_HOOK.with(std::cell::Cell::get) {
         return fn_ptr(lock);
     }
     PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(true));
@@ -131,6 +138,7 @@ pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
     result
 }
 
+#[cfg(target_os = "macos")]
 #[no_mangle]
 pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
     let mut raw = PTHREAD_MUTEX_UNLOCK_PTR.load(Ordering::Acquire);
@@ -143,9 +151,7 @@ pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
     }
     let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int = unsafe { std::mem::transmute(raw) };
 
-    // Same guard as pthread_mutex_lock – once_cell may call pthread_mutex_unlock while
-    // unlocking its internal mutex during hook-chain initialisation.
-    if PTHREAD_MUTEX_IN_HOOK.with(Cell::get) {
+    if PTHREAD_MUTEX_IN_HOOK.with(std::cell::Cell::get) {
         return fn_ptr(lock);
     }
     PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(true));
@@ -162,6 +168,12 @@ pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
     PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(false));
     result
 }
+
+// On non-macOS Unix, impl_hook! is safe for pthread_mutex_lock/unlock.
+#[cfg(not(target_os = "macos"))]
+impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
+#[cfg(not(target_os = "macos"))]
+impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
 
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);

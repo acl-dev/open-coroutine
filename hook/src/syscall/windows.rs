@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::ffi::{c_int, c_longlong, c_uint, c_void};
 use std::io::Error;
 use windows_sys::core::{BOOL, PCSTR, PCWSTR, PSTR};
@@ -48,14 +47,9 @@ macro_rules! impl_hook {
     }
 }
 
-// Thread-local re-entrancy guard for the WaitOnAddress hook.
-// On Windows, once_cell::sync::Lazy (and std::sync::Once, parking_lot mutexes, etc.)
-// all use WaitOnAddress internally.  Without this guard the NIO implementation would
-// immediately recurse: hook → NioWaitOnAddressSyscall → EventLoops::wait_event →
-// parking_lot → WaitOnAddress → hook → … causing a stack overflow.
-thread_local! {
-    static WAITONADDRESS_IN_HOOK: Cell<bool> = const { Cell::new(false) };
-}
+// Thread-local re-entrancy guard removed: NioWaitOnAddressSyscall now uses
+// suspender.until() directly, which does not call EventLoops::wait_event and
+// therefore cannot recurse back through WaitOnAddress via parking_lot/DashMap.
 
 /// Stores the original `WaitOnAddress` function pointer retrieved by minhook.
 static WAITONADDRESS: once_cell::sync::OnceCell<
@@ -76,33 +70,19 @@ extern "system" fn WaitOnAddress(
         )
     });
 
-    // If already executing inside this hook on the current thread, call the real function
-    // directly.  This covers two cases:
-    //  1. Lazy/Once initialisation of any CHAIN static calls WaitOnAddress.
-    //  2. EventLoops::wait_event (called from NioWaitOnAddressSyscall) uses parking_lot
-    //     internally, which calls WaitOnAddress when a shard lock is contended.
-    if WAITONADDRESS_IN_HOOK.with(Cell::get) {
-        return (*fn_ptr)(address, compareaddress, addresssize, dwmilliseconds);
-    }
-    WAITONADDRESS_IN_HOOK.with(|b| b.set(true));
-
-    let result = if crate::hook()
+    if crate::hook()
         || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
         || cfg!(feature = "ci")
     {
-        open_coroutine_core::syscall::WaitOnAddress(
+        return open_coroutine_core::syscall::WaitOnAddress(
             Some(fn_ptr),
             address,
             compareaddress,
             addresssize,
             dwmilliseconds,
-        )
-    } else {
-        (*fn_ptr)(address, compareaddress, addresssize, dwmilliseconds)
-    };
-
-    WAITONADDRESS_IN_HOOK.with(|b| b.set(false));
-    result
+        );
+    }
+    (*fn_ptr)(address, compareaddress, addresssize, dwmilliseconds)
 }
 
 #[no_mangle]
@@ -147,8 +127,12 @@ unsafe fn attach() -> std::io::Result<()> {
     impl_hook!("ws2_32.dll", SELECT, select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, errorfds: *mut FD_SET, timeout: *mut TIMEVAL) -> c_int);
     impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int);
 
-    // WaitOnAddress is hooked manually (see below) to add a per-thread re-entrancy guard
-    // that prevents NIO internals from recursing back through the hook.
+// WaitOnAddress is hooked manually (instead of via impl_hook!) because
+// once_cell::sync::OnceCell must be pre-initialised in attach() before any hook
+// is active, so that get() in the hook never needs to call get_or_init (which would
+// use parking_lot and recurse).  The NioWaitOnAddressSyscall now yields via
+// suspender.until() rather than EventLoops::wait_event(), so no re-entrancy guard
+// is needed here.
     _ = WAITONADDRESS.get_or_init(|| unsafe {
         let syscall: &str =
             open_coroutine_core::common::constants::SyscallName::WaitOnAddress.into();

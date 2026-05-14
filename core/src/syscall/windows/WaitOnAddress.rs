@@ -3,8 +3,7 @@ use std::time::Duration;
 use windows_sys::core::BOOL;
 use windows_sys::Win32::Foundation::{ERROR_TIMEOUT, FALSE, TRUE};
 use crate::common::{get_timeout_time, now};
-use crate::net::EventLoops;
-use crate::scheduler::SchedulableCoroutine;
+use crate::scheduler::{SchedulableCoroutine, SchedulableSuspender};
 use crate::syscall::reset_errno;
 use crate::syscall::set_errno;
 
@@ -89,13 +88,24 @@ impl<I: WaitOnAddressSyscall> WaitOnAddressSyscall for NioWaitOnAddressSyscall<I
             } else {
                 left_time
             };
-            if EventLoops::wait_event(Some(Duration::new(
-                wait_time / 1_000_000_000,
-                (wait_time % 1_000_000_000) as _,
-            )))
-                .is_err()
-            {
-                return r;
+            // Use suspender.until() directly instead of EventLoops::wait_event() to avoid
+            // the recursion: EventLoops::wait_event → DashMap → parking_lot → WaitOnAddress
+            // → NioWaitOnAddressSyscall → EventLoops::wait_event → …  which occurs on
+            // nightly Windows where std internals call WaitOnAddress for mutex operations.
+            // suspender.until() yields the coroutine without touching any DashMap or
+            // parking_lot primitive, so there is no re-entrancy risk.
+            if let Some(suspender) = SchedulableSuspender::current() {
+                suspender.until(get_timeout_time(Duration::from_nanos(wait_time)));
+            } else {
+                // No suspender available (shouldn't happen inside a coroutine).
+                // Fall back to the real WaitOnAddress with remaining time.
+                return self.inner.WaitOnAddress(
+                    fn_ptr,
+                    address,
+                    compareaddress,
+                    addresssize,
+                    (left_time / 1_000_000).try_into().unwrap_or(c_uint::MAX),
+                );
             }
         }
     }
