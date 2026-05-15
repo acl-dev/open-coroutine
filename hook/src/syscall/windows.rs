@@ -47,44 +47,6 @@ macro_rules! impl_hook {
     }
 }
 
-// NioWaitOnAddressSyscall is a simple pass-through to the real WaitOnAddress.
-// No re-entrancy guard is needed: the NIO path no longer calls EventLoops::wait_event,
-// so there is no DashMap/parking_lot path that could recurse back through WaitOnAddress.
-
-/// Stores the original `WaitOnAddress` function pointer retrieved by minhook.
-static WAITONADDRESS: once_cell::sync::OnceCell<
-    extern "system" fn(*const c_void, *const c_void, usize, c_uint) -> BOOL,
-> = once_cell::sync::OnceCell::new();
-
-#[allow(non_snake_case)]
-extern "system" fn WaitOnAddress(
-    address: *const c_void,
-    compareaddress: *const c_void,
-    addresssize: usize,
-    dwmilliseconds: c_uint,
-) -> BOOL {
-    let fn_ptr = WAITONADDRESS.get().unwrap_or_else(|| {
-        panic!(
-            "hook {} failed !",
-            open_coroutine_core::common::constants::SyscallName::WaitOnAddress
-        )
-    });
-
-    if crate::hook()
-        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
-        || cfg!(feature = "ci")
-    {
-        return open_coroutine_core::syscall::WaitOnAddress(
-            Some(fn_ptr),
-            address,
-            compareaddress,
-            addresssize,
-            dwmilliseconds,
-        );
-    }
-    (*fn_ptr)(address, compareaddress, addresssize, dwmilliseconds)
-}
-
 #[no_mangle]
 #[allow(non_snake_case, clippy::missing_safety_doc)]
 pub unsafe extern "system" fn DllMain(
@@ -126,25 +88,6 @@ unsafe fn attach() -> std::io::Result<()> {
     impl_hook!("ws2_32.dll", WSASOCKETW, WSASocketW(domain: c_int, ty: WINSOCK_SOCKET_TYPE, protocol: IPPROTO, lpprotocolinfo: *const WSAPROTOCOL_INFOW, g: c_uint, dw_flags: c_uint) -> SOCKET);
     impl_hook!("ws2_32.dll", SELECT, select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, errorfds: *mut FD_SET, timeout: *mut TIMEVAL) -> c_int);
     impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int);
-
-    // WaitOnAddress is hooked manually (instead of via impl_hook!) because
-    // once_cell::sync::OnceCell must be pre-initialised in attach() before any hook
-    // is active, so that get() in the hook never needs to call get_or_init (which would
-    // use parking_lot and recurse).  NioWaitOnAddressSyscall is a pass-through that
-    // calls the real function directly, so there is no re-entrancy risk and no
-    // re-entrancy guard is needed here.
-    _ = WAITONADDRESS.get_or_init(|| unsafe {
-        let syscall: &str =
-            open_coroutine_core::common::constants::SyscallName::WaitOnAddress.into();
-        let ptr = minhook::MinHook::create_hook_api(
-            "api-ms-win-core-synch-l1-2-0.dll",
-            syscall,
-            WaitOnAddress as _,
-        )
-        .unwrap_or_else(|_| panic!("hook {syscall} failed !"));
-        assert!(!ptr.is_null(), "syscall \"{syscall}\" not found !");
-        std::mem::transmute(ptr)
-    });
 
     // Enable the hook
     minhook::MinHook::enable_all_hooks().map_err(|_| Error::other("init all hooks failed !"))

@@ -3,8 +3,6 @@ use libc::{
     socklen_t, ssize_t, timespec, timeval,
 };
 use std::ffi::{c_char, c_int, c_uint, c_void};
-#[cfg(target_os = "macos")]
-use std::sync::atomic::{AtomicPtr, Ordering};
 
 // check https://www.rustwiki.org.cn/en/reference/introduction.html for help information
 #[allow(unused_macros)]
@@ -82,92 +80,20 @@ impl_hook!(RENAMEAT, renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd:
 #[cfg(target_os = "linux")]
 impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
-// On macOS, once_cell::sync::Lazy initialisation calls pthread_mutex_lock internally
-// (std::sync::Mutex is backed by pthread_mutex_t on macOS), which would recurse back
-// into this hook.  To break that cycle we store the real function pointer in an AtomicPtr
-// (never needs a mutex) and use a per-thread re-entrancy flag.
+// pthread_mutex_lock/unlock: on Linux and other non-macOS Unix the once_cell::sync::Lazy
+// initialisation uses futex (not pthread_mutex_t), so impl_hook! is safe and the plain
+// macro is used.
 //
-// On Linux and other non-macOS platforms the Lazy init uses futex, so the plain
-// impl_hook! macro is safe.  Using impl_hook! on those platforms also avoids the
-// cross-coroutine deadlock that the flag introduces: if one coroutine sets the flag and
-// then yields (waiting for a mutex), the next coroutine to call pthread_mutex_lock would
-// see the flag and call the real blocking function, potentially deadlocking the event
-// loop thread.
-#[cfg(target_os = "macos")]
-thread_local! {
-    static PTHREAD_MUTEX_IN_HOOK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-#[cfg(target_os = "macos")]
-static PTHREAD_MUTEX_LOCK_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-#[cfg(target_os = "macos")]
-static PTHREAD_MUTEX_UNLOCK_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-
-#[cfg(target_os = "macos")]
-#[no_mangle]
-pub extern "C" fn pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int {
-    let mut raw = PTHREAD_MUTEX_LOCK_PTR.load(Ordering::Acquire);
-    if raw.is_null() {
-        // dlsym uses its own internal locking (not pthread_mutex_lock), so this is safe
-        // even when called re-entrantly.
-        let ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_mutex_lock".as_ptr()) };
-        assert!(!ptr.is_null(), "pthread_mutex_lock not found!");
-        let ptr = ptr.cast::<()>();
-        PTHREAD_MUTEX_LOCK_PTR.store(ptr, Ordering::Release);
-        raw = ptr;
-    }
-    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int = unsafe { std::mem::transmute(raw) };
-
-    if PTHREAD_MUTEX_IN_HOOK.with(std::cell::Cell::get) {
-        return fn_ptr(lock);
-    }
-    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(true));
-
-    let result = if crate::hook()
-        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
-        || cfg!(feature = "ci")
-    {
-        open_coroutine_core::syscall::pthread_mutex_lock(Some(&fn_ptr), lock)
-    } else {
-        fn_ptr(lock)
-    };
-
-    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(false));
-    result
-}
-
-#[cfg(target_os = "macos")]
-#[no_mangle]
-pub extern "C" fn pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int {
-    let mut raw = PTHREAD_MUTEX_UNLOCK_PTR.load(Ordering::Acquire);
-    if raw.is_null() {
-        let ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_mutex_unlock".as_ptr()) };
-        assert!(!ptr.is_null(), "pthread_mutex_unlock not found!");
-        let ptr = ptr.cast::<()>();
-        PTHREAD_MUTEX_UNLOCK_PTR.store(ptr, Ordering::Release);
-        raw = ptr;
-    }
-    let fn_ptr: extern "C" fn(*mut pthread_mutex_t) -> c_int = unsafe { std::mem::transmute(raw) };
-
-    if PTHREAD_MUTEX_IN_HOOK.with(std::cell::Cell::get) {
-        return fn_ptr(lock);
-    }
-    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(true));
-
-    let result = if crate::hook()
-        || open_coroutine_core::scheduler::SchedulableCoroutine::current().is_some()
-        || cfg!(feature = "ci")
-    {
-        open_coroutine_core::syscall::pthread_mutex_unlock(Some(&fn_ptr), lock)
-    } else {
-        fn_ptr(lock)
-    };
-
-    PTHREAD_MUTEX_IN_HOOK.with(|b| b.set(false));
-    result
-}
-
-// On non-macOS Unix, impl_hook! is safe for pthread_mutex_lock/unlock.
+// On macOS, once_cell::sync::Lazy init calls dlsym which internally acquires a dyld lock
+// implemented as a pthread_mutex_t.  This would recurse back into the hook.  The per-thread
+// re-entrancy flag that breaks the cycle causes a separate cross-coroutine deadlock under
+// preemptive scheduling: a coroutine that sets the flag and is then preempted leaves the
+// flag set, so the next coroutine on the same thread skips the NIO path and blocks the
+// event-loop thread in the real (blocking) pthread_mutex_lock.  Because the NIO path for
+// pthread_mutex_lock is just a trylock poll loop (no genuine async benefit) and the
+// deadlock is architectural, the macOS hooks are omitted entirely.  The core
+// open_coroutine_core::syscall::pthread_mutex_{lock,unlock} functions remain available
+// for direct use in tests and other explicit call sites.
 #[cfg(not(target_os = "macos"))]
 impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
 #[cfg(not(target_os = "macos"))]
