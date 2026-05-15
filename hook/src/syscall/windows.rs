@@ -47,9 +47,9 @@ macro_rules! impl_hook {
     }
 }
 
-// Thread-local re-entrancy guard removed: NioWaitOnAddressSyscall now uses
-// suspender.until() directly, which does not call EventLoops::wait_event and
-// therefore cannot recurse back through WaitOnAddress via parking_lot/DashMap.
+// NioWaitOnAddressSyscall is a simple pass-through to the real WaitOnAddress.
+// No re-entrancy guard is needed: the NIO path no longer calls EventLoops::wait_event,
+// so there is no DashMap/parking_lot path that could recurse back through WaitOnAddress.
 
 /// Stores the original `WaitOnAddress` function pointer retrieved by minhook.
 static WAITONADDRESS: once_cell::sync::OnceCell<
@@ -130,9 +130,9 @@ unsafe fn attach() -> std::io::Result<()> {
     // WaitOnAddress is hooked manually (instead of via impl_hook!) because
     // once_cell::sync::OnceCell must be pre-initialised in attach() before any hook
     // is active, so that get() in the hook never needs to call get_or_init (which would
-    // use parking_lot and recurse).  The NioWaitOnAddressSyscall now yields via
-    // suspender.until() rather than EventLoops::wait_event(), so no re-entrancy guard
-    // is needed here.
+    // use parking_lot and recurse).  NioWaitOnAddressSyscall is a pass-through that
+    // calls the real function directly, so there is no re-entrancy risk and no
+    // re-entrancy guard is needed here.
     _ = WAITONADDRESS.get_or_init(|| unsafe {
         let syscall: &str =
             open_coroutine_core::common::constants::SyscallName::WaitOnAddress.into();
