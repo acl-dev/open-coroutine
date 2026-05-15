@@ -127,12 +127,12 @@ unsafe fn attach() -> std::io::Result<()> {
     impl_hook!("ws2_32.dll", SELECT, select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, errorfds: *mut FD_SET, timeout: *mut TIMEVAL) -> c_int);
     impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int);
 
-// WaitOnAddress is hooked manually (instead of via impl_hook!) because
-// once_cell::sync::OnceCell must be pre-initialised in attach() before any hook
-// is active, so that get() in the hook never needs to call get_or_init (which would
-// use parking_lot and recurse).  The NioWaitOnAddressSyscall now yields via
-// suspender.until() rather than EventLoops::wait_event(), so no re-entrancy guard
-// is needed here.
+    // WaitOnAddress is hooked manually (instead of via impl_hook!) because
+    // once_cell::sync::OnceCell must be pre-initialised in attach() before any hook
+    // is active, so that get() in the hook never needs to call get_or_init (which would
+    // use parking_lot and recurse).  The NioWaitOnAddressSyscall now yields via
+    // suspender.until() rather than EventLoops::wait_event(), so no re-entrancy guard
+    // is needed here.
     _ = WAITONADDRESS.get_or_init(|| unsafe {
         let syscall: &str =
             open_coroutine_core::common::constants::SyscallName::WaitOnAddress.into();

@@ -2,9 +2,9 @@ use libc::{
     fd_set, iovec, mode_t, msghdr, off_t, pthread_cond_t, pthread_mutex_t, size_t, sockaddr,
     socklen_t, ssize_t, timespec, timeval,
 };
-use std::ffi::{c_char, c_int, c_uint, c_void};
 #[cfg(target_os = "macos")]
 use std::cell::Cell;
+use std::ffi::{c_char, c_int, c_uint, c_void};
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicPtr, Ordering};
 
