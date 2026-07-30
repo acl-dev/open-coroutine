@@ -80,9 +80,24 @@ impl_hook!(RENAMEAT, renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd:
 #[cfg(target_os = "linux")]
 impl_hook!(RENAMEAT2, renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
 
+// pthread_mutex_lock/unlock: on Linux and other non-macOS Unix the once_cell::sync::Lazy
+// initialization uses futex (not pthread_mutex_t), so impl_hook! is safe and the plain
+// macro is used.
+//
+// On macOS, once_cell::sync::Lazy init calls dlsym which internally acquires a dyld lock
+// implemented as a pthread_mutex_t. This would recurse back into the hook. The per-thread
+// re-entrancy flag that breaks the cycle causes a separate cross-coroutine deadlock under
+// preemptive scheduling: a coroutine that sets the flag and is then preempted leaves the
+// flag set, so the next coroutine on the same thread skips the NIO path and blocks the
+// event-loop thread in the real (blocking) pthread_mutex_lock. Because the NIO path for
+// pthread_mutex_lock is just a trylock poll loop (no genuine async benefit) and the
+// deadlock is architectural, the macOS hooks are omitted entirely. The core
+// open_coroutine_core::syscall::pthread_mutex_{lock,unlock} functions remain available
+// for direct use in tests and other explicit call sites.
+#[cfg(not(target_os = "macos"))]
+impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
+#[cfg(not(target_os = "macos"))]
+impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
+
 // NOTE: unhook poll due to mio's poller
 // impl_hook!(POLL, poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int);
-
-// NOTE: unhook pthread_mutex_lock/pthread_mutex_unlock due to stack overflow or bug
-// impl_hook!(PTHREAD_MUTEX_LOCK, pthread_mutex_lock(lock: *mut pthread_mutex_t) -> c_int);
-// impl_hook!(PTHREAD_MUTEX_UNLOCK, pthread_mutex_unlock(lock: *mut pthread_mutex_t) -> c_int);
