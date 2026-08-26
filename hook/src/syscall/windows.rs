@@ -89,7 +89,7 @@ unsafe fn attach() -> std::io::Result<()> {
     impl_hook!("ws2_32.dll", SELECT, select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, errorfds: *mut FD_SET, timeout: *mut TIMEVAL) -> c_int);
     impl_hook!("ws2_32.dll", WSAPOLL, WSAPoll(fds: *mut WSAPOLLFD, nfds: c_uint, timeout: c_int) -> c_int);
     // NOTE: unhook WaitOnAddress due to stack overflow or bug
-    // impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(address: *const c_void, compareaddress: *const c_void, addresssize: usize, dwmilliseconds: c_uint) -> BOOL);
+    impl_hook!("api-ms-win-core-synch-l1-2-0.dll", WAITONADDRESS, WaitOnAddress(address: *const c_void, compareaddress: *const c_void, addresssize: usize, dwmilliseconds: c_uint) -> BOOL);
 
     // Enable the hook
     minhook::MinHook::enable_all_hooks().map_err(|_| Error::other("init all hooks failed !"))
