@@ -50,7 +50,7 @@ pub trait Listener<Yield, Return>: Debug {
 }
 
 macro_rules! broadcast {
-    ($impl_method_name: ident($($arg: ident : $arg_type: ty),*), $method_name:expr) => {
+    ($impl_method_name: ident($($arg: ident : $arg_type: ty),* $(,)?), $method_name:expr) => {
         fn $impl_method_name(&self, $($arg: $arg_type),*) {
             for listener in &self.listeners {
                 _ = $crate::catch!(
@@ -68,46 +68,51 @@ where
     Yield: Debug + Copy,
     Return: Debug + Copy,
 {
-    broadcast!(on_state_changed(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>,
-        new_state: CoroutineState<Yield, Return>
-    ), "on_state_changed");
+    broadcast!(
+        on_state_changed(
+            local: &CoroutineLocal,
+            old_state: CoroutineState<Yield, Return>,
+            new_state: CoroutineState<Yield, Return>,
+        ),
+        "on_state_changed"
+    );
 
-    broadcast!(on_ready(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>
-    ), "on_ready");
+    broadcast!(
+        on_ready(local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>),
+        "on_ready"
+    );
 
-    broadcast!(on_running(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>
-    ), "on_running");
+    broadcast!(
+        on_running(local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>),
+        "on_running"
+    );
 
-    broadcast!(on_suspend(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>
-    ), "on_suspend");
+    broadcast!(
+        on_suspend(local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>),
+        "on_suspend"
+    );
 
-    broadcast!(on_syscall(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>
-    ), "on_syscall");
+    broadcast!(
+        on_syscall(local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>),
+        "on_syscall"
+    );
 
-    broadcast!(on_cancel(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>
-    ), "on_cancel");
+    broadcast!(
+        on_cancel(local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>),
+        "on_cancel"
+    );
 
-    broadcast!(on_complete(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>,
-        result: Return
-    ), "on_complete");
+    broadcast!(
+        on_complete(
+            local: &CoroutineLocal,
+            old_state: CoroutineState<Yield, Return>,
+            result: Return,
+        ),
+        "on_complete"
+    );
 
-    broadcast!(on_error(
-        local: &CoroutineLocal,
-        old_state: CoroutineState<Yield, Return>,
-        message: &str
-    ), "on_error");
+    broadcast!(
+        on_error(local: &CoroutineLocal, old_state: CoroutineState<Yield, Return>, message: &str),
+        "on_error"
+    );
 }

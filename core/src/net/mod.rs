@@ -262,7 +262,7 @@ impl EventLoops {
 }
 
 macro_rules! impl_io_uring {
-    ( $syscall: ident($($arg: ident: $arg_type: ty),*) -> $result: ty ) => {
+    ( $syscall: ident($($arg: ident: $arg_type: ty),* $(,)?) -> $result: ty ) => {
         #[cfg(all(target_os = "linux", feature = "io_uring"))]
         impl EventLoops {
             #[allow(missing_docs)]
@@ -289,7 +289,16 @@ impl_io_uring!(readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
 impl_io_uring!(preadv(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_t) -> ssize_t);
 impl_io_uring!(recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t);
 impl_io_uring!(send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t);
-impl_io_uring!(sendto(fd: c_int, buf: *const c_void, len: size_t, flags: c_int, addr: *const sockaddr, addrlen: socklen_t) -> ssize_t);
+impl_io_uring!(
+    sendto(
+        fd: c_int,
+        buf: *const c_void,
+        len: size_t,
+        flags: c_int,
+        addr: *const sockaddr,
+        addrlen: socklen_t,
+    ) -> ssize_t
+);
 impl_io_uring!(write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t);
 impl_io_uring!(pwrite(fd: c_int, buf: *const c_void, count: size_t, offset: off_t) -> ssize_t);
 impl_io_uring!(writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t);
@@ -297,11 +306,26 @@ impl_io_uring!(pwritev(fd: c_int, iov: *const iovec, iovcnt: c_int, offset: off_
 impl_io_uring!(sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t);
 impl_io_uring!(fsync(fd: c_int) -> c_int);
 impl_io_uring!(mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int);
-impl_io_uring!(renameat(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char) -> c_int);
-impl_io_uring!(renameat2(olddirfd: c_int, oldpath: *const c_char, newdirfd: c_int, newpath: *const c_char, flags: c_uint) -> c_int);
+impl_io_uring!(
+    renameat(
+        olddirfd: c_int,
+        oldpath: *const c_char,
+        newdirfd: c_int,
+        newpath: *const c_char,
+    ) -> c_int
+);
+impl_io_uring!(
+    renameat2(
+        olddirfd: c_int,
+        oldpath: *const c_char,
+        newdirfd: c_int,
+        newpath: *const c_char,
+        flags: c_uint,
+    ) -> c_int
+);
 
 macro_rules! impl_iocp {
-    ( $syscall: ident($($arg: ident : $arg_type: ty),*) -> $result: ty ) => {
+    ( $syscall: ident($($arg: ident : $arg_type: ty),* $(,)?) -> $result: ty ) => {
         #[allow(non_snake_case)]
         #[cfg(all(windows, feature = "iocp"))]
         impl EventLoops {
@@ -317,6 +341,26 @@ macro_rules! impl_iocp {
 
 impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
 impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
-impl_iocp!(WSARecv(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, lpflags : *mut c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+impl_iocp!(
+    WSARecv(
+        fd: SOCKET,
+        buf: *const WSABUF,
+        dwbuffercount: c_uint,
+        lpnumberofbytesrecvd: *mut c_uint,
+        lpflags: *mut c_uint,
+        lpoverlapped: *mut OVERLAPPED,
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
+    ) -> c_int
+);
 impl_iocp!(send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
-impl_iocp!(WSASend(fd: SOCKET, buf: *const WSABUF, dwbuffercount: c_uint, lpnumberofbytesrecvd: *mut c_uint, dwflags : c_uint, lpoverlapped: *mut OVERLAPPED, lpcompletionroutine : LPWSAOVERLAPPED_COMPLETION_ROUTINE) -> c_int);
+impl_iocp!(
+    WSASend(
+        fd: SOCKET,
+        buf: *const WSABUF,
+        dwbuffercount: c_uint,
+        lpnumberofbytesrecvd: *mut c_uint,
+        dwflags: c_uint,
+        lpoverlapped: *mut OVERLAPPED,
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
+    ) -> c_int
+);
