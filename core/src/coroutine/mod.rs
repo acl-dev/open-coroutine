@@ -96,7 +96,10 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
     /// This can only be done safely in coroutine.
     pub unsafe fn remaining_stack(&self) -> usize {
         let current_sp = psm::stack_pointer() as usize;
-        current_sp - self.stack_infos_ref().back().unwrap().stack_bottom
+        self.stack_infos_ref()
+            .iter()
+            .find(|info| info.stack_bottom <= current_sp && current_sp < info.stack_top)
+            .map_or(0, |info| current_sp.saturating_sub(info.stack_bottom))
     }
 
     /// Queries the current stack info of this coroutine.
