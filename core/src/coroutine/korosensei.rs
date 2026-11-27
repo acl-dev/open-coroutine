@@ -360,11 +360,15 @@ impl<'c, Param, Yield, Return> Coroutine<'c, Param, Yield, Return> {
             #[allow(clippy::missing_const_for_thread_local)]
             static STACK_INFOS: RefCell<VecDeque<StackInfo>> = const { RefCell::new(VecDeque::new()) };
         }
-        if let Some(last_stack_info) = STACK_INFOS.with(|s| s.borrow().back().copied()) {
-            let remaining_stack = psm::stack_pointer() as usize - last_stack_info.stack_bottom;
-            if remaining_stack >= red_zone {
-                return Ok(callback());
-            }
+        let current_sp = psm::stack_pointer() as usize;
+        let remaining_stack = STACK_INFOS.with(|s| {
+            s.borrow()
+                .iter()
+                .find(|info| info.stack_bottom <= current_sp && current_sp < info.stack_top)
+                .map_or(0, |info| current_sp.saturating_sub(info.stack_bottom))
+        });
+        if remaining_stack >= red_zone {
+            return Ok(callback());
         }
         DefaultStack::new(stack_size).map(|stack| {
             STACK_INFOS.with(|s| {
