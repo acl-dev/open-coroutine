@@ -168,7 +168,7 @@ fn main() {
         "use open-coroutine-hook's default-features:{} and features:{:?}",
         dependency.uses_default_features, features
     );
-    if let Err(e) = cmd
+    let status = cmd
         .arg("--features")
         .arg(features.join(","))
         .arg("--manifest-path")
@@ -176,59 +176,85 @@ fn main() {
         .arg("--target-dir")
         .arg(out_dir.clone())
         .status()
-    {
-        panic!("failed to build dylib {e}");
+        .expect("failed to build dylib");
+    if !status.success() {
+        panic!("failed to build dylib, status: {status}");
     }
     // correct dylib path
-    let hook_deps = out_dir
-        .join(target)
-        .join(if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "release"
-        })
-        .join("deps");
-    let deps = out_dir
-        .parent()
-        .expect("can not find deps dir")
-        .parent()
-        .expect("can not find deps dir")
-        .parent()
-        .expect("can not find deps dir")
-        .join("deps");
-    for entry in read_dir(hook_deps.clone())
-        .expect("can not find deps dir")
-        .flatten()
-    {
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        if !file_name.contains("open_coroutine_hook") {
-            continue;
-        }
-        if cfg!(target_os = "linux") && file_name.ends_with(".so") {
-            let from = hook_deps.join(file_name);
-            let to = deps.join("libopen_coroutine_hook.so");
-            copy(from.clone(), to.clone()).expect("copy to libopen_coroutine_hook.so failed!");
-            info!("copy {:?} to {:?} success!", from, to);
-        } else if cfg!(target_os = "macos") && file_name.ends_with(".dylib") {
-            let from = hook_deps.join(file_name);
-            let to = deps.join("libopen_coroutine_hook.dylib");
-            copy(from.clone(), to.clone()).expect("copy to libopen_coroutine_hook.dylib failed!");
-            info!("copy {:?} to {:?} success!", from, to);
-        } else if cfg!(windows) {
-            if file_name.ends_with(".dll") {
-                let from = hook_deps.join(file_name);
-                let to = deps.join("open_coroutine_hook.dll");
-                copy(from.clone(), to.clone()).expect("copy to open_coroutine_hook.dll failed!");
-                info!("copy {:?} to {:?} success!", from, to);
-            } else if file_name.ends_with(".lib") {
-                let from = hook_deps.join(file_name);
-                let to = deps.join("open_coroutine_hook.lib");
-                copy(from.clone(), to.clone()).expect("copy to open_coroutine_hook.lib failed!");
-                info!("copy {:?} to {:?} success!", from, to);
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    let nested_profile = out_dir.join(&target).join(profile);
+    // Cargo >= 1.100 uses the new build-dir layout: cdylib final artifacts are
+    // uplifted to the profile root and per-unit artifacts live under
+    // `build/<pkg>/<hash>/out`, while older cargos keep everything in `deps/`.
+    let mut search_dirs = vec![nested_profile.clone(), nested_profile.join("deps")];
+    let hook_units = nested_profile.join("build").join("open-coroutine-hook");
+    if let Ok(entries) = read_dir(&hook_units) {
+        for entry in entries.flatten() {
+            let unit_out = entry.path().join("out");
+            if unit_out.is_dir() {
+                search_dirs.push(unit_out);
             }
         }
     }
+    search_dirs.sort();
+    search_dirs.dedup();
+    // The main target profile dir is the parent of the `build` dir that
+    // contains this build script's OUT_DIR, in both old and new layouts.
+    let profile_dir = out_dir
+        .ancestors()
+        .find(|p| p.file_name() == Some(std::ffi::OsStr::new("build")))
+        .and_then(|p| p.parent())
+        .expect("can not find profile dir")
+        .to_path_buf();
+    // `deps` holds executables in the old layout; the profile root holds
+    // uplifted executables in the new layout. Copy into both.
+    let deps = profile_dir.join("deps");
+    let dest_dirs = [profile_dir, deps];
+    for dest in &dest_dirs {
+        std::fs::create_dir_all(dest).expect("can not create deps dir");
+    }
+    let mut found = false;
+    for dir in &search_dirs {
+        let Ok(entries) = read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if !file_name.contains("open_coroutine_hook") {
+                continue;
+            }
+            let canonical = if cfg!(target_os = "linux") && file_name.ends_with(".so") {
+                "libopen_coroutine_hook.so"
+            } else if cfg!(target_os = "macos") && file_name.ends_with(".dylib") {
+                "libopen_coroutine_hook.dylib"
+            } else if cfg!(windows) && file_name.ends_with(".dll") {
+                "open_coroutine_hook.dll"
+            } else if cfg!(windows) && file_name.ends_with(".lib") {
+                // covers `open_coroutine_hook.dll.lib` and `open_coroutine_hook.lib`
+                "open_coroutine_hook.lib"
+            } else {
+                continue;
+            };
+            let from = dir.join(&file_name);
+            found = true;
+            for dest in &dest_dirs {
+                let to = dest.join(canonical);
+                copy(from.clone(), to.clone())
+                    .unwrap_or_else(|e| panic!("copy {from:?} to {to:?} failed: {e}"));
+                info!("copy {from:?} to {to:?} success!");
+            }
+        }
+    }
+    if !found {
+        panic!("open_coroutine_hook artifact not found in {search_dirs:?}");
+    }
     // link dylib
-    println!("cargo:rustc-link-search=native={}", deps.display());
+    for dest in &dest_dirs {
+        println!("cargo:rustc-link-search=native={}", dest.display());
+    }
     println!("cargo:rustc-link-lib=dylib=open_coroutine_hook");
 }

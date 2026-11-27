@@ -631,7 +631,7 @@ mod tests {
         event_loop.stop_sync(Duration::from_secs(3))
     }
 
-    #[ignore]
+    #[ignore = "auto-started event loop test, disabled"]
     #[test]
     fn test_simple_auto() -> std::io::Result<()> {
         let event_loop = EventLoop::default().start()?;

@@ -28,8 +28,8 @@ pub fn main() -> std::io::Result<()> {
     let mut buf2 = [0; HELLO.len()];
     let mut ioslicemuts = [IoSliceMut::new(&mut buf1), IoSliceMut::new(&mut buf2)];
     assert_eq!(HELLO.len() * 2, tmpfile.read_vectored(&mut ioslicemuts)?);
-    assert_eq!(HELLO, unsafe { std::str::from_utf8_unchecked(&mut buf1) });
-    assert_eq!(HELLO, unsafe { std::str::from_utf8_unchecked(&mut buf2) });
+    assert_eq!(HELLO, unsafe { std::str::from_utf8_unchecked(&buf1) });
+    assert_eq!(HELLO, unsafe { std::str::from_utf8_unchecked(&buf2) });
 
     Ok(())
 }

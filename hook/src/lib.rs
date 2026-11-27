@@ -62,7 +62,7 @@ use std::time::Duration;
 static HOOK: OnceCell<bool> = OnceCell::new();
 
 pub(crate) fn hook() -> bool {
-    HOOK.get().map_or_else(|| false, |v| *v)
+    HOOK.get().is_some_and(|v| *v)
 }
 
 #[allow(

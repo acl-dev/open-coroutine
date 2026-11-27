@@ -12,7 +12,6 @@ readme.workspace = true
 exclude.workspace = true
 
 [dependencies]
-libc.workspace = true
 open-coroutine-core.workspace = true
 open-coroutine-hook.workspace = true
 open-coroutine-macros.workspace = true
@@ -39,6 +38,7 @@ cargo_metadata.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 cfg-if.workspace = true
+libc.workspace = true
 
 [features]
 default = ["open-coroutine-hook/default", "open-coroutine-core/default"]
