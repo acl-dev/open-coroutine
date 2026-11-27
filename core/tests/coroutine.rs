@@ -78,14 +78,8 @@ fn sp_in_bounds() -> std::io::Result<()> {
             .copied()
             .expect("no stack info found");
         assert!(current.stack_ptr_in_bounds(psm::stack_pointer() as u64));
-        assert_eq!(
-            current.stack_ptr_in_bounds(stack_info.stack_top as u64 + 1),
-            false
-        );
-        assert_eq!(
-            current.stack_ptr_in_bounds(stack_info.stack_bottom as u64 - 1),
-            false
-        );
+        assert!(!current.stack_ptr_in_bounds(stack_info.stack_top as u64 + 1));
+        assert!(!current.stack_ptr_in_bounds(stack_info.stack_bottom as u64 - 1));
         assert_eq!(1, input);
         assert_eq!(3, suspender.suspend_with(2));
         4
@@ -164,15 +158,11 @@ fn coroutine_stack_growth() -> std::io::Result<()> {
 fn coroutine_trap() -> std::io::Result<()> {
     let mut coroutine = co!(|_: &Suspender<'_, (), i32>, ()| {
         println!("Before trap");
-        unsafe { std::ptr::write_volatile(1 as *mut u8, 0) };
+        unsafe { std::ptr::write_volatile(std::ptr::dangling_mut::<u8>(), 0) };
         println!("After trap");
     })?;
     let result = coroutine.resume()?;
-    let error = match result {
-        CoroutineState::Error(_) => true,
-        _ => false,
-    };
-    assert!(error);
+    assert!(matches!(result, CoroutineState::Error(_)));
     Ok(())
 }
 
@@ -194,11 +184,7 @@ fn coroutine_invalid_memory_reference() -> std::io::Result<()> {
     let result = coroutine.resume();
     assert!(result.is_ok());
     println!("{:?}", result);
-    let error = match result.unwrap() {
-        CoroutineState::Error(_) => true,
-        _ => false,
-    };
-    assert!(error);
+    assert!(matches!(result.unwrap(), CoroutineState::Error(_)));
     Ok(())
 }
 

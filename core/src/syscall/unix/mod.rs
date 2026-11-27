@@ -1041,11 +1041,7 @@ pub extern "C" fn is_non_blocking(fd: c_int) -> bool {
 pub extern "C" fn is_socket(fd: c_int) -> bool {
     unsafe {
         let mut stat: libc::stat = std::mem::zeroed();
-        if libc::fstat(fd, &raw mut stat) == 0 {
-            (stat.st_mode & libc::S_IFMT) == libc::S_IFSOCK
-        } else {
-            false
-        }
+        libc::fstat(fd, &raw mut stat) == 0 && (stat.st_mode & libc::S_IFMT) == libc::S_IFSOCK
     }
 }
 
