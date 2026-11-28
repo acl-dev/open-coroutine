@@ -21,6 +21,7 @@
 - [x] 可伸缩栈:
   协程栈的大小支持无限制扩容而没有复制堆栈的开销，查看[例子](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
 - [x] io_uring(`只支持linux`): 在本地文件IO和网络IO方面支持并兼容io_uring。如果您的系统不支持，它将回退到NIO;
+- [x] IOCP(`只支持windows`): 在Windows上通过IOCP进行重叠Socket IO——目前覆盖`accept`/`WSAAccept`，其余socket IO回退到NIO;
 - [x] 优先级: 支持自定义任务优先级，注意协程优先级未对用户开放;
 - [x] 任务窃取: 内部使用无锁任务窃取队列;
 - [x] 兼容性: open-coroutine的实现是No async的，但它与async兼容，这意味着您可以在`tokio/sync-std/smol/...`中使用这个crate;
@@ -129,6 +130,32 @@ fn main() {
     }, "param");
 }
 ```
+
+## 🛠 构建与测试
+
+open-coroutine需要**nightly**版本的Rust工具链。
+
+```sh
+# 格式检查
+cargo +nightly fmt --all -- --check
+
+# 静态检查
+cargo +nightly clippy --workspace --all-features -- -D warnings
+
+# 全feature测试
+cargo +nightly test --all --all-features
+```
+
+`open-coroutine-hook` cdylib由`open-coroutine`的build script自动编译并部署，无需手动操作。
+
+可选feature（完整列表见`open-coroutine/Cargo.toml`）：
+
+| feature         | 平台          | 说明                          |
+| --------------- | ------------- | ----------------------------- |
+| `io_uring`      | Linux         | 文件与Socket IO的io_uring后端 |
+| `iocp`          | Windows       | 重叠Socket IO的IOCP后端       |
+| `completion_io` | Linux/Windows | 同时启用`io_uring`和`iocp`    |
+| `ci`            | 全部          | 内部CI测试模式，下游勿用      |
 
 ## 🪶 进阶使用
 
