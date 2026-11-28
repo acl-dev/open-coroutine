@@ -13,11 +13,15 @@ trait SendSyscall {
     ) -> c_int;
 }
 
-impl_syscall!(SendSyscallFacade, NioSendSyscall, RawSendSyscall,
+impl_syscall!(SendSyscallFacade, IocpSendSyscall, NioSendSyscall, RawSendSyscall,
     send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
 );
 
 impl_facade!(SendSyscallFacade, SendSyscall,
+    send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
+);
+
+impl_iocp_write!(IocpSendSyscall, SendSyscall,
     send(fd: SOCKET, buf: PCSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
 );
 

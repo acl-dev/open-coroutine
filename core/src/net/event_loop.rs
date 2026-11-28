@@ -31,7 +31,8 @@ cfg_if::cfg_if! {
         use std::ffi::{c_longlong, c_uint};
         use windows_sys::core::{PCSTR, PSTR};
         use windows_sys::Win32::Networking::WinSock::{
-            LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET, WSABUF,
+            LPCONDITIONPROC, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR,
+            SOCKET, WSABUF,
         };
         use windows_sys::Win32::System::IO::OVERLAPPED;
     }
@@ -154,7 +155,9 @@ impl<'e> EventLoop<'e> {
         unsafe {
             cfg_if::cfg_if! {
                 if #[cfg(windows)] {
-                    let thread_id = windows_sys::Win32::System::Threading::GetCurrentThread();
+                    // GetCurrentThread returns a pseudo-handle shared by all
+                    // threads; GetCurrentThreadId is unique per thread.
+                    let thread_id = windows_sys::Win32::System::Threading::GetCurrentThreadId();
                 } else {
                     let thread_id = libc::pthread_self();
                 }
@@ -584,6 +587,15 @@ macro_rules! impl_iocp {
 }
 
 impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
+impl_iocp!(
+    WSAAccept(
+        fd: SOCKET,
+        address: *mut SOCKADDR,
+        address_len: *mut c_int,
+        lpfncondition: LPCONDITIONPROC,
+        dwcallbackdata: usize,
+    ) -> c_int
+);
 impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
 impl_iocp!(
     WSARecv(

@@ -148,19 +148,32 @@ macro_rules! impl_iocp {
                         //回来的时候，系统调用已经执行完了
                     }
                     if let Some(co) = SchedulableCoroutine::current() {
-                        if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
-                        {
-                            let new_state = SyscallState::Executing;
-                            if co.syscall((), syscall, new_state).is_err() {
-                                $crate::error!(
-                                    "{} change to syscall {} {} failed !",
-                                    co.name(), syscall, new_state
-                                );
+                        if let CoroutineState::Syscall((), syscall, syscall_state) = co.state() {
+                            match syscall_state {
+                                SyscallState::Timeout => {
+                                    $crate::syscall::set_errno(
+                                        windows_sys::Win32::Networking::WinSock::WSAETIMEDOUT
+                                            .try_into()
+                                            .expect("errno overflow"),
+                                    );
+                                    return <$result>::try_from(-1)
+                                        .unwrap_or_else(|_| <$result>::MAX);
+                                }
+                                SyscallState::Callback => {
+                                    let new_state = SyscallState::Executing;
+                                    if co.syscall((), syscall, new_state).is_err() {
+                                        $crate::error!(
+                                            "{} change to syscall {} {} failed !",
+                                            co.name(), syscall, new_state
+                                        );
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
                     let (lock, cvar) = &*arc;
-                    let mut syscall_result = cvar
+                    let syscall_result = cvar
                         .wait_while(lock.lock().expect("lock failed"),
                             |&mut result| result.is_none()
                         )
@@ -168,7 +181,7 @@ macro_rules! impl_iocp {
                         .expect("no syscall result");
                     if syscall_result < 0 {
                         $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
-                        syscall_result = -1;
+                        return <$result>::try_from(-1).unwrap_or_else(|_| <$result>::MAX);
                     }
                     return <$result>::try_from(syscall_result).expect("overflow");
                 }
@@ -206,7 +219,10 @@ macro_rules! impl_iocp_read {
                     if let Some(co) = SchedulableCoroutine::current() {
                         if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
                         {
-                            let new_state = SyscallState::Suspend($crate::syscall::recv_time_limit($fd));
+                            let new_state = SyscallState::Suspend(
+                                $crate::common::now()
+                                    .saturating_add($crate::syscall::recv_time_limit($fd))
+                            );
                             if co.syscall((), syscall, new_state).is_err() {
                                 $crate::error!(
                                     "{} change to syscall {} {} failed !",
@@ -220,19 +236,32 @@ macro_rules! impl_iocp_read {
                         //回来的时候，系统调用已经执行完了
                     }
                     if let Some(co) = SchedulableCoroutine::current() {
-                        if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
-                        {
-                            let new_state = SyscallState::Executing;
-                            if co.syscall((), syscall, new_state).is_err() {
-                                $crate::error!(
-                                    "{} change to syscall {} {} failed !",
-                                    co.name(), syscall, new_state
-                                );
+                        if let CoroutineState::Syscall((), syscall, syscall_state) = co.state() {
+                            match syscall_state {
+                                SyscallState::Timeout => {
+                                    $crate::syscall::set_errno(
+                                        windows_sys::Win32::Networking::WinSock::WSAETIMEDOUT
+                                            .try_into()
+                                            .expect("errno overflow"),
+                                    );
+                                    return <$result>::try_from(-1)
+                                        .unwrap_or_else(|_| <$result>::MAX);
+                                }
+                                SyscallState::Callback => {
+                                    let new_state = SyscallState::Executing;
+                                    if co.syscall((), syscall, new_state).is_err() {
+                                        $crate::error!(
+                                            "{} change to syscall {} {} failed !",
+                                            co.name(), syscall, new_state
+                                        );
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
                     let (lock, cvar) = &*arc;
-                    let mut syscall_result = cvar
+                    let syscall_result = cvar
                         .wait_while(lock.lock().expect("lock failed"),
                             |&mut result| result.is_none()
                         )
@@ -240,7 +269,7 @@ macro_rules! impl_iocp_read {
                         .expect("no syscall result");
                     if syscall_result < 0 {
                         $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
-                        syscall_result = -1;
+                        return <$result>::try_from(-1).unwrap_or_else(|_| <$result>::MAX);
                     }
                     return <$result>::try_from(syscall_result).expect("overflow");
                 }
@@ -278,7 +307,10 @@ macro_rules! impl_iocp_write {
                     if let Some(co) = SchedulableCoroutine::current() {
                         if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
                         {
-                            let new_state = SyscallState::Suspend($crate::syscall::send_time_limit($fd));
+                            let new_state = SyscallState::Suspend(
+                                $crate::common::now()
+                                    .saturating_add($crate::syscall::send_time_limit($fd))
+                            );
                             if co.syscall((), syscall, new_state).is_err() {
                                 $crate::error!(
                                     "{} change to syscall {} {} failed !",
@@ -292,19 +324,32 @@ macro_rules! impl_iocp_write {
                         //回来的时候，系统调用已经执行完了
                     }
                     if let Some(co) = SchedulableCoroutine::current() {
-                        if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
-                        {
-                            let new_state = SyscallState::Executing;
-                            if co.syscall((), syscall, new_state).is_err() {
-                                $crate::error!(
-                                    "{} change to syscall {} {} failed !",
-                                    co.name(), syscall, new_state
-                                );
+                        if let CoroutineState::Syscall((), syscall, syscall_state) = co.state() {
+                            match syscall_state {
+                                SyscallState::Timeout => {
+                                    $crate::syscall::set_errno(
+                                        windows_sys::Win32::Networking::WinSock::WSAETIMEDOUT
+                                            .try_into()
+                                            .expect("errno overflow"),
+                                    );
+                                    return <$result>::try_from(-1)
+                                        .unwrap_or_else(|_| <$result>::MAX);
+                                }
+                                SyscallState::Callback => {
+                                    let new_state = SyscallState::Executing;
+                                    if co.syscall((), syscall, new_state).is_err() {
+                                        $crate::error!(
+                                            "{} change to syscall {} {} failed !",
+                                            co.name(), syscall, new_state
+                                        );
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
                     let (lock, cvar) = &*arc;
-                    let mut syscall_result = cvar
+                    let syscall_result = cvar
                         .wait_while(lock.lock().expect("lock failed"),
                             |&mut result| result.is_none()
                         )
@@ -312,7 +357,7 @@ macro_rules! impl_iocp_write {
                         .expect("no syscall result");
                     if syscall_result < 0 {
                         $crate::syscall::set_errno((-syscall_result).try_into().expect("errno overflow"));
-                        syscall_result = -1;
+                        return <$result>::try_from(-1).unwrap_or_else(|_| <$result>::MAX);
                     }
                     return <$result>::try_from(syscall_result).expect("overflow");
                 }
