@@ -23,7 +23,8 @@ cfg_if::cfg_if! {
         use std::ffi::c_uint;
         use windows_sys::core::{PCSTR, PSTR};
         use windows_sys::Win32::Networking::WinSock::{
-            LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR, SOCKET, WSABUF,
+            LPCONDITIONPROC, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR,
+            SOCKET, WSABUF,
         };
         use windows_sys::Win32::System::IO::OVERLAPPED;
     }
@@ -39,7 +40,7 @@ mod selector;
     all(target_os = "linux", feature = "io_uring"),
     all(windows, feature = "iocp")
 ))]
-mod operator;
+pub(crate) mod operator;
 
 #[allow(missing_docs)]
 pub mod event_loop;
@@ -340,6 +341,15 @@ macro_rules! impl_iocp {
 }
 
 impl_iocp!(accept(fd: SOCKET, addr: *mut SOCKADDR, len: *mut c_int) -> c_int);
+impl_iocp!(
+    WSAAccept(
+        fd: SOCKET,
+        address: *mut SOCKADDR,
+        address_len: *mut c_int,
+        lpfncondition: LPCONDITIONPROC,
+        dwcallbackdata: usize,
+    ) -> c_int
+);
 impl_iocp!(recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int);
 impl_iocp!(
     WSARecv(

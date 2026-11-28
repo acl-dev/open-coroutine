@@ -44,7 +44,10 @@ impl<I: AcceptSyscall> AcceptSyscall for IocpAcceptSyscall<I> {
             if let Some(co) = SchedulableCoroutine::current() {
                 if let CoroutineState::Syscall((), syscall, SyscallState::Executing) = co.state()
                 {
-                    let new_state = SyscallState::Suspend(crate::syscall::recv_time_limit(fd));
+                    let new_state = SyscallState::Suspend(
+                        crate::common::now()
+                            .saturating_add(crate::syscall::recv_time_limit(fd))
+                    );
                     if co.syscall((), syscall, new_state).is_err() {
                         crate::error!(
                             "{} change to syscall {} {} failed !",
@@ -58,14 +61,26 @@ impl<I: AcceptSyscall> AcceptSyscall for IocpAcceptSyscall<I> {
                 //回来的时候，系统调用已经执行完了
             }
             if let Some(co) = SchedulableCoroutine::current() {
-            if let CoroutineState::Syscall((), syscall, SyscallState::Callback) = co.state()
-            {
-                let new_state = SyscallState::Executing;
-                if co.syscall((), syscall, new_state).is_err() {
-                    crate::error!(
-                        "{} change to syscall {} {} failed !",
-                        co.name(), syscall, new_state
-                    );
+            if let CoroutineState::Syscall((), syscall, syscall_state) = co.state() {
+                match syscall_state {
+                    SyscallState::Timeout => {
+                        crate::syscall::set_errno(
+                            windows_sys::Win32::Networking::WinSock::WSAETIMEDOUT
+                                .try_into()
+                                .expect("errno overflow"),
+                        );
+                        return INVALID_SOCKET;
+                    }
+                    SyscallState::Callback => {
+                        let new_state = SyscallState::Executing;
+                        if co.syscall((), syscall, new_state).is_err() {
+                            crate::error!(
+                                "{} change to syscall {} {} failed !",
+                                co.name(), syscall, new_state
+                            );
+                        }
+                    }
+                    _ => {}
                 }
             }
             }

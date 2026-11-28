@@ -13,11 +13,15 @@ trait RecvSyscall {
     ) -> c_int;
 }
 
-impl_syscall!(RecvSyscallFacade, NioRecvSyscall, RawRecvSyscall,
+impl_syscall!(RecvSyscallFacade, IocpRecvSyscall, NioRecvSyscall, RawRecvSyscall,
     recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
 );
 
 impl_facade!(RecvSyscallFacade, RecvSyscall,
+    recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
+);
+
+impl_iocp_read!(IocpRecvSyscall, RecvSyscall,
     recv(fd: SOCKET, buf: PSTR, len: c_int, flags: SEND_RECV_FLAGS) -> c_int
 );
 

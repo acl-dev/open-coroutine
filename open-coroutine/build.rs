@@ -43,6 +43,20 @@ fn main() {
         .expect("parent not found")
         .join("hook")
         .join("Cargo.toml");
+    // The hook cdylib statically links open-coroutine-core, so changes under
+    // ../hook or ../core must retrigger this script or the copied DLL goes
+    // stale. In the packaged layout these siblings do not exist; the registry
+    // sources are covered by cargo's own fingerprinting.
+    let workspace_root = PathBuf::from(var("CARGO_MANIFEST_DIR").expect("env not found"))
+        .parent()
+        .expect("parent not found")
+        .to_path_buf();
+    for dir in ["hook/src", "core/src"] {
+        let path = workspace_root.join(dir);
+        if path.is_dir() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
     let metadata = MetadataCommand::default()
         .no_deps()
         .exec()

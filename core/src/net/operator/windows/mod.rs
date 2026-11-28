@@ -1,6 +1,8 @@
 use crate::common::constants::SyscallName;
 use crate::common::{get_timeout_time, now};
 use crate::impl_display_by_debug;
+use dashmap::DashSet;
+use once_cell::sync::Lazy;
 use std::ffi::{c_int, c_longlong, c_uint};
 use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
@@ -11,10 +13,11 @@ use windows_sys::Win32::Foundation::{
     ERROR_INVALID_PARAMETER, FALSE, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Networking::WinSock::{
-    getsockopt, setsockopt, AcceptEx, WSAGetLastError, WSARecv, WSASend, WSASocketW,
+    getsockopt, setsockopt, AcceptEx, WSAGetLastError, WSARecvFrom, WSASendTo, WSASocketW,
     INVALID_SOCKET, LPCONDITIONPROC, LPWSAOVERLAPPED_COMPLETION_ROUTINE, SEND_RECV_FLAGS, SOCKADDR,
-    SOCKADDR_IN, SOCKET, SOCKET_ERROR, SOL_SOCKET, SO_PROTOCOL_INFO, SO_UPDATE_ACCEPT_CONTEXT,
-    WSABUF, WSAEINPROGRESS, WSAENETDOWN, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED, WSA_IO_PENDING,
+    SOCKADDR_IN6, SOCKET, SOCKET_ERROR, SOL_SOCKET, SO_PROTOCOL_INFO, SO_UPDATE_ACCEPT_CONTEXT,
+    WSABUF, WSAEINPROGRESS, WSAEINVAL, WSAENETDOWN, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED,
+    WSA_IO_PENDING,
 };
 use windows_sys::Win32::Storage::FileSystem::SetFileCompletionNotificationModes;
 use windows_sys::Win32::System::WindowsProgramming::FILE_SKIP_SET_EVENT_ON_HANDLE;
@@ -38,6 +41,17 @@ pub(crate) struct Overlapped {
     syscall_name: SyscallName,
     socket: SOCKET,
     pub result: c_longlong,
+    /// Owned `WSABUF` storage for single-buffer `recv`/`send` operations.
+    /// Must stay alive until the IOCP completion is dequeued.
+    #[educe(Debug(ignore))]
+    wsabuf: WSABUF,
+    /// Owned `lpflags` storage for `recv`/`send` operations.
+    #[educe(Debug(ignore))]
+    flags: c_uint,
+    /// Owned buffer for `AcceptEx` local/remote address output.
+    /// Sized for IPv6 (`2 * (sizeof(SOCKADDR_IN6) + 16)`).
+    #[educe(Debug(ignore))]
+    accept_buf: [u8; 128],
 }
 
 impl Default for Overlapped {
@@ -47,6 +61,18 @@ impl Default for Overlapped {
 }
 
 impl_display_by_debug!(Overlapped);
+
+/// Sockets that support overlapped I/O: created through `socket`/`WSASocketW`
+/// with `WSA_FLAG_OVERLAPPED`, or accepted via `AcceptEx`. Overlapped
+/// operations submitted for any other socket are rejected so the caller can
+/// fall back to the NIO path.
+pub(crate) static OVERLAPPED_SOCKETS: Lazy<DashSet<SOCKET>> = Lazy::new(DashSet::new);
+
+/// Sockets already associated with an open-coroutine IOCP port. A socket can
+/// only be bound to one completion port; this distinguishes "already bound to
+/// us" (duplicate bind, safe to proceed) from "bound elsewhere" such as the
+/// mio selector's port (completions would be delivered where we never look).
+static BOUND_SOCKETS: Lazy<DashSet<SOCKET>> = Lazy::new(DashSet::new);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -84,14 +110,23 @@ impl<'o> Operator<'o> {
     fn add_handle(&self, handle: HANDLE) -> std::io::Result<()> {
         unsafe {
             let ret = CreateIoCompletionPort(handle, self.iocp, self.cpu, 0);
-            if ret.is_null()
-                && ERROR_INVALID_PARAMETER
-                    == TryInto::<u32>::try_into(WSAGetLastError()).expect("overflow")
-            {
-                // duplicate bind
-                return Ok(());
+            if ret.is_null() {
+                let err = WSAGetLastError();
+                if ERROR_INVALID_PARAMETER == TryInto::<u32>::try_into(err).expect("overflow") {
+                    // duplicate bind: only safe when the socket is already
+                    // bound to one of our IOCP ports.
+                    if BOUND_SOCKETS.contains(&(handle as SOCKET)) {
+                        return Ok(());
+                    }
+                    return Err(Error::new(
+                        ErrorKind::WouldBlock,
+                        "socket is bound to another completion port",
+                    ));
+                }
+                return Err(Error::last_os_error());
             }
             debug_assert_eq!(ret, self.iocp);
+            _ = BOUND_SOCKETS.insert(handle as SOCKET);
             if SetFileCompletionNotificationModes(
                 handle,
                 u8::try_from(FILE_SKIP_SET_EVENT_ON_HANDLE).expect("overflow"),
@@ -161,7 +196,7 @@ impl<'o> Operator<'o> {
                     let mut cqe = Box::from_raw(entry.lpOverlapped.cast::<Overlapped>());
                     // resolve completed read/write tasks
                     cqe.result = match cqe.syscall_name {
-                        SyscallName::accept => {
+                        SyscallName::accept | SyscallName::WSAAccept => {
                             if setsockopt(
                                 cqe.socket,
                                 SOL_SOCKET,
@@ -179,9 +214,14 @@ impl<'o> Operator<'o> {
                         | SyscallName::WSARecv
                         | SyscallName::send
                         | SyscallName::WSASend => entry.dwNumberOfBytesTransferred.into(),
-                        _ => panic!("unsupported"),
+                        // `error!` expands to nothing without the `log` feature,
+                        // leaving `other` unused in that configuration.
+                        #[allow(unused_variables)]
+                        other => {
+                            crate::error!("unsupported IOCP syscall {} completed", other);
+                            -c_longlong::from(WSAEINVAL)
+                        }
                     };
-                    eprintln!("IOCP got:{cqe}");
                     cq.push(*cqe);
                 }
             }
@@ -193,9 +233,11 @@ impl<'o> Operator<'o> {
         Ok((cq.len(), cq, timeout.map(|t| t.saturating_sub(cost))))
     }
 
-    #[allow(warnings)]
-    pub(crate) fn async_cancel(&self, user_data: u64) -> std::io::Result<()> {
-        todo!("CancelIoEx")
+    pub(crate) fn async_cancel(_user_data: u64) -> std::io::Result<()> {
+        Err(Error::new(
+            ErrorKind::Unsupported,
+            "IOCP async_cancel is not implemented",
+        ))
     }
 
     pub(crate) fn accept(
@@ -259,35 +301,107 @@ impl<'o> Operator<'o> {
             if INVALID_SOCKET == socket {
                 return Err(Error::other(format!("add {syscall_name} operation failed")));
             }
-            let size = size_of::<SOCKADDR_IN>()
-                .saturating_add(16)
+            // AcceptEx requires each address buffer to hold at least
+            // sizeof(SOCKADDR_IN6) + 16 bytes; the output buffer must fit both
+            // the local and remote addresses.
+            let addr_len: u32 = (size_of::<SOCKADDR_IN6>() + 16)
                 .try_into()
-                .expect("size overflow");
-            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall_name = syscall_name;
+                .expect("addr_len overflow");
+            let overlapped = Self::new_overlapped(user_data, fd, syscall_name);
             overlapped.socket = socket;
             overlapped.result = -c_longlong::from(WSAENETDOWN);
-            let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
-            while AcceptEx(
+            _ = OVERLAPPED_SOCKETS.insert(socket);
+            let ret = AcceptEx(
                 fd,
                 socket,
-                buf.as_mut_ptr().cast(),
+                overlapped.accept_buf.as_mut_ptr().cast(),
                 0,
-                size,
-                size,
+                addr_len,
+                addr_len,
                 std::ptr::null_mut(),
                 std::ptr::from_mut(overlapped).cast(),
-            ) == FALSE
-            {
-                if WSA_IO_PENDING == WSAGetLastError() {
-                    break;
+            );
+            if ret == FALSE {
+                let errno = WSAGetLastError();
+                if WSA_IO_PENDING != errno {
+                    // Reclaim the leaked overlapped before reporting the error.
+                    Self::reclaim(std::ptr::from_mut(overlapped));
+                    return Err(Error::other(format!(
+                        "add {syscall_name} operation failed with {errno}"
+                    )));
                 }
             }
-            eprintln!("add {syscall_name} operation:{overlapped}");
+            // `ret != FALSE` means the accept completed synchronously; a
+            // completion packet is still queued to the IOCP either way.
         }
         Ok(())
+    }
+
+    fn new_overlapped(user_data: u64, fd: SOCKET, syscall_name: SyscallName) -> &'o mut Overlapped {
+        let overlapped: &'o mut Overlapped = Box::leak(Box::default());
+        overlapped.from_fd = fd;
+        overlapped.token = user_data;
+        overlapped.syscall_name = syscall_name;
+        overlapped.result = -c_longlong::from(WSAEINPROGRESS);
+        overlapped
+    }
+
+    /// Reclaim an [`Overlapped`] that was leaked by [`Self::new_overlapped`]
+    /// but whose operation failed before being queued to the IOCP.
+    unsafe fn reclaim(overlapped: *mut Overlapped) {
+        drop(Box::from_raw(overlapped));
+    }
+
+    /// `WSARecv`/`WSASend` are hooked by `open-coroutine-hook`, so calling
+    /// them here would re-enter the coroutine syscall layer. The `*From`/`*To`
+    /// variants are not hooked and are signature-compatible when the address
+    /// arguments are null, so they reach the real overlapped submission.
+    fn recv_from(
+        fd: SOCKET,
+        buf: *const WSABUF,
+        dwbuffercount: c_uint,
+        lpnumberofbytesrecvd: *mut c_uint,
+        lpflags: *mut c_uint,
+        lpoverlapped: *mut OVERLAPPED,
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
+    ) -> c_int {
+        unsafe {
+            WSARecvFrom(
+                fd,
+                buf,
+                dwbuffercount,
+                lpnumberofbytesrecvd,
+                lpflags,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                lpoverlapped,
+                lpcompletionroutine,
+            )
+        }
+    }
+
+    fn send_to(
+        fd: SOCKET,
+        buf: *const WSABUF,
+        dwbuffercount: c_uint,
+        lpnumberofbytessent: *mut c_uint,
+        dwflags: c_uint,
+        lpoverlapped: *mut OVERLAPPED,
+        lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
+    ) -> c_int {
+        unsafe {
+            WSASendTo(
+                fd,
+                buf,
+                dwbuffercount,
+                lpnumberofbytessent,
+                dwflags,
+                std::ptr::null(),
+                0,
+                lpoverlapped,
+                lpcompletionroutine,
+            )
+        }
     }
 
     pub(crate) fn recv(
@@ -298,20 +412,42 @@ impl<'o> Operator<'o> {
         len: c_int,
         flags: SEND_RECV_FLAGS,
     ) -> std::io::Result<()> {
-        let buf = [WSABUF {
-            len: len.try_into().expect("len overflow"),
-            buf: buf.cast(),
-        }];
-        self.wsarecv(
-            user_data,
-            fd,
-            buf.as_ptr(),
-            buf.len().try_into().expect("len overflow"),
-            std::ptr::null_mut(),
-            &mut c_uint::try_from(flags).expect("overflow"),
-            None,
-            SyscallName::recv,
-        )
+        if !OVERLAPPED_SOCKETS.contains(&fd) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "socket does not support overlapped I/O",
+            ));
+        }
+        self.add_handle(fd as HANDLE)?;
+        unsafe {
+            let overlapped = Self::new_overlapped(user_data, fd, SyscallName::recv);
+            overlapped.wsabuf = WSABUF {
+                len: len.try_into().expect("len overflow"),
+                buf: buf.cast(),
+            };
+            overlapped.flags = c_uint::try_from(flags).expect("overflow");
+            // The WSABUF and lpflags live inside `overlapped`, which stays
+            // alive until the IOCP completion is dequeued.
+            if Self::recv_from(
+                fd,
+                std::ptr::from_ref(&overlapped.wsabuf),
+                1,
+                std::ptr::null_mut(),
+                std::ptr::from_mut(&mut overlapped.flags),
+                std::ptr::from_mut(overlapped).cast(),
+                None,
+            ) == SOCKET_ERROR
+            {
+                let errno = WSAGetLastError();
+                if WSA_IO_PENDING != errno {
+                    Self::reclaim(std::ptr::from_mut(overlapped));
+                    return Err(Error::other(format!(
+                        "add recv operation failed with {errno}"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn WSARecv(
@@ -354,14 +490,18 @@ impl<'o> Operator<'o> {
         lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
         syscall_name: SyscallName,
     ) -> std::io::Result<()> {
+        if !OVERLAPPED_SOCKETS.contains(&fd) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "socket does not support overlapped I/O",
+            ));
+        }
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall_name = syscall_name;
-            overlapped.result = -c_longlong::from(WSAEINPROGRESS);
-            if WSARecv(
+            let overlapped = Self::new_overlapped(user_data, fd, syscall_name);
+            // `buf`, `lpnumberofbytesrecvd` and `lpflags` are caller-owned and
+            // must outlive the operation, matching the WSARecv contract.
+            if Self::recv_from(
                 fd,
                 buf,
                 dwbuffercount,
@@ -373,12 +513,12 @@ impl<'o> Operator<'o> {
             {
                 let errno = WSAGetLastError();
                 if WSA_IO_PENDING != errno {
+                    Self::reclaim(std::ptr::from_mut(overlapped));
                     return Err(Error::other(format!(
                         "add {syscall_name} operation failed with {errno}"
                     )));
                 }
             }
-            eprintln!("add {syscall_name} operation:{overlapped}");
         }
         Ok(())
     }
@@ -391,20 +531,40 @@ impl<'o> Operator<'o> {
         len: c_int,
         flags: SEND_RECV_FLAGS,
     ) -> std::io::Result<()> {
-        let buf = [WSABUF {
-            len: len.try_into().expect("len overflow"),
-            buf: buf.cast_mut(),
-        }];
-        self.wsasend(
-            user_data,
-            fd,
-            buf.as_ptr(),
-            buf.len().try_into().expect("len overflow"),
-            std::ptr::null_mut(),
-            c_uint::try_from(flags).expect("overflow"),
-            None,
-            SyscallName::send,
-        )
+        if !OVERLAPPED_SOCKETS.contains(&fd) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "socket does not support overlapped I/O",
+            ));
+        }
+        self.add_handle(fd as HANDLE)?;
+        unsafe {
+            let overlapped = Self::new_overlapped(user_data, fd, SyscallName::send);
+            overlapped.wsabuf = WSABUF {
+                len: len.try_into().expect("len overflow"),
+                buf: buf.cast_mut(),
+            };
+            overlapped.flags = c_uint::try_from(flags).expect("overflow");
+            if Self::send_to(
+                fd,
+                std::ptr::from_ref(&overlapped.wsabuf),
+                1,
+                std::ptr::null_mut(),
+                overlapped.flags,
+                std::ptr::from_mut(overlapped).cast(),
+                None,
+            ) == SOCKET_ERROR
+            {
+                let errno = WSAGetLastError();
+                if WSA_IO_PENDING != errno {
+                    Self::reclaim(std::ptr::from_mut(overlapped));
+                    return Err(Error::other(format!(
+                        "add send operation failed with {errno}"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn WSASend(
@@ -447,14 +607,16 @@ impl<'o> Operator<'o> {
         lpcompletionroutine: LPWSAOVERLAPPED_COMPLETION_ROUTINE,
         syscall_name: SyscallName,
     ) -> std::io::Result<()> {
+        if !OVERLAPPED_SOCKETS.contains(&fd) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "socket does not support overlapped I/O",
+            ));
+        }
         self.add_handle(fd as HANDLE)?;
         unsafe {
-            let overlapped: &'o mut Overlapped = Box::leak(Box::default());
-            overlapped.from_fd = fd;
-            overlapped.token = user_data;
-            overlapped.syscall_name = syscall_name;
-            overlapped.result = -c_longlong::from(WSAEINPROGRESS);
-            if WSASend(
+            let overlapped = Self::new_overlapped(user_data, fd, syscall_name);
+            if Self::send_to(
                 fd,
                 buf,
                 dwbuffercount,
@@ -466,12 +628,12 @@ impl<'o> Operator<'o> {
             {
                 let errno = WSAGetLastError();
                 if WSA_IO_PENDING != errno {
+                    Self::reclaim(std::ptr::from_mut(overlapped));
                     return Err(Error::other(format!(
                         "add {syscall_name} operation failed with {errno}"
                     )));
                 }
             }
-            eprintln!("add {syscall_name} operation:{overlapped}");
         }
         Ok(())
     }

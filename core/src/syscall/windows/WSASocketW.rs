@@ -25,7 +25,7 @@ trait WSASocketWSyscall {
     ) -> SOCKET;
 }
 
-impl_syscall!(WSASocketWSyscallFacade, RawWSASocketWSyscall,
+impl_syscall!(WSASocketWSyscallFacade, NioWSASocketWSyscall, RawWSASocketWSyscall,
     WSASocketW(
         domain: c_int,
         ty: WINSOCK_SOCKET_TYPE,
@@ -46,6 +46,51 @@ impl_facade!(WSASocketWSyscallFacade, WSASocketWSyscall,
         dw_flags: c_uint
     ) -> SOCKET
 );
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct NioWSASocketWSyscall<I: WSASocketWSyscall> {
+    inner: I,
+}
+
+impl<I: WSASocketWSyscall> WSASocketWSyscall for NioWSASocketWSyscall<I> {
+    extern "system" fn WSASocketW(
+        &self,
+        fn_ptr: Option<
+            &extern "system" fn(
+                c_int,
+                WINSOCK_SOCKET_TYPE,
+                IPPROTO,
+                *const WSAPROTOCOL_INFOW,
+                c_uint,
+                c_uint,
+            ) -> SOCKET,
+        >,
+        domain: c_int,
+        ty: WINSOCK_SOCKET_TYPE,
+        protocol: IPPROTO,
+        lpprotocolinfo: *const WSAPROTOCOL_INFOW,
+        g: c_uint,
+        dw_flags: c_uint,
+    ) -> SOCKET {
+        #[cfg(all(windows, feature = "iocp"))]
+        let dw_flags = dw_flags | windows_sys::Win32::Networking::WinSock::WSA_FLAG_OVERLAPPED;
+        let r = self.inner.WSASocketW(
+            fn_ptr,
+            domain,
+            ty,
+            protocol,
+            lpprotocolinfo,
+            g,
+            dw_flags,
+        );
+        #[cfg(all(windows, feature = "iocp"))]
+        if windows_sys::Win32::Networking::WinSock::INVALID_SOCKET != r {
+            _ = crate::net::operator::OVERLAPPED_SOCKETS.insert(r);
+        }
+        r
+    }
+}
 
 impl_raw!(RawWSASocketWSyscall, WSASocketWSyscall, windows_sys::Win32::Networking::WinSock,
     WSASocketW(

@@ -28,4 +28,5 @@ author: loongs-zhang
 - [工作窃取总览](../cn/work-steal.md)
 - [有序工作窃取总览](../cn/ordered-work-steal.md)
 - [协程池总览](../cn/coroutine-pool.md)
+- [系统调用分发总览](../cn/syscall.md)
 - [Hook总览](../../../hook/docs/cn/hook.md)

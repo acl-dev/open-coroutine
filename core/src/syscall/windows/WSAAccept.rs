@@ -21,7 +21,7 @@ trait WSAAcceptSyscall {
     ) -> SOCKET;
 }
 
-impl_syscall!(WSAAcceptSyscallFacade, NioWSAAcceptSyscall, RawWSAAcceptSyscall,
+impl_syscall!(WSAAcceptSyscallFacade, IocpWSAAcceptSyscall, NioWSAAcceptSyscall, RawWSAAcceptSyscall,
     WSAAccept(
         fd: SOCKET,
         address: *mut SOCKADDR,
@@ -32,6 +32,16 @@ impl_syscall!(WSAAcceptSyscallFacade, NioWSAAcceptSyscall, RawWSAAcceptSyscall,
 );
 
 impl_facade!(WSAAcceptSyscallFacade, WSAAcceptSyscall,
+    WSAAccept(
+        fd: SOCKET,
+        address: *mut SOCKADDR,
+        address_len: *mut c_int,
+        lpfncondition: LPCONDITIONPROC,
+        dwcallbackdata: usize
+    ) -> SOCKET
+);
+
+impl_iocp_read!(IocpWSAAcceptSyscall, WSAAcceptSyscall,
     WSAAccept(
         fd: SOCKET,
         address: *mut SOCKADDR,
