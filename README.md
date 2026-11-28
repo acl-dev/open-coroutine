@@ -24,6 +24,8 @@ English | [中文](README_ZH.md)
   see [example](https://github.com/loongs-zhang/open-coroutine/blob/master/open-coroutine/examples/scalable_stack.rs);
 - [x] io_uring(`only in linux`): supports and is compatible with io_uring in terms of local file IO and network IO. If
   it's not supported on your system, it will fall back to non-blocking IO;
+- [x] IOCP(`only in windows`): overlapped socket IO on Windows via IOCP — currently `accept`/`WSAAccept`;
+  other socket IO falls back to non-blocking IO;
 - [x] Priority: support custom task priority, note that coroutine priority is not open to users;
 - [x] Work Steal: internally using a lock free work steal queue;
 - [x] Compatibility: the implementation of open-coroutine is no async, but it is compatible with async, which means you
@@ -133,6 +135,33 @@ fn main() {
     }, "param");
 }
 ```
+
+## 🛠 Build & Test
+
+open-coroutine requires the **nightly** Rust toolchain.
+
+```sh
+# format check
+cargo +nightly fmt --all -- --check
+
+# lint
+cargo +nightly clippy --workspace --all-features -- -D warnings
+
+# test with all features enabled
+cargo +nightly test --all --all-features
+```
+
+The `open-coroutine-hook` cdylib is compiled and staged automatically by the
+`open-coroutine` build script — no manual step is required.
+
+Optional features (see `open-coroutine/Cargo.toml` for the full list):
+
+| feature         | platform      | description                                  |
+| --------------- | ------------- | -------------------------------------------- |
+| `io_uring`      | Linux         | io_uring backend for file & socket IO        |
+| `iocp`          | Windows       | IOCP backend for overlapped socket IO        |
+| `completion_io` | Linux/Windows | enables both `io_uring` and `iocp`           |
+| `ci`            | all           | internal CI test mode, not for downstream use |
 
 ## 🪶 Advanced Usage
 
